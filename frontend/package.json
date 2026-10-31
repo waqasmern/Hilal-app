@@ -1,0 +1,28 @@
+{
+  "name": "frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "node --max-old-space-size=4096 ./node_modules/next/dist/bin/next dev",
+    "build": "node --max-old-space-size=4096 ./node_modules/next/dist/bin/next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "@reduxjs/toolkit": "^2.12.0",
+    "@supabase/supabase-js": "^2.118.0",
+    "html2canvas-pro": "^2.5.0",
+    "html2pdf.js": "^0.14.0",
+    "lucide-react": "^1.52.0",
+    "next": "16.1.6",
+    "qrcode.react": "^4.2.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-redux": "^9.3.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.2.1",
+    "autoprefixer": "^10.6.1",
+    "postcss": "^8.5.29",
+    "tailwindcss": "^4.3.3"
+  }
+}
