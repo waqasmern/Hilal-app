@@ -6,7 +6,7 @@ export async function GET() {
         const { count: pendingOrders } = await supabase
             .from('sales')
             .select('*', { count: 'exact', head: true })
-            .eq('order_status', 'PENDING');
+            .or('status.eq.pending,status.eq.PENDING');
 
         const { data: latestEvent } = await supabase
             .from('ingested_sync_events')

@@ -157,14 +157,20 @@ async function updateSyncStatus(uuid, status, errorMessage = null, incrementRetr
  * Get comprehensive synchronization statistics and metrics
  */
 async function getSyncStats() {
-    const row = await getQuery(`
+    const queueRow = await getQuery(`
         SELECT 
             COUNT(*) as total,
-            SUM(CASE WHEN status = 'PENDING' THEN 1 ELSE 0 END) as pending,
+            SUM(CASE WHEN status IN ('PENDING', 'FAILED', 'SYNCING') THEN 1 ELSE 0 END) as pending,
             SUM(CASE WHEN status = 'SYNCING' THEN 1 ELSE 0 END) as syncing,
             SUM(CASE WHEN status = 'SYNCED' THEN 1 ELSE 0 END) as synced,
             SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) as failed
         FROM sync_queue
+    `, []);
+
+    const pendingOrdersRow = await getQuery(`
+        SELECT COUNT(*) as pending_orders 
+        FROM sales 
+        WHERE order_status = 'PENDING' OR status = 'pending'
     `, []);
 
     const [lastPush, lastPull, lastFull, lastCursor, lastErr] = await Promise.all([
@@ -176,11 +182,12 @@ async function getSyncStats() {
     ]);
 
     return {
-        total: row?.total || 0,
-        pending: row?.pending || 0,
-        syncing: row?.syncing || 0,
-        synced: row?.synced || 0,
-        failed: row?.failed || 0,
+        total: queueRow?.total || 0,
+        pending: queueRow?.pending || 0,
+        syncing: queueRow?.syncing || 0,
+        synced: queueRow?.synced || 0,
+        failed: queueRow?.failed || 0,
+        pendingOrders: pendingOrdersRow?.pending_orders || 0,
         lastPushAt: lastPush,
         lastPullAt: lastPull,
         lastFullSyncAt: lastFull,

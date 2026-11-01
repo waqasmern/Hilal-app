@@ -26,7 +26,7 @@ export default function Navbar() {
                 const res = await fetch('http://localhost:5000/api/sync/status');
                 if (res.ok) {
                     const data = await res.json();
-                    dispatch(setPendingCount(data.pending || 0));
+                    dispatch(setPendingCount(Number(data.pending || data.pendingOrders || 0)));
                 }
             } catch (err) {
                 // Ignore backend fetch error
@@ -34,7 +34,7 @@ export default function Navbar() {
         };
 
         checkSyncStatus();
-        const interval = setInterval(checkSyncStatus, 10000);
+        const interval = setInterval(checkSyncStatus, 4000);
 
         return () => {
             window.removeEventListener('online', handleOnline);
@@ -52,7 +52,6 @@ export default function Navbar() {
             const res = await fetch('http://localhost:5000/api/sync/trigger', { method: 'POST' });
             if (res.ok) {
                 const data = await res.json();
-                dispatch(setPendingCount(data.failed || 0));
                 setSyncSuccess(true);
                 if (typeof window !== 'undefined') {
                     window.dispatchEvent(new CustomEvent('app:synced', { detail: data }));
@@ -126,7 +125,9 @@ export default function Navbar() {
                     )}
 
                     <span className="text-gray-400 hidden sm:inline">|</span>
-                    <span className="text-gray-600 font-semibold hidden sm:inline">Pending: {pendingCount}</span>
+                    <span className={`font-semibold hidden sm:inline text-xs transition-all ${pendingCount > 0 ? 'text-amber-800 bg-amber-100 px-2 py-0.5 rounded-md border border-amber-300 font-bold' : 'text-gray-600'}`}>
+                        Pending: {pendingCount}
+                    </span>
 
                     <button 
                         onClick={handleSyncNow}
