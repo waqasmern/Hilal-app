@@ -7,6 +7,22 @@ import Navbar from './components/Navbar';
 import Sidebar from './components/Sidebar';
 import { usePathname, useRouter } from 'next/navigation';
 
+if (typeof window !== 'undefined' && !window.__fetchPatched) {
+    window.__fetchPatched = true;
+    const originalFetch = window.fetch;
+    window.fetch = function (input, init) {
+        if (typeof input === 'string') {
+            const apiBase = process.env.NEXT_PUBLIC_API_URL || '';
+            if (input.startsWith('http://localhost:5000/api')) {
+                input = input.replace('http://localhost:5000', apiBase);
+            } else if (input.startsWith('http://localhost:5000')) {
+                input = input.replace('http://localhost:5000', apiBase);
+            }
+        }
+        return originalFetch.call(this, input, init);
+    };
+}
+
 function RootLayoutContent({ children }) {
     const pathname = usePathname();
     const router = useRouter();

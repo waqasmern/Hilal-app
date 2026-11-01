@@ -3,10 +3,11 @@ import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+const isStaticExport = process.env.STATIC_EXPORT === 'true';
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'export',
-  trailingSlash: true,
+  ...(isStaticExport ? { output: 'export', trailingSlash: true } : {}),
   images: {
     unoptimized: true,
   },

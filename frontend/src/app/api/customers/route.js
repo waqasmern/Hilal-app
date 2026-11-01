@@ -1,0 +1,109 @@
+import { NextResponse } from 'next/server';
+import { supabase } from '@/lib/supabase';
+
+export async function GET(request) {
+    try {
+        const { searchParams } = new URL(request.url);
+        const paginate = searchParams.get('paginate') === 'true' || searchParams.has('page');
+        const search = searchParams.get('search');
+        const status = searchParams.get('status') || 'ALL';
+
+        let query = supabase.from('customers').select('*', { count: paginate ? 'exact' : undefined }).eq('is_deleted', 0);
+
+        if (search && search.trim()) {
+            const q = search.trim();
+            query = query.or(`name.ilike.%${q}%,business_name.ilike.%${q}%,mobile.ilike.%${q}%,phone.ilike.%${q}%`);
+        }
+
+        if (status === 'DUE') {
+            query = query.gt('balance', 0);
+        } else if (status === 'CLEAR') {
+            query = query.lte('balance', 0);
+        }
+
+        if (paginate) {
+            const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
+            const limit = Math.min(500, Math.max(1, parseInt(searchParams.get('limit') || '25')));
+            const from = (page - 1) * limit;
+            const to = from + limit - 1;
+
+            query = query.order('name', { ascending: true }).range(from, to);
+
+            const { data, count, error } = await query;
+            if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+            return NextResponse.json({
+                customers: data || [],
+                total: count || 0,
+                page,
+                totalPages: Math.ceil((count || 0) / limit)
+            });
+        } else {
+            query = query.order('name', { ascending: true });
+            const { data, error } = await query;
+            if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+            return NextResponse.json(data || []);
+        }
+    } catch (err) {
+        return NextResponse.json({ error: err.message }, { status: 500 });
+    }
+}
+
+export async function POST(request) {
+    try {
+        const body = await request.json();
+        const {
+            name,
+            business_name,
+            phone,
+            mobile,
+            address,
+            cnic_ntn,
+            credit_limit,
+            opening_balance
+        } = body;
+
+        if (!name || !name.trim()) {
+            return NextResponse.json({ error: 'Customer name is required' }, { status: 400 });
+        }
+
+        const openBal = parseFloat(opening_balance) || 0;
+        const newCustomer = {
+            uuid: crypto.randomUUID(),
+            name: name.trim(),
+            business_name: business_name ? business_name.trim() : null,
+            phone: phone || null,
+            mobile: mobile || null,
+            address: address || null,
+            cnic_ntn: cnic_ntn || null,
+            credit_limit: parseFloat(credit_limit) || 0,
+            opening_balance: openBal,
+            balance: openBal,
+            is_deleted: 0
+        };
+
+        const { data, error } = await supabase
+            .from('customers')
+            .insert([newCustomer])
+            .select()
+            .single();
+
+        if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+
+        // If opening balance > 0, insert ledger entry
+        if (openBal > 0) {
+            await supabase.from('customer_ledger').insert([{
+                uuid: crypto.randomUUID(),
+                customer_id: data.id,
+                amount: openBal,
+                type: 'opening_balance',
+                description: 'Opening Balance Recorded',
+                payment_method: 'opening_balance'
+            }]);
+        }
+
+        return NextResponse.json(data);
+    } catch (err) {
+        return NextResponse.json({ error: err.message }, { status: 500 });
+    }
+}
