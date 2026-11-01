@@ -165,25 +165,83 @@ export async function POST(request) {
                     }
                 }
             }
-        } else if (operation_type === 'PAYMENT') {
-            const custId = parsedPayload.party_id || parsedPayload.customer_id;
-            const amount = Number(parsedPayload.amount) || 0;
-            if (custId && amount > 0) {
-                let nextLedgerId = await getNextId('customer_ledger');
-                await supabase.from('customer_ledger').insert([{
-                    id: nextLedgerId,
-                    uuid: uuid,
-                    customer_id: parseInt(custId),
-                    amount,
-                    type: 'payment',
-                    description: parsedPayload.notes || 'Customer Account Payment',
-                    payment_method: parsedPayload.payment_method || 'cash',
-                    created_at: parsedPayload.payment_date || new Date().toISOString()
+        } else if (operation_type === 'PRODUCT') {
+            const productName = parsedPayload.name?.trim();
+            if (productName) {
+                const { data: existingProd } = await supabase
+                    .from('products')
+                    .select('id')
+                    .eq('name', productName)
+                    .single();
+
+                let prodId = existingProd?.id;
+                if (!prodId) {
+                    prodId = await getNextId('products');
+                    await supabase.from('products').insert([{
+                        id: prodId,
+                        uuid: uuid || crypto.randomUUID(),
+                        category_id: parsedPayload.category_id ? parseInt(parsedPayload.category_id) : 1,
+                        brand_id: parsedPayload.brand_id ? parseInt(parsedPayload.brand_id) : null,
+                        name: productName,
+                        description: parsedPayload.description || '',
+                        is_essential: parsedPayload.is_essential ? 1 : 0
+                    }]);
+                }
+
+                const initialStock = Number(parsedPayload.initial_stock) || 0;
+                let nextVarId = await getNextId('product_variants');
+                const { data: insertedVar } = await supabase.from('product_variants').insert([{
+                    id: nextVarId,
+                    uuid: crypto.randomUUID(),
+                    product_id: prodId,
+                    sku: parsedPayload.sku || `SKU-${Date.now().toString().slice(-4)}`,
+                    barcode: parsedPayload.barcode || '',
+                    variant_name: parsedPayload.variant_name || 'Standard',
+                    base_unit_id: parsedPayload.base_unit_id ? parseInt(parsedPayload.base_unit_id) : 1,
+                    minimum_stock: Number(parsedPayload.minimum_stock) || 10,
+                    reorder_level: Number(parsedPayload.reorder_level) || 15,
+                    is_loose_allowed: parsedPayload.is_loose_allowed ? 1 : 0,
+                    current_stock: initialStock
+                }]).select().single();
+
+                if (insertedVar && Array.isArray(parsedPayload.packagings)) {
+                    let nextPkgId = await getNextId('product_packagings');
+                    for (const p of parsedPayload.packagings) {
+                        await supabase.from('product_packagings').insert([{
+                            id: nextPkgId++,
+                            uuid: crypto.randomUUID(),
+                            variant_id: insertedVar.id,
+                            packaging_type_id: p.packaging_type_id ? parseInt(p.packaging_type_id) : 1,
+                            conversion_factor: Number(p.conversion_factor) || 1,
+                            is_default: p.is_default ? 1 : 0,
+                            purchase_price: Number(p.purchase_price) || 0,
+                            selling_price: Number(p.selling_price) || 0,
+                            barcode: p.barcode || ''
+                        }]);
+                    }
+                }
+            }
+        } else if (operation_type === 'ADJUSTMENT') {
+            const variantId = parseInt(parsedPayload.variant_id);
+            const qty = Number(parsedPayload.quantity) || 0;
+            const delta = parsedPayload.adjustment_type === 'increase' ? Math.abs(qty) : -Math.abs(qty);
+            if (variantId && delta !== 0) {
+                let nextMvId = await getNextId('stock_movements');
+                await supabase.from('stock_movements').insert([{
+                    id: nextMvId,
+                    uuid: uuid || crypto.randomUUID(),
+                    variant_id: variantId,
+                    movement_type: 'ADJUSTMENT',
+                    quantity: Math.abs(qty),
+                    equivalent_qty: Math.abs(qty),
+                    notes: parsedPayload.reason || 'Inventory Adjustment',
+                    device_id: effectiveDeviceId,
+                    created_at: parsedPayload.created_at || new Date().toISOString()
                 }]);
 
-                const { data: cust } = await supabase.from('customers').select('balance').eq('id', custId).single();
-                if (cust) {
-                    await supabase.from('customers').update({ balance: Number(cust.balance || 0) - amount }).eq('id', custId);
+                const { data: curV } = await supabase.from('product_variants').select('current_stock').eq('id', variantId).single();
+                if (curV) {
+                    await supabase.from('product_variants').update({ current_stock: Number(curV.current_stock || 0) + delta }).eq('id', variantId);
                 }
             }
         }

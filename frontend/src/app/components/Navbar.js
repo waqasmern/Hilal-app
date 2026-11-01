@@ -43,15 +43,23 @@ export default function Navbar() {
         };
     }, [dispatch]);
 
+    const [syncSuccess, setSyncSuccess] = useState(false);
+
     const handleSyncNow = async () => {
         dispatch(setSyncing(true));
+        setSyncSuccess(false);
         try {
             const res = await fetch('http://localhost:5000/api/sync/trigger', { method: 'POST' });
             if (res.ok) {
                 const data = await res.json();
                 dispatch(setPendingCount(data.failed || 0));
+                setSyncSuccess(true);
                 if (typeof window !== 'undefined') {
                     window.dispatchEvent(new CustomEvent('app:synced', { detail: data }));
+                    // Automatically reload after 400ms so new changes appear on screen without manual refresh!
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 400);
                 }
             }
         } catch (err) {
@@ -126,8 +134,10 @@ export default function Navbar() {
                         className="ml-0.5 sm:ml-1 text-[11px] sm:text-xs font-bold text-[#B8860B] hover:text-[#AA7C11] underline disabled:opacity-50 flex items-center gap-1 cursor-pointer"
                         title="Sync with cloud"
                     >
-                        <IconRefresh className="w-3 h-3 inline" />
-                        <span className="hidden sm:inline">Sync Now</span>
+                        <IconRefresh className={`w-3 h-3 inline ${isSyncing ? 'animate-spin' : ''}`} />
+                        <span className="hidden sm:inline">
+                            {isSyncing ? 'Syncing...' : syncSuccess ? '✓ Synced!' : 'Sync Now'}
+                        </span>
                     </button>
                 </div>
             </div>
