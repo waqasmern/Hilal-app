@@ -35,25 +35,30 @@ function getDateBoundaries(filter, startDate, endDate) {
     const pk = getPakistanTimeParts();
     const today = pk.date;
 
+    const toUtcRange = (startDay, endDay) => ({
+        start: new Date(`${startDay}T00:00:00+05:00`).toISOString(),
+        end: new Date(`${endDay}T23:59:59.999+05:00`).toISOString()
+    });
+
     if (filter === 'today') {
-        return { start: `${today} 00:00:00`, end: `${today} 23:59:59` };
+        return toUtcRange(today, today);
     } else if (filter === 'yesterday') {
         const y = new Date(Date.now() - 24 * 60 * 60 * 1000);
         const yDate = getPakistanTimeParts(y).date;
-        return { start: `${yDate} 00:00:00`, end: `${yDate} 23:59:59` };
+        return toUtcRange(yDate, yDate);
     } else if (filter === 'this_week') {
         const curr = new Date();
         const first = curr.getDate() - curr.getDay();
         const firstDay = new Date(curr.setDate(first));
         const dStart = getPakistanTimeParts(firstDay).date;
-        return { start: `${dStart} 00:00:00`, end: `${today} 23:59:59` };
+        return toUtcRange(dStart, today);
     } else if (filter === 'this_month') {
         const now = new Date();
         const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
         const dStart = getPakistanTimeParts(firstDay).date;
-        return { start: `${dStart} 00:00:00`, end: `${today} 23:59:59` };
+        return toUtcRange(dStart, today);
     } else if (filter === 'custom' && startDate && endDate) {
-        return { start: `${startDate} 00:00:00`, end: `${endDate} 23:59:59` };
+        return toUtcRange(startDate, endDate);
     }
     return null;
 }
@@ -199,8 +204,8 @@ export async function POST(request) {
         const saleUUID = crypto.randomUUID();
         const invoiceNo = `INV-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 90 + 10)}`;
         const finalRemarks = remarks || (party_type === 'walkin' && walkin_name ? `Walk-in: ${walkin_name} ${walkin_phone ? '(' + walkin_phone + ')' : ''}` : '');
+        const nowIso = new Date().toISOString();
         const pkTime = getPakistanTimeParts();
-        const localDateTime = pkTime.now;
         const nowDate = pkTime.date;
 
         // 1. Insert into sales
@@ -225,7 +230,7 @@ export async function POST(request) {
                 payment_method: payment_method || 'cash',
                 remarks: finalRemarks,
                 is_synced: 1,
-                created_at: localDateTime
+                created_at: nowIso
             }])
             .select()
             .single();
@@ -256,7 +261,7 @@ export async function POST(request) {
                 price: item.price,
                 discount: item.discount || 0,
                 total: item.total,
-                created_at: localDateTime
+                created_at: nowIso
             });
 
             const factor = parseFloat(item.conversion_factor) || 1;
@@ -278,7 +283,7 @@ export async function POST(request) {
 
                 await supabase
                     .from('inventory_stock')
-                    .update({ quantity: newStock, updated_at: localDateTime })
+                    .update({ quantity: newStock, updated_at: nowIso })
                     .eq('variant_id', item.variant_id);
             }
 
@@ -294,7 +299,7 @@ export async function POST(request) {
                 reference_type: 'SALE',
                 user_id: user.id || 1,
                 device_id: device_id || 'CLOUD-WEB-01',
-                created_at: localDateTime
+                created_at: nowIso
             });
         }
 
@@ -320,7 +325,7 @@ export async function POST(request) {
                 description: `Wholesale Invoice ${invoiceNo}`,
                 payment_method: payment_method || 'cash',
                 payment_date: nowDate,
-                created_at: localDateTime
+                created_at: nowIso
             }]);
 
             // Credit payment
@@ -335,7 +340,7 @@ export async function POST(request) {
                     description: `Payment for Invoice ${invoiceNo}`,
                     payment_method: payment_method || 'cash',
                     payment_date: nowDate,
-                    created_at: localDateTime
+                    created_at: nowIso
                 }]);
 
                 const nextPayId = await getNextId('payments');
@@ -351,7 +356,7 @@ export async function POST(request) {
                     device_id: device_id || 'CLOUD-WEB-01',
                     notes: `Payment for Invoice ${invoiceNo}`,
                     payment_date: nowDate,
-                    created_at: localDateTime
+                    created_at: nowIso
                 }]);
             }
 

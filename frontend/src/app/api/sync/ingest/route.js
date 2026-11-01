@@ -1,16 +1,14 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
-function getPakistanTimestamp(dateStr) {
-    if (dateStr) {
-        return dateStr;
+function toUtcIso(dateStr) {
+    if (!dateStr) return new Date().toISOString();
+    let s = String(dateStr).trim();
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?/.test(s)) {
+        return new Date(s.replace(' ', 'T') + '+05:00').toISOString();
     }
-    const d = new Date();
-    const s = d.toLocaleString('en-US', { timeZone: 'Asia/Karachi', hour12: false });
-    const [datePart, timePart] = s.split(', ');
-    const [m, day, y] = datePart.split('/');
-    const pad = n => String(n).padStart(2, '0');
-    return `${y}-${pad(m)}-${pad(day)} ${timePart}`;
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
 }
 
 async function getNextId(tableName) {
@@ -86,7 +84,7 @@ export async function POST(request) {
                         payment_method: parsedPayload.payment_method || 'cash',
                         remarks: parsedPayload.remarks || 'Synced from Counter Desktop',
                         is_synced: 1,
-                        created_at: getPakistanTimestamp(parsedPayload.created_at)
+                        created_at: toUtcIso(parsedPayload.created_at)
                     }])
                     .select()
                     .single();
@@ -128,7 +126,7 @@ export async function POST(request) {
                             reference_id: invoiceNo,
                             reference_type: 'SALE',
                             device_id: effectiveDeviceId,
-                            created_at: getPakistanTimestamp(parsedPayload.created_at)
+                            created_at: toUtcIso(parsedPayload.created_at)
                         }]);
 
                         // Deduct stock in Supabase
@@ -151,7 +149,7 @@ export async function POST(request) {
                             type: 'charge',
                             description: `Wholesale Invoice ${invoiceNo}`,
                             payment_method: parsedPayload.payment_method || 'cash',
-                            created_at: getPakistanTimestamp(parsedPayload.created_at)
+                            created_at: toUtcIso(parsedPayload.created_at)
                         }]);
 
                         if (paidAmount > 0) {
@@ -164,7 +162,7 @@ export async function POST(request) {
                                 type: 'payment',
                                 description: `Payment for Invoice ${invoiceNo}`,
                                 payment_method: parsedPayload.payment_method || 'cash',
-                                created_at: getPakistanTimestamp(parsedPayload.created_at)
+                                created_at: toUtcIso(parsedPayload.created_at)
                             }]);
                         }
 
@@ -248,7 +246,7 @@ export async function POST(request) {
                     equivalent_qty: Math.abs(qty),
                     notes: parsedPayload.reason || 'Inventory Adjustment',
                     device_id: effectiveDeviceId,
-                    created_at: getPakistanTimestamp(parsedPayload.created_at)
+                    created_at: toUtcIso(parsedPayload.created_at)
                 }]);
 
                 const { data: curV } = await supabase.from('product_variants').select('current_stock').eq('id', variantId).single();
