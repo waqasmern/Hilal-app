@@ -1,6 +1,7 @@
 'use client';
 import React, { useState, useEffect, useMemo } from 'react';
 import CustomModalAlert from '../components/CustomModalAlert';
+import { apiUrl } from '../../lib/api';
 import { 
     IconPlus, IconClose, IconInventory, IconSuppliers, 
     IconProducts, IconCheck, IconWarning, IconSearch,
@@ -806,7 +807,7 @@ export default function InventoryPage() {
             const headers = { 'Content-Type': 'application/json' };
             if (token) headers['Authorization'] = `Bearer ${token}`;
 
-            const res = await fetch(`http://localhost:5000/api/products/${editVariantId}`, {
+            const res = await fetch(apiUrl(`/api/products/${editVariantId}`), {
                 method: 'PUT',
                 headers,
                 body: JSON.stringify({
@@ -864,7 +865,7 @@ export default function InventoryPage() {
                     const headers = {};
                     if (token) headers['Authorization'] = `Bearer ${token}`;
 
-                    const res = await fetch(`http://localhost:5000/api/products/${item.variant_id}`, {
+                    const res = await fetch(apiUrl(`/api/products/${item.variant_id}`), {
                         method: 'DELETE',
                         headers
                     });
@@ -966,7 +967,7 @@ export default function InventoryPage() {
             if (cat && cat !== 'ALL') params.append('category', cat);
             if (status && status !== 'ALL') params.append('status', status);
 
-            const res = await fetch(`http://localhost:5000/api/inventory/stock?${params.toString()}`);
+            const res = await fetch(apiUrl(`/api/inventory/stock?${params.toString()}`));
             if (res.ok) {
                 const result = await res.json();
                 if (result && result.pagination) {
@@ -1027,7 +1028,7 @@ export default function InventoryPage() {
 
     const fetchKpis = async () => {
         try {
-            const res = await fetch('http://localhost:5000/api/inventory/kpis');
+            const res = await fetch(apiUrl('/api/inventory/kpis'));
             if (res.ok) {
                 const data = await res.json();
                 setKpis(data);
@@ -1039,7 +1040,7 @@ export default function InventoryPage() {
 
     const fetchMovements = async (variantId) => {
         try {
-            const res = await fetch(`http://localhost:5000/api/inventory/movements/${variantId}`);
+            const res = await fetch(apiUrl(`/api/inventory/movements/${variantId}`));
             if (res.ok) {
                 const data = await res.json();
                 setMovements(data);
@@ -1051,7 +1052,7 @@ export default function InventoryPage() {
 
     const fetchSuppliers = async () => {
         try {
-            const res = await fetch('http://localhost:5000/api/suppliers');
+            const res = await fetch(apiUrl('/api/suppliers'));
             if (res.ok) {
                 const data = await res.json();
                 setSuppliers(data);
@@ -1066,7 +1067,7 @@ export default function InventoryPage() {
 
     const fetchCategories = async () => {
         try {
-            const res = await fetch('http://localhost:5000/api/categories');
+            const res = await fetch(apiUrl('/api/categories'));
             if (res.ok) {
                 const data = await res.json();
                 setCategories(data);
@@ -1077,7 +1078,7 @@ export default function InventoryPage() {
 
     const fetchUnits = async () => {
         try {
-            const res = await fetch('http://localhost:5000/api/units');
+            const res = await fetch(apiUrl('/api/units'));
             if (res.ok) {
                 const data = await res.json();
                 setUnits(data);
@@ -1088,7 +1089,7 @@ export default function InventoryPage() {
 
     const fetchPackagingTypes = async () => {
         try {
-            const res = await fetch('http://localhost:5000/api/packaging-types');
+            const res = await fetch(apiUrl('/api/packaging-types'));
             if (res.ok) {
                 const data = await res.json();
                 setPackagingTypes(data);
@@ -1270,7 +1271,7 @@ export default function InventoryPage() {
             const headers = { 'Content-Type': 'application/json' };
             if (token) headers['Authorization'] = `Bearer ${token}`;
 
-            const res = await fetch('http://localhost:5000/api/purchases', {
+            const res = await fetch(apiUrl('/api/purchases'), {
                 method: 'POST',
                 headers,
                 body: JSON.stringify({
@@ -1409,7 +1410,7 @@ export default function InventoryPage() {
 
             const initStockQty = parseFloat(newInitialStock) || 0;
 
-            const res = await fetch('http://localhost:5000/api/products', {
+            const res = await fetch(apiUrl('/api/products'), {
                 method: 'POST',
                 headers,
                 body: JSON.stringify({
@@ -1472,7 +1473,7 @@ export default function InventoryPage() {
             const headers = { 'Content-Type': 'application/json' };
             if (token) headers['Authorization'] = `Bearer ${token}`;
 
-            const res = await fetch('http://localhost:5000/api/suppliers', {
+            const res = await fetch(apiUrl('/api/suppliers'), {
                 method: 'POST',
                 headers,
                 body: JSON.stringify({
@@ -1509,7 +1510,7 @@ export default function InventoryPage() {
             const headers = { 'Content-Type': 'application/json' };
             if (token) headers['Authorization'] = `Bearer ${token}`;
 
-            const res = await fetch('http://localhost:5000/api/inventory/adjustments', {
+            const res = await fetch(apiUrl('/api/inventory/adjustments'), {
                 method: 'POST',
                 headers,
                 body: JSON.stringify({
@@ -1570,10 +1571,10 @@ export default function InventoryPage() {
                     </p>
                 </div>
 
-                <div className="flex items-center gap-1.5 flex-wrap shrink-0">
+                <div className="flex items-center gap-1.5 flex-wrap shrink-0 w-full sm:w-auto">
                     <button
                         onClick={handleOpenAddItemModal}
-                        className="px-3 py-1 bg-black hover:bg-gray-800 text-white rounded-lg font-bold text-[11px] shadow-2xs transition-all flex items-center gap-1 cursor-pointer"
+                        className="flex-1 sm:flex-initial px-3 py-1.5 sm:py-1 bg-black hover:bg-gray-800 text-white rounded-lg font-bold text-[11px] shadow-2xs transition-all flex items-center justify-center gap-1 cursor-pointer"
                     >
                         <IconPlus className="w-3.5 h-3.5 text-white" />
                         <span>+ Add Item</span>
@@ -1581,7 +1582,7 @@ export default function InventoryPage() {
 
                     <button
                         onClick={() => setAddSupplierModalOpen(true)}
-                        className="px-2.5 py-1 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-lg font-semibold text-[11px] transition-all flex items-center gap-1 cursor-pointer shadow-2xs"
+                        className="flex-1 sm:flex-initial px-2.5 py-1.5 sm:py-1 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-lg font-semibold text-[11px] transition-all flex items-center justify-center gap-1 cursor-pointer shadow-2xs"
                     >
                         <IconSuppliers className="w-3.5 h-3.5 text-gray-500" />
                         <span>+ Add Supplier</span>
@@ -1594,16 +1595,16 @@ export default function InventoryPage() {
                 {/* KPI 1: Stock Valuation */}
                 <div className="bg-white p-2 sm:p-2.5 rounded-lg border border-blue-100 hover:border-blue-300 shadow-2xs transition-all flex flex-col justify-between">
                     <div className="flex items-center justify-between">
-                        <span className="text-[9px] sm:text-[9.5px] font-bold uppercase tracking-wider text-gray-500">Stock Valuation</span>
+                        <span className="text-[9px] sm:text-[9.5px] font-bold uppercase tracking-wider text-gray-500 truncate">Stock Valuation</span>
                         <div className="w-6 h-6 rounded-md bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
                             <IconInventory className="w-3 h-3" />
                         </div>
                     </div>
                     <div className="mt-1.5">
-                        <div className="text-sm sm:text-base font-black text-gray-900 tracking-tight">
+                        <div className="text-sm sm:text-base font-black text-gray-900 tracking-tight truncate">
                             Rs. {Math.round(totalValuation).toLocaleString()}
                         </div>
-                        <div className="text-[8.5px] sm:text-[9px] text-gray-400 font-medium mt-0.5">
+                        <div className="text-[8.5px] sm:text-[9px] text-gray-400 font-medium mt-0.5 truncate">
                             At purchase cost
                         </div>
                     </div>
@@ -1612,16 +1613,16 @@ export default function InventoryPage() {
                 {/* KPI 2: Total Items Catalog */}
                 <div className="bg-white p-2 sm:p-2.5 rounded-lg border border-indigo-100 hover:border-indigo-300 shadow-2xs transition-all flex flex-col justify-between">
                     <div className="flex items-center justify-between">
-                        <span className="text-[9px] sm:text-[9.5px] font-bold uppercase tracking-wider text-gray-500">Total SKUs</span>
+                        <span className="text-[9px] sm:text-[9.5px] font-bold uppercase tracking-wider text-gray-500 truncate">Total SKUs</span>
                         <div className="w-6 h-6 rounded-md bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
                             <IconProducts className="w-3 h-3" />
                         </div>
                     </div>
                     <div className="mt-1.5">
-                        <div className="text-sm sm:text-base font-black text-gray-900 tracking-tight">
+                        <div className="text-sm sm:text-base font-black text-gray-900 tracking-tight truncate">
                             {totalCatalogItems} Products
                         </div>
-                        <div className="text-[8.5px] sm:text-[9px] text-gray-400 font-medium mt-0.5">
+                        <div className="text-[8.5px] sm:text-[9px] text-gray-400 font-medium mt-0.5 truncate">
                             Registered variants
                         </div>
                     </div>
@@ -1630,16 +1631,16 @@ export default function InventoryPage() {
                 {/* KPI 3: Units in Stock */}
                 <div className="bg-white p-2 sm:p-2.5 rounded-lg border border-emerald-100 hover:border-emerald-300 shadow-2xs transition-all flex flex-col justify-between">
                     <div className="flex items-center justify-between">
-                        <span className="text-[9px] sm:text-[9.5px] font-bold uppercase tracking-wider text-gray-500">In Stock Units</span>
+                        <span className="text-[9px] sm:text-[9.5px] font-bold uppercase tracking-wider text-gray-500 truncate">In Stock Units</span>
                         <div className="w-6 h-6 rounded-md bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
                             <IconCheck className="w-3 h-3" />
                         </div>
                     </div>
                     <div className="mt-1.5">
-                        <div className="text-sm sm:text-base font-black text-emerald-700 tracking-tight">
+                        <div className="text-sm sm:text-base font-black text-emerald-700 tracking-tight truncate">
                             {totalUnitsOnHand.toLocaleString()}
                         </div>
-                        <div className="text-[8.5px] sm:text-[9px] text-gray-400 font-medium mt-0.5">
+                        <div className="text-[8.5px] sm:text-[9px] text-gray-400 font-medium mt-0.5 truncate">
                             Total warehouse units
                         </div>
                     </div>
@@ -1648,16 +1649,16 @@ export default function InventoryPage() {
                 {/* KPI 4: Low Stock Alert */}
                 <div className="bg-white p-2 sm:p-2.5 rounded-lg border border-amber-100 hover:border-amber-300 shadow-2xs transition-all flex flex-col justify-between">
                     <div className="flex items-center justify-between">
-                        <span className="text-[9px] sm:text-[9.5px] font-bold uppercase tracking-wider text-gray-500">Low Stock</span>
+                        <span className="text-[9px] sm:text-[9.5px] font-bold uppercase tracking-wider text-gray-500 truncate">Low Stock</span>
                         <div className="w-6 h-6 rounded-md bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
                             <IconWarning className="w-3 h-3" />
                         </div>
                     </div>
                     <div className="mt-1.5">
-                        <div className="text-sm sm:text-base font-black text-amber-600 tracking-tight">
+                        <div className="text-sm sm:text-base font-black text-amber-600 tracking-tight truncate">
                             {lowStockCount} Items
                         </div>
-                        <div className="text-[8.5px] sm:text-[9px] text-gray-400 font-medium mt-0.5">
+                        <div className="text-[8.5px] sm:text-[9px] text-gray-400 font-medium mt-0.5 truncate">
                             Below reorder point
                         </div>
                     </div>
@@ -1666,16 +1667,16 @@ export default function InventoryPage() {
                 {/* KPI 5: Out of Stock */}
                 <div className="bg-white p-2 sm:p-2.5 rounded-lg border border-rose-100 hover:border-rose-300 shadow-2xs transition-all flex flex-col justify-between col-span-2 sm:col-span-1">
                     <div className="flex items-center justify-between">
-                        <span className="text-[9px] sm:text-[9.5px] font-bold uppercase tracking-wider text-gray-500">Out of Stock</span>
+                        <span className="text-[9px] sm:text-[9.5px] font-bold uppercase tracking-wider text-gray-500 truncate">Out of Stock</span>
                         <div className="w-6 h-6 rounded-md bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
                             <IconClose className="w-3 h-3" />
                         </div>
                     </div>
                     <div className="mt-1.5">
-                        <div className="text-sm sm:text-base font-black text-rose-600 tracking-tight">
+                        <div className="text-sm sm:text-base font-black text-rose-600 tracking-tight truncate">
                             {outOfStockCount} Items
                         </div>
-                        <div className="text-[8.5px] sm:text-[9px] text-gray-400 font-medium mt-0.5">
+                        <div className="text-[8.5px] sm:text-[9px] text-gray-400 font-medium mt-0.5 truncate">
                             Zero warehouse stock
                         </div>
                     </div>
@@ -1712,7 +1713,7 @@ export default function InventoryPage() {
                     </div>
 
                     {/* Filters */}
-                    <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                    <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto max-w-full pb-1 sm:pb-0 scrollbar-none w-full md:w-auto">
                         {/* Category Selector */}
                         <div className="shrink-0">
                             <select
@@ -1796,14 +1797,14 @@ export default function InventoryPage() {
 
             {/* FULL-WIDTH STOCK CONTAINER */}
             <div className="bg-slate-50/70 rounded-2xl border border-gray-200/80 shadow-xs overflow-hidden">
-                <div className="p-3 sm:p-4 bg-white border-b border-gray-200/80 flex items-center justify-between text-[11px]">
+                <div className="p-3 sm:p-4 bg-white border-b border-gray-200/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-[11px]">
                     <div>
                         <h2 className="font-bold text-sm text-gray-900 tracking-tight">Warehouse Inventory Register</h2>
                         <p className="text-[11px] text-gray-500 mt-0.5">
                             Current balances, packaging conversions, reorder triggers & movements
                         </p>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-[11px] font-bold text-gray-700 bg-gray-100/90 border border-gray-200 px-2.5 py-1 rounded-lg">
                             {totalServerItems} Items Listed
                         </span>
@@ -2123,7 +2124,7 @@ export default function InventoryPage() {
                 {/* PAGINATION CONTROLS BAR */}
                 <div className="p-3 sm:p-4 bg-white border-t border-gray-200/80 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
                     {/* Left: Range and total count info */}
-                    <div className="flex items-center gap-2 text-gray-600 text-[11px] font-medium">
+                    <div className="flex items-center gap-2 text-gray-600 text-[11px] font-medium text-center sm:text-left flex-wrap justify-center sm:justify-start">
                         <span>
                             Showing <strong className="text-gray-900 font-bold">{startItemIndex}</strong> to <strong className="text-gray-900 font-bold">{endItemIndex}</strong> of <strong className="text-gray-900 font-bold">{totalServerItems}</strong> items
                         </span>
@@ -2135,7 +2136,7 @@ export default function InventoryPage() {
                     </div>
 
                     {/* Right: Rows per page selector + Page Jump Buttons */}
-                    <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                    <div className="flex flex-wrap items-center justify-center sm:justify-end gap-2 sm:gap-3 w-full sm:w-auto">
                         {/* Rows per page dropdown */}
                         <div className="flex items-center gap-1.5 text-[11px] text-gray-600">
                             <span className="text-gray-400 font-medium">Per page:</span>
@@ -2155,7 +2156,7 @@ export default function InventoryPage() {
                         </div>
 
                         {/* Page navigation controls */}
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1 flex-wrap justify-center">
                             {/* First Page */}
                             <button
                                 onClick={() => setCurrentPage(1)}
@@ -2185,7 +2186,7 @@ export default function InventoryPage() {
                             </button>
 
                             {/* Page Numbers */}
-                            <div className="flex items-center gap-1 px-1">
+                            <div className="flex items-center gap-1 px-1 flex-wrap justify-center">
                                 {getPageNumbers(validCurrentPage, totalPages).map((p, idx) => {
                                     if (p === '...') {
                                         return (
@@ -2248,21 +2249,21 @@ export default function InventoryPage() {
             {/* ───────────────────────────────────────────────────────────── */}
             {actionModalItem && (
                 <div 
-                    className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-[75] p-3 sm:p-4 animate-in fade-in duration-150"
+                    className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-[75] p-2 sm:p-4 animate-in fade-in duration-150 overflow-y-auto"
                     onClick={() => setActionModalItem(null)}
                 >
                     <div 
-                        className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-gray-200 overflow-hidden transform transition-all"
+                        className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-gray-200 overflow-hidden transform transition-all max-h-[94vh] flex flex-col"
                         onClick={(e) => e.stopPropagation()}
                     >
                         {/* Header */}
-                        <div className="p-4 border-b border-gray-100 bg-slate-50/80 flex items-start justify-between gap-3">
+                        <div className="p-3.5 sm:p-4 border-b border-gray-100 bg-slate-50/80 flex items-start justify-between gap-2.5 shrink-0">
                             <div className="min-w-0">
                                 <div className="flex items-center gap-2">
                                     <span className="px-2 py-0.5 rounded-md bg-blue-100/90 text-blue-800 text-[10px] font-bold uppercase tracking-wider">
                                         Item Actions
                                     </span>
-                                    <span className="text-xs text-gray-400 font-mono">
+                                    <span className="text-xs text-gray-400 font-mono truncate">
                                         {actionModalItem.sku}
                                     </span>
                                 </div>
@@ -2270,14 +2271,14 @@ export default function InventoryPage() {
                                     {actionModalItem.product_name}
                                 </h3>
                                 {actionModalItem.variant_name && actionModalItem.variant_name.toLowerCase() !== 'standard' && (
-                                    <p className="text-[11px] text-gray-500 mt-0.5">
+                                    <p className="text-[11px] text-gray-500 mt-0.5 truncate">
                                         Variant: <span className="font-semibold text-gray-800">{actionModalItem.variant_name}</span>
                                     </p>
                                 )}
                             </div>
                             <button
                                 onClick={() => setActionModalItem(null)}
-                                className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-200/60 rounded-xl transition-colors cursor-pointer"
+                                className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-200/60 rounded-xl transition-colors cursor-pointer shrink-0"
                                 title="Close"
                             >
                                 <IconClose className="w-5 h-5" />
@@ -2285,20 +2286,20 @@ export default function InventoryPage() {
                         </div>
 
                         {/* Quick Info Bar */}
-                        <div className="px-4 py-2 bg-slate-100/60 border-b border-gray-100 flex items-center justify-between text-xs">
-                            <div className="flex items-center gap-1.5">
-                                <span className="text-gray-500">In-Hand Stock:</span>
-                                <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200/60">
+                        <div className="px-3.5 sm:px-4 py-2 bg-slate-100/60 border-b border-gray-100 flex flex-wrap items-center justify-between gap-1.5 text-xs shrink-0">
+                            <div className="flex items-center gap-1.5 truncate">
+                                <span className="text-gray-500 text-[11px]">In-Hand:</span>
+                                <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200/60 text-[11px] truncate">
                                     {formatStockBreakdown(actionModalItem).breakdownStr || `${actionModalItem.current_stock} Units`}
                                 </span>
                             </div>
-                            <div className="text-gray-500 font-mono text-[11px]">
+                            <div className="text-gray-500 font-mono text-[11px] shrink-0">
                                 Val: <strong className="text-gray-900">Rs. {Math.round(calculateStockValuation(actionModalItem)).toLocaleString()}</strong>
                             </div>
                         </div>
 
                         {/* Modal Action Buttons List */}
-                        <div className="p-3.5 space-y-2">
+                        <div className="p-3 sm:p-3.5 space-y-2 overflow-y-auto flex-1">
                             {/* 1. Inward Stock Button */}
                             <button
                                 type="button"
@@ -2307,15 +2308,15 @@ export default function InventoryPage() {
                                     setActionModalItem(null);
                                     handleOpenInwardForVariant(item);
                                 }}
-                                className="w-full p-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100/80 text-emerald-900 border border-emerald-200/80 transition-all flex items-center justify-between gap-3 group cursor-pointer text-left shadow-2xs hover:shadow-xs"
+                                className="w-full p-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100/80 text-emerald-900 border border-emerald-200/80 transition-all flex items-center justify-between gap-2.5 group cursor-pointer text-left shadow-2xs hover:shadow-xs"
                             >
-                                <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-2.5 min-w-0">
                                     <div className="w-8 h-8 rounded-lg bg-emerald-700 text-white flex items-center justify-center shrink-0 shadow-2xs group-hover:scale-105 transition-transform">
                                         <IconBill className="w-4 h-4 text-white" />
                                     </div>
-                                    <div>
-                                        <div className="font-bold text-xs text-emerald-950">Inward Stock</div>
-                                        <div className="text-[10.5px] text-emerald-700">Receive new purchase / inward quantity</div>
+                                    <div className="min-w-0">
+                                        <div className="font-bold text-xs text-emerald-950 truncate">Inward Stock</div>
+                                        <div className="text-[10px] sm:text-[10.5px] text-emerald-700 truncate">Receive new purchase / inward quantity</div>
                                     </div>
                                 </div>
                                 <span className="text-xs font-bold text-emerald-800 shrink-0 flex items-center gap-1">Inward <IconArrowRight className="w-3.5 h-3.5" /></span>
@@ -2329,15 +2330,15 @@ export default function InventoryPage() {
                                     setActionModalItem(null);
                                     handleOpenMovementsModal(item);
                                 }}
-                                className="w-full p-2.5 rounded-xl bg-white hover:bg-slate-50 text-gray-800 border border-gray-200 transition-all flex items-center justify-between gap-3 group cursor-pointer text-left shadow-2xs hover:shadow-xs"
+                                className="w-full p-2.5 rounded-xl bg-white hover:bg-slate-50 text-gray-800 border border-gray-200 transition-all flex items-center justify-between gap-2.5 group cursor-pointer text-left shadow-2xs hover:shadow-xs"
                             >
-                                <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-2.5 min-w-0">
                                     <div className="w-8 h-8 rounded-lg bg-slate-100 text-gray-700 flex items-center justify-center shrink-0 border border-gray-200 group-hover:bg-slate-200 transition-colors">
                                         <IconEye className="w-4 h-4 text-gray-600" />
                                     </div>
-                                    <div>
-                                        <div className="font-bold text-xs text-gray-900">Movements Ledger</div>
-                                        <div className="text-[10.5px] text-gray-500">View complete audit trail of inward, sales, and transfers</div>
+                                    <div className="min-w-0">
+                                        <div className="font-bold text-xs text-gray-900 truncate">Movements Ledger</div>
+                                        <div className="text-[10px] sm:text-[10.5px] text-gray-500 truncate">View complete audit trail of movements</div>
                                     </div>
                                 </div>
                                 <span className="text-xs font-bold text-gray-600 shrink-0 flex items-center gap-1">View <IconArrowRight className="w-3.5 h-3.5" /></span>
@@ -2351,15 +2352,15 @@ export default function InventoryPage() {
                                     setActionModalItem(null);
                                     handleOpenAdjustmentForVariant(item);
                                 }}
-                                className="w-full p-2.5 rounded-xl bg-amber-50/70 hover:bg-amber-100 text-amber-900 border border-amber-200/80 transition-all flex items-center justify-between gap-3 group cursor-pointer text-left shadow-2xs hover:shadow-xs"
+                                className="w-full p-2.5 rounded-xl bg-amber-50/70 hover:bg-amber-100 text-amber-900 border border-amber-200/80 transition-all flex items-center justify-between gap-2.5 group cursor-pointer text-left shadow-2xs hover:shadow-xs"
                             >
-                                <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-2.5 min-w-0">
                                     <div className="w-8 h-8 rounded-lg bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-2xs group-hover:scale-105 transition-transform">
                                         <IconWarning className="w-4 h-4 text-white" />
                                     </div>
-                                    <div>
-                                        <div className="font-bold text-xs text-amber-950">Stock Adjustment / Damage</div>
-                                        <div className="text-[10.5px] text-amber-700">Reconcile physical counts, damage, or loss</div>
+                                    <div className="min-w-0">
+                                        <div className="font-bold text-xs text-amber-950 truncate">Stock Adjustment / Damage</div>
+                                        <div className="text-[10px] sm:text-[10.5px] text-amber-700 truncate">Reconcile physical counts, damage, or loss</div>
                                     </div>
                                 </div>
                                 <span className="text-xs font-bold text-amber-800 shrink-0 flex items-center gap-1">Adjust <IconArrowRight className="w-3.5 h-3.5" /></span>
@@ -2373,15 +2374,15 @@ export default function InventoryPage() {
                                     setActionModalItem(null);
                                     handleOpenEditItemModal(item);
                                 }}
-                                className="w-full p-2.5 rounded-xl bg-blue-50/70 hover:bg-blue-100 text-blue-900 border border-blue-200/80 transition-all flex items-center justify-between gap-3 group cursor-pointer text-left shadow-2xs hover:shadow-xs"
+                                className="w-full p-2.5 rounded-xl bg-blue-50/70 hover:bg-blue-100 text-blue-900 border border-blue-200/80 transition-all flex items-center justify-between gap-2.5 group cursor-pointer text-left shadow-2xs hover:shadow-xs"
                             >
-                                <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-2.5 min-w-0">
                                     <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-2xs group-hover:scale-105 transition-transform">
                                         <IconEdit className="w-4 h-4 text-white" />
                                     </div>
-                                    <div>
-                                        <div className="font-bold text-xs text-blue-950">Edit Product & Packaging</div>
-                                        <div className="text-[10.5px] text-blue-700">Modify name, packaging, prices, barcodes</div>
+                                    <div className="min-w-0">
+                                        <div className="font-bold text-xs text-blue-950 truncate">Edit Product & Packaging</div>
+                                        <div className="text-[10px] sm:text-[10.5px] text-blue-700 truncate">Modify name, packaging, prices, barcodes</div>
                                     </div>
                                 </div>
                                 <span className="text-xs font-bold text-blue-800 shrink-0 flex items-center gap-1">Edit <IconArrowRight className="w-3.5 h-3.5" /></span>
@@ -2395,15 +2396,15 @@ export default function InventoryPage() {
                                     setActionModalItem(null);
                                     handleDeleteItem(item);
                                 }}
-                                className="w-full p-2.5 rounded-xl bg-rose-50/70 hover:bg-rose-100 text-rose-900 border border-rose-200/80 transition-all flex items-center justify-between gap-3 group cursor-pointer text-left shadow-2xs hover:shadow-xs"
+                                className="w-full p-2.5 rounded-xl bg-rose-50/70 hover:bg-rose-100 text-rose-900 border border-rose-200/80 transition-all flex items-center justify-between gap-2.5 group cursor-pointer text-left shadow-2xs hover:shadow-xs"
                             >
-                                <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-2.5 min-w-0">
                                     <div className="w-8 h-8 rounded-lg bg-rose-600 text-white flex items-center justify-center shrink-0 shadow-2xs group-hover:scale-105 transition-transform">
                                         <IconTrash className="w-4 h-4 text-white" />
                                     </div>
-                                    <div>
-                                        <div className="font-bold text-xs text-rose-950">Delete Product</div>
-                                        <div className="text-[10.5px] text-rose-700">Permanently delete this product item</div>
+                                    <div className="min-w-0">
+                                        <div className="font-bold text-xs text-rose-950 truncate">Delete Product</div>
+                                        <div className="text-[10px] sm:text-[10.5px] text-rose-700 truncate">Permanently delete this product item</div>
                                     </div>
                                 </div>
                                 <span className="text-xs font-bold text-rose-700 shrink-0 flex items-center gap-1">Delete <IconArrowRight className="w-3.5 h-3.5" /></span>
@@ -2411,7 +2412,7 @@ export default function InventoryPage() {
                         </div>
 
                         {/* Modal Footer */}
-                        <div className="p-3 bg-slate-50 border-t border-gray-100 flex justify-end">
+                        <div className="p-3 bg-slate-50 border-t border-gray-100 flex justify-end shrink-0">
                             <button
                                 type="button"
                                 onClick={() => setActionModalItem(null)}
@@ -2428,16 +2429,16 @@ export default function InventoryPage() {
             {/* MODAL 1: STOCK MOVEMENTS AUDIT TRAIL LEDGER                   */}
             {/* ───────────────────────────────────────────────────────────── */}
             {movementsModalOpen && selectedVariant && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[70] p-2 sm:p-4">
-                    <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden border border-gray-200">
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[70] p-2 sm:p-4 md:p-6 overflow-y-auto">
+                    <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[94vh] flex flex-col shadow-2xl overflow-hidden border border-gray-200">
                         {/* Header */}
-                        <div className="p-3.5 sm:p-4 border-b border-gray-100 bg-gray-50/80 flex items-start justify-between gap-2">
-                            <div>
-                                <h3 className="font-bold text-gray-900 text-sm sm:text-base flex items-center gap-1.5">
-                                    <IconInventory className="w-4 h-4 text-gray-700" />
-                                    <span>Stock Movement Ledger: {selectedVariant.product_name}</span>
+                        <div className="p-3 sm:p-4 border-b border-gray-100 bg-gray-50/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shrink-0">
+                            <div className="min-w-0">
+                                <h3 className="font-bold text-gray-900 text-sm sm:text-base flex items-center gap-1.5 truncate">
+                                    <IconInventory className="w-4 h-4 text-gray-700 shrink-0" />
+                                    <span className="truncate">Stock Movement Ledger: {selectedVariant.product_name}</span>
                                 </h3>
-                                <div className="text-xs text-gray-500 mt-1 flex flex-wrap items-center gap-2">
+                                <div className="text-xs text-gray-500 mt-1 flex flex-wrap items-center gap-1.5 sm:gap-2">
                                     <span>Variant: <strong className="text-gray-800">{selectedVariant.variant_name}</strong></span>
                                     <span>•</span>
                                     <span>Stock In-Hand: <strong className="text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">{formatStockBreakdown(selectedVariant).formatted}</strong></span>
@@ -2445,16 +2446,16 @@ export default function InventoryPage() {
                                     <span className="font-mono text-gray-500">SKU: {selectedVariant.sku}</span>
                                 </div>
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 w-full sm:w-auto justify-end shrink-0">
                                 <button
                                     onClick={() => handleOpenInwardForVariant(selectedVariant)}
-                                    className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer"
+                                    className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer flex-1 sm:flex-initial text-center"
                                 >
                                     + Inward Stock
                                 </button>
                                 <button
                                     onClick={() => setMovementsModalOpen(false)}
-                                    className="p-1.5 text-gray-400 hover:text-gray-700 rounded-lg cursor-pointer"
+                                    className="p-1.5 text-gray-400 hover:text-gray-700 rounded-lg cursor-pointer shrink-0"
                                 >
                                     <IconClose className="w-5 h-5" />
                                 </button>
@@ -2462,70 +2463,72 @@ export default function InventoryPage() {
                         </div>
 
                         {/* Movements Table */}
-                        <div className="flex-1 overflow-y-auto p-4 min-h-0">
+                        <div className="flex-1 overflow-y-auto p-2.5 sm:p-4 min-h-0">
                             {movements.length === 0 ? (
                                 <div className="text-center py-12 text-gray-400 text-xs">
                                     No stock movements recorded for this item yet. Use "Inward Stock" to add quantity.
                                 </div>
                             ) : (
-                                <table className="w-full text-left text-xs border-collapse">
-                                    <thead>
-                                        <tr className="bg-gray-50 border-b border-gray-200 text-gray-600 font-bold uppercase text-[10px]">
-                                            <th className="p-2.5">Date & Time</th>
-                                            <th className="p-2.5">Movement Type</th>
-                                            <th className="p-2.5">Packaging Type</th>
-                                            <th className="p-2.5 text-right">Quantity</th>
-                                            <th className="p-2.5 text-right">Base Eq. Qty</th>
-                                            <th className="p-2.5">User / Cashier</th>
-                                            <th className="p-2.5">Reference / Notes</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-100">
-                                        {movements.map((m) => {
-                                            const isIn = m.movement_type === 'PURCHASE' || (m.movement_type === 'ADJUSTMENT' && m.equivalent_qty > 0);
-                                            return (
-                                                <tr key={m.id} className="hover:bg-gray-50/50">
-                                                    <td className="p-2.5 text-gray-600">
-                                                        {new Date(m.created_at).toLocaleString()}
-                                                    </td>
-                                                    <td className="p-2.5">
-                                                        <span className={`px-2 py-0.5 rounded text-[10px] font-black ${
-                                                            m.movement_type === 'PURCHASE' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' :
-                                                            m.movement_type === 'SALE' ? 'bg-amber-50 text-[#B8860B] border border-amber-200' :
-                                                            m.movement_type === 'DAMAGE' ? 'bg-rose-50 text-rose-700 border border-rose-200' :
-                                                            'bg-amber-50 text-amber-800 border border-amber-200'
-                                                        }`}>
-                                                            {m.movement_type}
-                                                        </span>
-                                                    </td>
-                                                    <td className="p-2.5 font-semibold text-gray-700">
-                                                        {m.packaging_name || 'Base Unit'}
-                                                    </td>
-                                                    <td className="p-2.5 text-right font-bold text-gray-900">
-                                                        {m.quantity}
-                                                    </td>
-                                                    <td className={`p-2.5 text-right font-black ${isIn ? 'text-emerald-700' : 'text-rose-600'}`}>
-                                                        {isIn ? `+${m.equivalent_qty}` : `-${m.equivalent_qty}`}
-                                                    </td>
-                                                    <td className="p-2.5 text-gray-600">
-                                                        {m.username || 'System'}
-                                                    </td>
-                                                    <td className="p-2.5 text-gray-500 font-mono text-[11px]">
-                                                        {m.reference_id || m.notes || '-'}
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
+                                <div className="overflow-x-auto w-full border border-gray-200 rounded-xl">
+                                    <table className="w-full min-w-[640px] text-left text-xs border-collapse">
+                                        <thead>
+                                            <tr className="bg-gray-50 border-b border-gray-200 text-gray-600 font-bold uppercase text-[10px]">
+                                                <th className="p-2.5">Date & Time</th>
+                                                <th className="p-2.5">Movement Type</th>
+                                                <th className="p-2.5">Packaging Type</th>
+                                                <th className="p-2.5 text-right">Quantity</th>
+                                                <th className="p-2.5 text-right">Base Eq. Qty</th>
+                                                <th className="p-2.5">User / Cashier</th>
+                                                <th className="p-2.5">Reference / Notes</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100">
+                                            {movements.map((m) => {
+                                                const isIn = m.movement_type === 'PURCHASE' || (m.movement_type === 'ADJUSTMENT' && m.equivalent_qty > 0);
+                                                return (
+                                                    <tr key={m.id} className="hover:bg-gray-50/50">
+                                                        <td className="p-2.5 text-gray-600 whitespace-nowrap">
+                                                            {new Date(m.created_at).toLocaleString()}
+                                                        </td>
+                                                        <td className="p-2.5">
+                                                            <span className={`px-2 py-0.5 rounded text-[10px] font-black whitespace-nowrap ${
+                                                                m.movement_type === 'PURCHASE' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' :
+                                                                m.movement_type === 'SALE' ? 'bg-amber-50 text-[#B8860B] border border-amber-200' :
+                                                                m.movement_type === 'DAMAGE' ? 'bg-rose-50 text-rose-700 border border-rose-200' :
+                                                                'bg-amber-50 text-amber-800 border border-amber-200'
+                                                            }`}>
+                                                                {m.movement_type}
+                                                            </span>
+                                                        </td>
+                                                        <td className="p-2.5 font-semibold text-gray-700 whitespace-nowrap">
+                                                            {m.packaging_name || 'Base Unit'}
+                                                        </td>
+                                                        <td className="p-2.5 text-right font-bold text-gray-900 whitespace-nowrap">
+                                                            {m.quantity}
+                                                        </td>
+                                                        <td className={`p-2.5 text-right font-black whitespace-nowrap ${isIn ? 'text-emerald-700' : 'text-rose-600'}`}>
+                                                            {isIn ? `+${m.equivalent_qty}` : `-${m.equivalent_qty}`}
+                                                        </td>
+                                                        <td className="p-2.5 text-gray-600 whitespace-nowrap">
+                                                            {m.username || 'System'}
+                                                        </td>
+                                                        <td className="p-2.5 text-gray-500 font-mono text-[11px] whitespace-nowrap">
+                                                            {m.reference_id || m.notes || '-'}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
                             )}
                         </div>
 
                         {/* Footer */}
-                        <div className="p-3 border-t border-gray-100 bg-gray-50 flex justify-end">
+                        <div className="p-3 border-t border-gray-100 bg-gray-50 flex justify-end shrink-0">
                             <button
                                 onClick={() => setMovementsModalOpen(false)}
-                                className="px-4 py-2 bg-white border border-gray-300 rounded-xl text-xs font-bold text-gray-700 hover:bg-gray-100 cursor-pointer"
+                                className="w-full sm:w-auto px-4 py-2 bg-white border border-gray-300 rounded-xl text-xs font-bold text-gray-700 hover:bg-gray-100 cursor-pointer text-center"
                             >
                                 Close Ledger
                             </button>
@@ -2538,16 +2541,16 @@ export default function InventoryPage() {
             {/* MODAL 2: INWARD STOCK FROM SUPPLIER                           */}
             {/* ───────────────────────────────────────────────────────────── */}
             {inwardModalOpen && (
-                <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-[100] p-4 overflow-y-auto" style={{ zIndex: 100 }}>
-                    <form onSubmit={handleSaveInwardStock} className="bg-white rounded-3xl max-w-4xl w-full p-6 sm:p-7 space-y-5 shadow-2xl border border-[#F3E5AB] max-h-[92vh] flex flex-col">
+                <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-[100] p-2 sm:p-4 md:p-6 overflow-y-auto" style={{ zIndex: 100 }}>
+                    <form onSubmit={handleSaveInwardStock} className="bg-white rounded-2xl sm:rounded-3xl max-w-4xl w-full p-3.5 sm:p-6 md:p-7 space-y-4 sm:space-y-5 shadow-2xl border border-[#F3E5AB] max-h-[96vh] sm:max-h-[92vh] flex flex-col">
                         {/* Header */}
-                        <div className="flex justify-between items-start border-b border-gray-100 pb-3.5 shrink-0">
-                            <div>
-                                <h3 className="font-black text-gray-900 text-lg flex items-center gap-2">
-                                    <IconBill className="w-5 h-5 text-[#B8860B]" />
-                                    <span>Inward Stock from Supplier</span>
+                        <div className="flex justify-between items-start border-b border-gray-100 pb-3 sm:pb-3.5 shrink-0 gap-2">
+                            <div className="min-w-0">
+                                <h3 className="font-black text-gray-900 text-base sm:text-lg flex items-center gap-2 truncate">
+                                    <IconBill className="w-5 h-5 text-[#B8860B] shrink-0" />
+                                    <span className="truncate">Inward Stock from Supplier</span>
                                 </h3>
-                                <p className="text-xs text-gray-500 mt-0.5">
+                                <p className="text-[11px] sm:text-xs text-gray-500 mt-0.5">
                                     Record incoming vendor stock invoice to increase physical warehouse inventory & update supplier ledger
                                 </p>
                             </div>
@@ -2555,18 +2558,18 @@ export default function InventoryPage() {
                                 type="button" 
                                 onClick={() => setInwardModalOpen(false)} 
                                 style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                className="btn-black !bg-black !text-white p-1.5 rounded-xl cursor-pointer hover:opacity-90 transition-all"
+                                className="btn-black !bg-black !text-white p-1.5 rounded-xl cursor-pointer hover:opacity-90 transition-all shrink-0"
                             >
                                 <IconClose className="w-5 h-5" style={{ color: '#ffffff', stroke: '#ffffff' }} />
                             </button>
                         </div>
 
                         {/* Scrollable Form Body */}
-                        <div className="space-y-4 text-xs overflow-y-auto flex-1 pr-1">
+                        <div className="space-y-3.5 sm:space-y-4 text-xs overflow-y-auto flex-1 pr-0.5 sm:pr-1">
                             {/* 2-Column Inputs Grid */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
                                 {/* Left Column: Supplier & Invoice Details */}
-                                <div className="space-y-3 bg-gray-50/70 p-4 rounded-2xl border border-gray-200">
+                                <div className="space-y-3 bg-gray-50/70 p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-gray-200">
                                     <div className="font-extrabold text-gray-800 text-xs flex items-center gap-1.5">
                                         <IconSuppliers className="w-4 h-4 text-[#B8860B]" />
                                         <span>Supplier & Invoice Information</span>
@@ -2579,7 +2582,7 @@ export default function InventoryPage() {
                                             required
                                             value={inwardSupplierId}
                                             onChange={(e) => setInwardSupplierId(parseInt(e.target.value))}
-                                            className="w-full p-2.5 border border-gray-200 rounded-xl font-bold text-xs bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/30"
+                                            className="w-full p-2 sm:p-2.5 border border-gray-200 rounded-xl font-bold text-xs bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/30"
                                         >
                                             {suppliers.map(s => (
                                                 <option key={s.id} value={s.id}>
@@ -2598,7 +2601,7 @@ export default function InventoryPage() {
                                             value={inwardInvoiceNo}
                                             onChange={(e) => setInwardInvoiceNo(e.target.value)}
                                             placeholder="e.g. BILL-90184"
-                                            className="w-full p-2.5 border border-gray-200 rounded-xl font-bold font-mono text-xs bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/30"
+                                            className="w-full p-2 sm:p-2.5 border border-gray-200 rounded-xl font-bold font-mono text-xs bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/30"
                                         />
                                     </div>
 
@@ -2611,13 +2614,13 @@ export default function InventoryPage() {
                                             value={inwardAmountPaid}
                                             onChange={(e) => setInwardAmountPaid(e.target.value)}
                                             placeholder="0 (or direct cash paid at delivery)"
-                                            className="w-full p-2.5 border border-gray-200 rounded-xl font-bold font-mono text-xs bg-white text-emerald-800 focus:outline-none"
+                                            className="w-full p-2 sm:p-2.5 border border-gray-200 rounded-xl font-bold font-mono text-xs bg-white text-emerald-800 focus:outline-none"
                                         />
                                     </div>
                                 </div>
 
                                 {/* Right Column: Product & Quantity Specifications */}
-                                <div className="space-y-3 bg-gray-50/70 p-4 rounded-2xl border border-gray-200">
+                                <div className="space-y-3 bg-gray-50/70 p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-gray-200">
                                     <div className="font-extrabold text-gray-800 text-xs flex items-center gap-1.5">
                                         <IconInventory className="w-4 h-4 text-[#B8860B]" />
                                         <span>Product & Quantity Selection</span>
@@ -2638,7 +2641,7 @@ export default function InventoryPage() {
                                                     setInwardPurchasePrice(item.packagings[0].purchase_price || '1000');
                                                 }
                                             }}
-                                            className="w-full p-2.5 border border-gray-200 rounded-xl font-bold text-xs bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/30"
+                                            className="w-full p-2 sm:p-2.5 border border-gray-200 rounded-xl font-bold text-xs bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/30"
                                         >
                                             {stocks.map(s => {
                                                 const sb = formatStockBreakdown(s);
@@ -2652,7 +2655,7 @@ export default function InventoryPage() {
                                     </div>
 
                                     {/* Packaging Unit & Inward Qty */}
-                                    <div className="grid grid-cols-2 gap-3">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
                                         <div>
                                             <label className="block font-bold text-gray-700 mb-1">Packaging Unit *</label>
                                             {(() => {
@@ -2671,10 +2674,10 @@ export default function InventoryPage() {
                                                                 setInwardPurchasePrice(String(pk.purchase_price));
                                                             }
                                                         }}
-                                                        className="w-full p-2.5 border border-gray-200 rounded-xl font-bold text-xs bg-white text-[#B8860B] focus:outline-none"
+                                                        className="w-full p-2 sm:p-2.5 border border-gray-200 rounded-xl font-bold text-xs bg-white text-[#B8860B] focus:outline-none"
                                                     >
                                                         {availablePacks.map(pk => (
-                                                            <option key={pk.packaging_type_id} value={pk.packaging_type_id}>
+                                                             <option key={pk.packaging_type_id} value={pk.packaging_type_id}>
                                                                 {pk.packaging_name} {pk.conversion_factor > 1 ? `(x${pk.conversion_factor})` : `(Piece)`} — Rs. {Number(pk.purchase_price || 0).toLocaleString()}
                                                             </option>
                                                         ))}
@@ -2700,7 +2703,7 @@ export default function InventoryPage() {
                                                 value={inwardQuantity}
                                                 onChange={(e) => setInwardQuantity(e.target.value)}
                                                 placeholder="e.g. 10"
-                                                className="w-full p-2.5 border border-gray-200 rounded-xl font-black text-sm text-[#B8860B] bg-white text-center focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/30"
+                                                className="w-full p-2 sm:p-2.5 border border-gray-200 rounded-xl font-black text-sm text-[#B8860B] bg-white text-center focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/30"
                                             />
                                         </div>
                                     </div>
@@ -2723,7 +2726,7 @@ export default function InventoryPage() {
                                             value={inwardPurchasePrice}
                                             onChange={(e) => setInwardPurchasePrice(e.target.value)}
                                             placeholder="e.g. 1000"
-                                            className="w-full p-2.5 border border-gray-200 rounded-xl font-black font-mono text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/30"
+                                            className="w-full p-2 sm:p-2.5 border border-gray-200 rounded-xl font-black font-mono text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/30"
                                         />
                                     </div>
                                 </div>
@@ -2750,52 +2753,52 @@ export default function InventoryPage() {
                                 const projectedStock = formatStockBreakdown({ ...currentItem, current_stock: newOnHand });
 
                                 return (
-                                    <div className="bg-[#FEF9E7] p-4 sm:p-5 rounded-2xl border border-[#F3E5AB] space-y-3.5 text-xs">
-                                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#F3E5AB] pb-2.5">
+                                    <div className="bg-[#FEF9E7] p-3 sm:p-4 md:p-5 rounded-xl sm:rounded-2xl border border-[#F3E5AB] space-y-3 sm:space-y-3.5 text-xs">
+                                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#F3E5AB] pb-2 sm:pb-2.5">
                                             <span className="font-black text-[#B8860B] uppercase text-xs tracking-wider flex items-center gap-1.5">
                                                 <IconReceipt className="w-4 h-4 text-[#B8860B]" />
                                                 <span>Supplier Bill & Stock Inward Summary</span>
                                             </span>
-                                            <span className="font-bold text-xs text-gray-600 bg-white px-3 py-1 rounded-lg border border-[#F3E5AB]">
-                                                Packaging Conversion: 1 {packName} = {factor} {unitSymbol}
+                                            <span className="font-bold text-xs text-gray-600 bg-white px-2.5 py-1 rounded-lg border border-[#F3E5AB]">
+                                                1 {packName} = {factor} {unitSymbol}
                                             </span>
                                         </div>
 
                                         {/* 4 Financial KPI Cards */}
-                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
-                                            <div className="bg-white p-3 rounded-2xl border border-[#F3E5AB] shadow-xs">
-                                                <div className="text-[10px] text-gray-500 font-bold uppercase">Rate per {packName}</div>
-                                                <div className="text-base font-black text-[#B8860B] font-mono mt-0.5">Rs. {price.toLocaleString()}</div>
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 text-center">
+                                            <div className="bg-white p-2 sm:p-3 rounded-xl sm:rounded-2xl border border-[#F3E5AB] shadow-xs">
+                                                <div className="text-[9.5px] sm:text-[10px] text-gray-500 font-bold uppercase truncate">Rate per {packName}</div>
+                                                <div className="text-xs sm:text-base font-black text-[#B8860B] font-mono mt-0.5 truncate">Rs. {price.toLocaleString()}</div>
                                             </div>
-                                            <div className="bg-white p-3 rounded-2xl border border-[#F3E5AB] shadow-xs">
-                                                <div className="text-[10px] text-gray-500 font-bold uppercase">Cost per {unitSymbol}</div>
-                                                <div className="text-base font-black text-blue-700 font-mono mt-0.5">Rs. {Number(costPerPiece.toFixed(2)).toLocaleString()}</div>
+                                            <div className="bg-white p-2 sm:p-3 rounded-xl sm:rounded-2xl border border-[#F3E5AB] shadow-xs">
+                                                <div className="text-[9.5px] sm:text-[10px] text-gray-500 font-bold uppercase truncate">Cost per {unitSymbol}</div>
+                                                <div className="text-xs sm:text-base font-black text-blue-700 font-mono mt-0.5 truncate">Rs. {Number(costPerPiece.toFixed(2)).toLocaleString()}</div>
                                             </div>
-                                            <div className="bg-white p-3 rounded-2xl border border-[#F3E5AB] shadow-xs">
-                                                <div className="text-[10px] text-gray-500 font-bold uppercase">Physical Added</div>
-                                                <div className="text-base font-black text-emerald-700 mt-0.5">+{totalPhysicalUnits} {unitSymbol}</div>
+                                            <div className="bg-white p-2 sm:p-3 rounded-xl sm:rounded-2xl border border-[#F3E5AB] shadow-xs">
+                                                <div className="text-[9.5px] sm:text-[10px] text-gray-500 font-bold uppercase truncate">Physical Added</div>
+                                                <div className="text-xs sm:text-base font-black text-emerald-700 mt-0.5 truncate">+{totalPhysicalUnits} {unitSymbol}</div>
                                             </div>
-                                            <div className="bg-white p-3 rounded-2xl border border-[#F3E5AB] shadow-xs">
-                                                <div className="text-[10px] text-gray-500 font-bold uppercase">Total Bill Value</div>
-                                                <div className="text-base font-black text-gray-900 font-mono mt-0.5">Rs. {gross.toLocaleString()}</div>
+                                            <div className="bg-white p-2 sm:p-3 rounded-xl sm:rounded-2xl border border-[#F3E5AB] shadow-xs">
+                                                <div className="text-[9.5px] sm:text-[10px] text-gray-500 font-bold uppercase truncate">Total Bill Value</div>
+                                                <div className="text-xs sm:text-base font-black text-gray-900 font-mono mt-0.5 truncate">Rs. {gross.toLocaleString()}</div>
                                             </div>
                                         </div>
 
                                         {/* Projected Warehouse Balance Banner */}
-                                        <div className="bg-white p-3 rounded-2xl border border-[#F3E5AB] flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                        <div className="bg-white p-2.5 sm:p-3 rounded-xl sm:rounded-2xl border border-[#F3E5AB] flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                                             <div className="text-xs text-gray-700 font-bold flex items-center gap-1.5">
-                                                <IconInventory className="w-4 h-4 text-[#B8860B]" />
+                                                <IconInventory className="w-4 h-4 text-[#B8860B] shrink-0" />
                                                 <span>Warehouse Stock After Inward:</span>
                                             </div>
-                                            <div className="font-black text-sm text-[#B8860B] bg-[#FEF9E7] px-3 py-1 rounded-xl border border-[#F3E5AB]">
+                                            <div className="font-black text-xs sm:text-sm text-[#B8860B] bg-[#FEF9E7] px-2.5 py-1 rounded-xl border border-[#F3E5AB]">
                                                 {projectedStock.hasBulk ? `${projectedStock.breakdownStr} (Total: ${newOnHand} ${unitSymbol})` : `${newOnHand} ${unitSymbol}`}
                                             </div>
                                         </div>
 
                                         {/* Ledger Impact */}
-                                        <div className="flex flex-wrap justify-between items-center pt-1 text-xs border-t border-[#F3E5AB]">
+                                        <div className="flex flex-wrap justify-between items-center pt-1 text-xs border-t border-[#F3E5AB] gap-1">
                                             <span className="font-bold text-gray-700">Pending Amount Added to Supplier Ledger:</span>
-                                            <span className="text-base font-black text-rose-600 font-mono">
+                                            <span className="text-sm sm:text-base font-black text-rose-600 font-mono">
                                                 Rs. {pendingDue.toLocaleString()}
                                             </span>
                                         </div>
@@ -2805,19 +2808,19 @@ export default function InventoryPage() {
                         </div>
 
                         {/* Action Buttons: Solid Black Background with White Text */}
-                        <div className="flex gap-3 pt-3 border-t border-gray-100 shrink-0">
+                        <div className="flex flex-col-reverse sm:flex-row gap-2 sm:gap-3 pt-3 border-t border-gray-100 shrink-0">
                             <button
                                 type="button"
                                 onClick={() => setInwardModalOpen(false)}
                                 style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                className="btn-black !bg-black !text-white flex-1 py-3 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center hover:opacity-90"
+                                className="btn-black !bg-black !text-white w-full sm:flex-1 py-2.5 sm:py-3 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center hover:opacity-90"
                             >
                                 <span style={{ color: '#ffffff' }}>Cancel</span>
                             </button>
                             <button
                                 type="submit"
                                 style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                className="btn-black !bg-black !text-white flex-1 py-3 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 hover:opacity-90"
+                                className="btn-black !bg-black !text-white w-full sm:flex-1 py-2.5 sm:py-3 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 hover:opacity-90"
                             >
                                 <IconCheck className="w-4 h-4" style={{ color: '#ffffff', stroke: '#ffffff' }} />
                                 <span style={{ color: '#ffffff' }}>Save & Inward Stock Bill</span>
@@ -2831,16 +2834,16 @@ export default function InventoryPage() {
             {/* MODAL 3: + ADD NEW PRODUCT ITEM (Starts with 0 Stock)         */}
             {/* ───────────────────────────────────────────────────────────── */}
             {addItemModalOpen && (
-                <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-[100] p-4 overflow-y-auto" style={{ zIndex: 100 }}>
-                    <form onSubmit={handleSaveNewItem} className="bg-white rounded-3xl max-w-4xl w-full p-6 sm:p-7 space-y-5 shadow-2xl border border-[#F3E5AB] max-h-[92vh] flex flex-col">
+                <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-[100] p-2 sm:p-4 md:p-6 overflow-y-auto" style={{ zIndex: 100 }}>
+                    <form onSubmit={handleSaveNewItem} className="bg-white rounded-2xl sm:rounded-3xl max-w-4xl w-full p-3.5 sm:p-6 md:p-7 space-y-4 sm:space-y-5 shadow-2xl border border-[#F3E5AB] max-h-[96vh] sm:max-h-[92vh] flex flex-col">
                         {/* Header */}
-                        <div className="flex justify-between items-start border-b border-gray-100 pb-3.5 shrink-0">
-                            <div>
-                                <h3 className="font-black text-gray-900 text-lg flex items-center gap-2">
-                                    <IconProducts className="w-5 h-5 text-[#B8860B]" />
-                                    <span>Define Wholesale Product & Packaging Hierarchy</span>
+                        <div className="flex justify-between items-start border-b border-gray-100 pb-3 sm:pb-3.5 shrink-0 gap-2">
+                            <div className="min-w-0">
+                                <h3 className="font-black text-gray-900 text-base sm:text-lg flex items-center gap-2 truncate">
+                                    <IconProducts className="w-5 h-5 text-[#B8860B] shrink-0" />
+                                    <span className="truncate">Define Wholesale Product & Packaging Hierarchy</span>
                                 </h3>
-                                <p className="text-xs text-gray-500 mt-0.5">
+                                <p className="text-[11px] sm:text-xs text-gray-500 mt-0.5">
                                     Auto barcodes, dual Carton & Piece pricing, conversion ratios & 0 initial stock (Inwarded from suppliers)
                                 </p>
                             </div>
@@ -2848,17 +2851,17 @@ export default function InventoryPage() {
                                 type="button" 
                                 onClick={() => setAddItemModalOpen(false)} 
                                 style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                className="btn-black !bg-black !text-white p-1.5 rounded-xl cursor-pointer hover:opacity-90 transition-all"
+                                className="btn-black !bg-black !text-white p-1.5 rounded-xl cursor-pointer hover:opacity-90 transition-all shrink-0"
                             >
                                 <IconClose className="w-5 h-5" style={{ color: '#ffffff', stroke: '#ffffff' }} />
                             </button>
                         </div>
 
                         {/* Scrollable Form Body */}
-                        <div className="space-y-4 text-xs overflow-y-auto flex-1 pr-1">
+                        <div className="space-y-3.5 sm:space-y-4 text-xs overflow-y-auto flex-1 pr-0.5 sm:pr-1">
                             {/* Section 1: Basic Product Information */}
-                            <div className="bg-gray-50/70 p-4 rounded-2xl border border-gray-200 space-y-3">
-                                <div className="flex items-center justify-between gap-2">
+                            <div className="bg-gray-50/70 p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-gray-200 space-y-3">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
                                     <div className="text-xs font-black uppercase text-[#B8860B] tracking-wider flex items-center gap-1.5">
                                         <span>1. Basic Product & Base Unit</span>
                                     </div>
@@ -3324,21 +3327,21 @@ export default function InventoryPage() {
                                                             </div>
 
                                                             {/* Quick Calculation Helper Buttons */}
-                                                            <div className="flex flex-wrap justify-end gap-2 pt-1">
+                                                            <div className="flex flex-col sm:flex-row justify-end gap-2 pt-1 w-full">
                                                                 <button
                                                                     type="button"
                                                                     onClick={handleCalculatePieceFromCarton}
-                                                                    className="px-3 py-1.5 rounded-xl font-bold text-xs bg-black text-white hover:opacity-90 flex items-center gap-1.5 cursor-pointer shadow-xs"
+                                                                    className="w-full sm:w-auto px-3 py-1.5 rounded-xl font-bold text-[11px] sm:text-xs bg-black text-white hover:opacity-90 flex items-center justify-center gap-1.5 cursor-pointer shadow-xs text-center"
                                                                 >
-                                                                    <IconBolt className="w-3.5 h-3.5 text-white" />
+                                                                    <IconBolt className="w-3.5 h-3.5 text-white shrink-0" />
                                                                     <span>Auto-Calculate {innerPackName} & {baseUnitSymbol} from {bulkPackName}</span>
                                                                 </button>
                                                                 <button
                                                                     type="button"
                                                                     onClick={handleCalculateCartonFromPiece}
-                                                                    className="px-3 py-1.5 rounded-xl font-bold text-xs bg-slate-800 text-white hover:opacity-90 flex items-center gap-1.5 cursor-pointer shadow-xs"
+                                                                    className="w-full sm:w-auto px-3 py-1.5 rounded-xl font-bold text-[11px] sm:text-xs bg-slate-800 text-white hover:opacity-90 flex items-center justify-center gap-1.5 cursor-pointer shadow-xs text-center"
                                                                 >
-                                                                    <IconBolt className="w-3.5 h-3.5 text-white" />
+                                                                    <IconBolt className="w-3.5 h-3.5 text-white shrink-0" />
                                                                     <span>Auto-Calculate {bulkPackName} from {baseUnitSymbol}</span>
                                                                 </button>
                                                             </div>
@@ -3632,19 +3635,19 @@ export default function InventoryPage() {
                         </div>
 
                         {/* Modal Action Buttons: Solid Black Background with White Text */}
-                        <div className="flex gap-3 pt-3 border-t border-gray-100 shrink-0">
+                        <div className="flex flex-col-reverse sm:flex-row gap-2 sm:gap-3 pt-3 border-t border-gray-100 shrink-0">
                             <button
                                 type="button"
                                 onClick={() => setAddItemModalOpen(false)}
                                 style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                className="btn-black !bg-black !text-white flex-1 py-3 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center hover:opacity-90"
+                                className="btn-black !bg-black !text-white w-full sm:flex-1 py-2.5 sm:py-3 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center hover:opacity-90"
                             >
                                 <span style={{ color: '#ffffff' }}>Cancel</span>
                             </button>
                             <button
                                 type="submit"
                                 style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                className="btn-black !bg-black !text-white flex-1 py-3 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 hover:opacity-90"
+                                className="btn-black !bg-black !text-white w-full sm:flex-1 py-2.5 sm:py-3 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 hover:opacity-90"
                             >
                                 <IconCheck className="w-4 h-4" style={{ color: '#ffffff', stroke: '#ffffff' }} />
                                 <span style={{ color: '#ffffff' }}>Save Product Item</span>
@@ -3658,16 +3661,16 @@ export default function InventoryPage() {
             {/* MODAL 3.5: EDIT PRODUCT ITEM & PACKAGING HIERARCHY             */}
             {/* ───────────────────────────────────────────────────────────── */}
             {editItemModalOpen && (
-                <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-[100] p-4 overflow-y-auto" style={{ zIndex: 100 }}>
-                    <form onSubmit={handleSaveEditItem} className="bg-white rounded-3xl max-w-4xl w-full p-6 sm:p-7 space-y-5 shadow-2xl border border-blue-200 max-h-[92vh] flex flex-col">
+                <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-[100] p-2 sm:p-4 md:p-6 overflow-y-auto" style={{ zIndex: 100 }}>
+                    <form onSubmit={handleSaveEditItem} className="bg-white rounded-2xl sm:rounded-3xl max-w-4xl w-full p-3.5 sm:p-6 md:p-7 space-y-4 sm:space-y-5 shadow-2xl border border-blue-200 max-h-[96vh] sm:max-h-[92vh] flex flex-col">
                         {/* Header */}
-                        <div className="flex justify-between items-start border-b border-gray-100 pb-3.5 shrink-0">
-                            <div>
-                                <h3 className="font-black text-gray-900 text-lg flex items-center gap-2">
-                                    <IconEdit className="w-5 h-5 text-blue-600" />
-                                    <span>Edit Wholesale Product & Packaging Rates</span>
+                        <div className="flex justify-between items-start border-b border-gray-100 pb-3 sm:pb-3.5 shrink-0 gap-2">
+                            <div className="min-w-0">
+                                <h3 className="font-black text-gray-900 text-base sm:text-lg flex items-center gap-2 truncate">
+                                    <IconEdit className="w-5 h-5 text-blue-600 shrink-0" />
+                                    <span className="truncate">Edit Wholesale Product & Packaging Rates</span>
                                 </h3>
-                                <p className="text-xs text-gray-500 mt-0.5">
+                                <p className="text-[11px] sm:text-xs text-gray-500 mt-0.5">
                                     Update product name, classification, packaging conversion rules, barcodes, and buy/sell pricing tiers
                                 </p>
                             </div>
@@ -3675,17 +3678,17 @@ export default function InventoryPage() {
                                 type="button" 
                                 onClick={() => setEditItemModalOpen(false)} 
                                 style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                className="btn-black !bg-black !text-white p-1.5 rounded-xl cursor-pointer hover:opacity-90 transition-all"
+                                className="btn-black !bg-black !text-white p-1.5 rounded-xl cursor-pointer hover:opacity-90 transition-all shrink-0"
                             >
                                 <IconClose className="w-5 h-5" style={{ color: '#ffffff', stroke: '#ffffff' }} />
                             </button>
                         </div>
 
                         {/* Scrollable Form Body */}
-                        <div className="space-y-4 text-xs overflow-y-auto flex-1 pr-1">
+                        <div className="space-y-3.5 sm:space-y-4 text-xs overflow-y-auto flex-1 pr-0.5 sm:pr-1">
                             {/* Section 1: Basic Product Information */}
-                            <div className="bg-gray-50/70 p-4 rounded-2xl border border-gray-200 space-y-3">
-                                <div className="flex items-center justify-between gap-2">
+                            <div className="bg-gray-50/70 p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-gray-200 space-y-3">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
                                     <div className="text-xs font-black uppercase text-blue-700 tracking-wider flex items-center gap-1.5">
                                         <span>1. Basic Product & Base Unit</span>
                                     </div>
@@ -4171,21 +4174,21 @@ export default function InventoryPage() {
                                                             </div>
 
                                                             {/* Quick Calculation Helper Buttons */}
-                                                            <div className="flex flex-wrap justify-end gap-2 pt-1">
+                                                            <div className="flex flex-col sm:flex-row justify-end gap-2 pt-1 w-full">
                                                                 <button
                                                                     type="button"
                                                                     onClick={handleEditCalculatePieceFromCarton}
-                                                                    className="px-3 py-1.5 rounded-xl font-bold text-xs bg-black text-white hover:opacity-90 flex items-center gap-1.5 cursor-pointer shadow-xs"
+                                                                    className="w-full sm:w-auto px-3 py-1.5 rounded-xl font-bold text-[11px] sm:text-xs bg-black text-white hover:opacity-90 flex items-center justify-center gap-1.5 cursor-pointer shadow-xs text-center"
                                                                 >
-                                                                    <IconBolt className="w-3.5 h-3.5 text-white" />
+                                                                    <IconBolt className="w-3.5 h-3.5 text-white shrink-0" />
                                                                     <span>Auto-Calculate {innerPackName} & {baseUnitSymbol} from {bulkPackName}</span>
                                                                 </button>
                                                                 <button
                                                                     type="button"
                                                                     onClick={handleEditCalculateCartonFromPiece}
-                                                                    className="px-3 py-1.5 rounded-xl font-bold text-xs bg-slate-800 text-white hover:opacity-90 flex items-center gap-1.5 cursor-pointer shadow-xs"
+                                                                    className="w-full sm:w-auto px-3 py-1.5 rounded-xl font-bold text-[11px] sm:text-xs bg-slate-800 text-white hover:opacity-90 flex items-center justify-center gap-1.5 cursor-pointer shadow-xs text-center"
                                                                 >
-                                                                    <IconBolt className="w-3.5 h-3.5 text-white" />
+                                                                    <IconBolt className="w-3.5 h-3.5 text-white shrink-0" />
                                                                     <span>Auto-Calculate {bulkPackName} from {baseUnitSymbol}</span>
                                                                 </button>
                                                             </div>
@@ -4419,18 +4422,18 @@ export default function InventoryPage() {
                         </div>
 
                         {/* Modal Action Buttons */}
-                        <div className="flex gap-3 pt-3 border-t border-gray-100 shrink-0">
+                        <div className="flex flex-col-reverse sm:flex-row gap-2 sm:gap-3 pt-3 border-t border-gray-100 shrink-0">
                             <button
                                 type="button"
                                 onClick={() => setEditItemModalOpen(false)}
-                                className="flex-1 py-3 rounded-xl font-bold text-xs border border-gray-300 text-gray-700 hover:bg-gray-100 transition-all cursor-pointer flex items-center justify-center"
+                                className="w-full sm:flex-1 py-2.5 sm:py-3 rounded-xl font-bold text-xs border border-gray-300 text-gray-700 hover:bg-gray-100 transition-all cursor-pointer flex items-center justify-center text-center"
                             >
                                 Cancel
                             </button>
                             <button
                                 type="submit"
                                 style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                className="btn-black !bg-black !text-white flex-1 py-3 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 hover:opacity-90"
+                                className="btn-black !bg-black !text-white w-full sm:flex-1 py-2.5 sm:py-3 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 hover:opacity-90"
                             >
                                 <IconCheck className="w-4 h-4" style={{ color: '#ffffff', stroke: '#ffffff' }} />
                                 <span style={{ color: '#ffffff' }}>Update Product Item</span>
@@ -4444,9 +4447,9 @@ export default function InventoryPage() {
             {/* MODAL 4: + ADD SUPPLIER                                       */}
             {/* ───────────────────────────────────────────────────────────── */}
             {addSupplierModalOpen && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[70] p-4">
-                    <form onSubmit={handleSaveSupplier} className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-[#F3E5AB]">
-                        <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[70] p-2.5 sm:p-4 overflow-y-auto">
+                    <form onSubmit={handleSaveSupplier} className="bg-white rounded-2xl max-w-md w-full p-4 sm:p-6 space-y-3.5 sm:space-y-4 shadow-2xl border border-[#F3E5AB] max-h-[94vh] flex flex-col">
+                        <div className="flex justify-between items-center border-b border-gray-100 pb-3 shrink-0">
                             <h3 className="font-black text-gray-900 text-base flex items-center gap-2">
                                 <IconSuppliers className="w-5 h-5 text-[#B8860B]" />
                                 <span>Register New Supplier</span>
@@ -4456,7 +4459,7 @@ export default function InventoryPage() {
                             </button>
                         </div>
 
-                        <div className="space-y-3 text-xs">
+                        <div className="space-y-3 text-xs overflow-y-auto flex-1 pr-0.5 sm:pr-1">
                             <div>
                                 <label className="block font-bold text-gray-700 mb-1">Contact Person / Supplier Name *</label>
                                 <input
@@ -4513,17 +4516,17 @@ export default function InventoryPage() {
                             </div>
                         </div>
 
-                        <div className="flex gap-3 pt-2">
+                        <div className="flex flex-col-reverse sm:flex-row gap-2 sm:gap-3 pt-2 shrink-0">
                             <button
                                 type="button"
                                 onClick={() => setAddSupplierModalOpen(false)}
-                                className="flex-1 py-2.5 border border-gray-300 rounded-xl font-bold text-xs hover:bg-gray-50 cursor-pointer"
+                                className="w-full sm:flex-1 py-2.5 border border-gray-300 rounded-xl font-bold text-xs hover:bg-gray-50 cursor-pointer text-center"
                             >
                                 Cancel
                             </button>
                             <button
                                 type="submit"
-                                className="flex-1 py-2.5 gold-gradient hover:opacity-90 text-white rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                                className="w-full sm:flex-1 py-2.5 gold-gradient hover:opacity-90 text-white rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
                             >
                                 <IconCheck className="w-4 h-4" />
                                 <span>Save Supplier</span>
@@ -4537,25 +4540,25 @@ export default function InventoryPage() {
             {/* MODAL 5: MANUAL STOCK ADJUSTMENT (DAMAGE / RECONCILIATION)     */}
             {/* ───────────────────────────────────────────────────────────── */}
             {adjustmentModalOpen && selectedVariant && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[70] p-4">
-                    <form onSubmit={handleSaveAdjustment} className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-[#F3E5AB]">
-                        <div className="flex justify-between items-start border-b border-gray-100 pb-3">
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[70] p-2.5 sm:p-4 overflow-y-auto">
+                    <form onSubmit={handleSaveAdjustment} className="bg-white rounded-2xl max-w-md w-full p-4 sm:p-6 space-y-3.5 sm:space-y-4 shadow-2xl border border-[#F3E5AB] max-h-[94vh] flex flex-col">
+                        <div className="flex justify-between items-start border-b border-gray-100 pb-3 shrink-0">
                             <div>
                                 <h3 className="font-black text-gray-900 text-base flex items-center gap-2">
-                                    <IconWarning className="w-5 h-5 text-amber-600" />
+                                    <IconWarning className="w-5 h-5 text-amber-600 shrink-0" />
                                     <span>Damage / Stock Adjustment</span>
                                 </h3>
                                 <p className="text-xs text-gray-500">
                                     Adjust inventory for <span className="font-bold text-gray-900">{selectedVariant.product_name} ({selectedVariant.variant_name})</span>
                                 </p>
                             </div>
-                            <button type="button" onClick={() => setAdjustmentModalOpen(false)} className="text-gray-400 hover:text-gray-600 p-1 cursor-pointer">
+                            <button type="button" onClick={() => setAdjustmentModalOpen(false)} className="text-gray-400 hover:text-gray-600 p-1 cursor-pointer shrink-0">
                                 <IconClose className="w-5 h-5" />
                             </button>
                         </div>
 
-                        <div className="space-y-3 text-xs">
-                            <div className="bg-[#FEF9E7] p-3 rounded-xl border border-[#F3E5AB] flex justify-between">
+                        <div className="space-y-3 text-xs overflow-y-auto flex-1 pr-0.5 sm:pr-1">
+                            <div className="bg-[#FEF9E7] p-2.5 sm:p-3 rounded-xl border border-[#F3E5AB] flex justify-between">
                                 <span className="font-bold text-gray-600">Current Stock:</span>
                                 <span className="font-black text-emerald-800">{selectedVariant.current_stock} {selectedVariant.unit_symbol || selectedVariant.unit_name}</span>
                             </div>
@@ -4613,19 +4616,19 @@ export default function InventoryPage() {
                             </div>
                         </div>
 
-                        <div className="flex gap-3 pt-2">
+                        <div className="flex flex-col-reverse sm:flex-row gap-2 sm:gap-3 pt-2 shrink-0">
                             <button
                                 type="button"
                                 onClick={() => setAdjustmentModalOpen(false)}
                                 style={{ backgroundColor: '#ffffff', color: '#000000', border: '1px solid #d1d5db' }}
-                                className="flex-1 py-2.5 rounded-xl font-bold text-xs hover:bg-gray-50 cursor-pointer"
+                                className="w-full sm:flex-1 py-2.5 rounded-xl font-bold text-xs hover:bg-gray-50 cursor-pointer text-center"
                             >
                                 Cancel
                             </button>
                             <button
                                 type="submit"
                                 style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                className="btn-black !bg-black !text-white flex-1 py-2.5 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5 hover:opacity-90"
+                                className="btn-black !bg-black !text-white w-full sm:flex-1 py-2.5 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5 hover:opacity-90"
                             >
                                 <IconCheck className="w-4 h-4" style={{ color: '#ffffff', stroke: '#ffffff' }} />
                                 <span style={{ color: '#ffffff' }}>Record Adjustment</span>
