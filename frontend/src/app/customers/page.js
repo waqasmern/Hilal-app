@@ -179,18 +179,25 @@ export default function CustomersPage() {
     const [creditNoteModalOpen, setCreditNoteModalOpen] = useState(false);
     const [selectedReturnIdForCreditNote, setSelectedReturnIdForCreditNote] = useState(null);
 
-    const handleDownloadStatementPdf = (customer) => {
+    const handleDownloadStatementPdf = async (customer) => {
         const cust = customer || selectedCustomer;
         if (!cust || !cust.id) return;
         setDownloadingStatement(true);
         try {
-            const url = `http://localhost:5000/api/customers/${cust.id}/statement-pdf`;
+            const res = await fetch(`http://localhost:5000/api/customers/${cust.id}/statement-pdf`);
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.error || 'Failed to generate statement PDF');
+            }
+            const blob = await res.blob();
+            const blobUrl = window.URL.createObjectURL(blob);
             const link = document.createElement('a');
-            link.href = url;
+            link.href = blobUrl;
             link.setAttribute('download', `${(cust.name || 'Customer').replace(/[^a-zA-Z0-9_-]/g, '_')}_Statement.pdf`);
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
+            window.URL.revokeObjectURL(blobUrl);
             showAlert(`Customer Statement PDF for "${cust.name}" downloaded successfully!`, 'success', 'Statement Downloaded');
         } catch (err) {
             showAlert(err.message, 'error', 'Download Error');
@@ -444,9 +451,17 @@ export default function CustomersPage() {
             if (res.ok) {
                 const result = await res.json();
                 if (result && result.pagination) {
-                    setCustomers(result.data || []);
+                    setCustomers(result.data || result.customers || []);
                     setTotalServerCustomers(result.pagination.total);
                     setTotalServerPages(result.pagination.totalPages);
+                    if (result.summary) {
+                        setServerSummary(result.summary);
+                    }
+                } else if (result && (result.data || result.customers)) {
+                    const list = result.data || result.customers || [];
+                    setCustomers(list);
+                    setTotalServerCustomers(result.total ?? result.pagination?.total ?? list.length);
+                    setTotalServerPages(result.totalPages ?? result.pagination?.totalPages ?? 1);
                     if (result.summary) {
                         setServerSummary(result.summary);
                     }

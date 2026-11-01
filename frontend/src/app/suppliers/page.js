@@ -422,9 +422,17 @@ export default function SuppliersPage() {
             if (res.ok) {
                 const result = await res.json();
                 if (result && result.pagination) {
-                    setSuppliers(result.data || []);
+                    setSuppliers(result.data || result.suppliers || []);
                     setTotalServerSuppliers(result.pagination.total);
                     setTotalServerPages(result.pagination.totalPages);
+                    if (result.summary) {
+                        setServerSummary(result.summary);
+                    }
+                } else if (result && (result.data || result.suppliers)) {
+                    const list = result.data || result.suppliers || [];
+                    setSuppliers(list);
+                    setTotalServerSuppliers(result.total ?? result.pagination?.total ?? list.length);
+                    setTotalServerPages(result.totalPages ?? result.pagination?.totalPages ?? 1);
                     if (result.summary) {
                         setServerSummary(result.summary);
                     }

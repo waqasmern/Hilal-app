@@ -202,12 +202,22 @@ export default function SalesHistoryPage() {
             if (res.ok) {
                 const result = await res.json();
                 if (result && result.pagination) {
-                    setSales(result.data || []);
+                    setSales(result.data || result.sales || []);
                     if (result.recoveredPayments) {
                         setServerRecoveredPayments(result.recoveredPayments);
                     }
                     setTotalServerSales(result.pagination.total);
                     setTotalServerPages(result.pagination.totalPages);
+                    if (result.summary) {
+                        setServerSummary(result.summary);
+                    }
+                } else if (result && (result.data || result.sales)) {
+                    setSales(result.data || result.sales || []);
+                    if (result.recoveredPayments) {
+                        setServerRecoveredPayments(result.recoveredPayments);
+                    }
+                    setTotalServerSales(result.total ?? result.pagination?.total ?? 0);
+                    setTotalServerPages(result.totalPages ?? result.pagination?.totalPages ?? 1);
                     if (result.summary) {
                         setServerSummary(result.summary);
                     }

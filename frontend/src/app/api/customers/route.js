@@ -19,6 +19,8 @@ export async function GET(request) {
             query = query.gt('balance', 0);
         } else if (status === 'CLEAR') {
             query = query.lte('balance', 0);
+        } else if (status === 'CREDIT') {
+            query = query.lt('balance', 0);
         }
 
         if (paginate) {
@@ -32,11 +34,44 @@ export async function GET(request) {
             const { data, count, error } = await query;
             if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+            // Calculate global warehouse summary KPIs for customers
+            const [allCustsRes, payRes] = await Promise.all([
+                supabase.from('customers').select('balance, credit_limit').eq('is_deleted', 0),
+                supabase.from('payments').select('amount').eq('party_type', 'customer')
+            ]);
+
+            const allCusts = allCustsRes.data || [];
+            const totalCustomers = allCusts.length;
+            const totalReceivables = allCusts.reduce((sum, c) => sum + (c.balance > 0 ? c.balance : 0), 0);
+            const totalAdvances = allCusts.reduce((sum, c) => sum + (c.balance < 0 ? Math.abs(c.balance) : 0), 0);
+            const dueCustomersCount = allCusts.filter(c => c.balance > 0).length;
+            const clearCustomersCount = allCusts.filter(c => c.balance <= 0).length;
+            const totalCreditLimit = allCusts.reduce((sum, c) => sum + (parseFloat(c.credit_limit) || 0), 0);
+            const totalDuesPaidAllTime = (payRes.data || []).reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+
+            const totalPages = Math.max(1, Math.ceil((count || 0) / limit));
+
             return NextResponse.json({
+                data: data || [],
                 customers: data || [],
+                pagination: {
+                    total: count || 0,
+                    page,
+                    limit,
+                    totalPages
+                },
+                summary: {
+                    totalCustomers,
+                    totalReceivables,
+                    totalAdvances,
+                    dueCustomersCount,
+                    clearCustomersCount,
+                    totalCreditLimit,
+                    totalDuesPaidAllTime
+                },
                 total: count || 0,
                 page,
-                totalPages: Math.ceil((count || 0) / limit)
+                totalPages
             });
         } else {
             query = query.order('name', { ascending: true });

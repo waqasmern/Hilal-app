@@ -124,10 +124,18 @@ export async function GET(request) {
             }));
 
             return NextResponse.json({
+                data: sales,
                 sales,
+                recoveredPayments: [],
+                pagination: {
+                    total: count || 0,
+                    page,
+                    limit,
+                    totalPages: Math.max(1, Math.ceil((count || 0) / limit))
+                },
                 total: count || 0,
                 page,
-                totalPages: Math.ceil((count || 0) / limit)
+                totalPages: Math.max(1, Math.ceil((count || 0) / limit))
             });
         } else {
             query = query.limit(500);
