@@ -10,6 +10,8 @@ export default function SyncPage() {
     const [backups, setBackups] = useState([]);
     const [backingUp, setBackingUp] = useState(false);
 
+    const [syncFeedback, setSyncFeedback] = useState(null);
+
     useEffect(() => {
         fetchSyncStatus();
         if (user?.role === 'admin') {
@@ -42,13 +44,30 @@ export default function SyncPage() {
 
     const handleTriggerSync = async () => {
         setIsSyncing(true);
+        setSyncFeedback(null);
         try {
             const res = await fetch('http://localhost:5000/api/sync/trigger', { method: 'POST' });
             if (res.ok) {
+                const result = await res.json();
+                const pull = result.pull;
+                const push = result.push;
+                let msgs = [];
+                if (pull && pull.status === 'completed') {
+                    msgs.push(`✓ Pulled ${pull.pulledProducts || 0} products & ${pull.pulledSales || 0} online orders from cloud.`);
+                }
+                if (push && push.processed > 0) {
+                    msgs.push(`✓ Pushed ${push.success || 0} offline transactions to cloud.`);
+                } else {
+                    msgs.push(`✓ All offline transactions are up to date.`);
+                }
+                setSyncFeedback(msgs.join(' '));
                 fetchSyncStatus();
+            } else {
+                const data = await res.json().catch(() => ({}));
+                setSyncFeedback(`Sync notice: ${data.error || 'Server error'}`);
             }
         } catch (err) {
-            alert('Sync failed: ' + err.message);
+            setSyncFeedback(`Sync failed: ${err.message}`);
         } finally {
             setIsSyncing(false);
         }
@@ -82,7 +101,12 @@ export default function SyncPage() {
         <div className="space-y-6 max-w-3xl mx-auto">
             <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-xs text-center space-y-1">
                 <h1 className="text-xl font-extrabold text-gray-900">Offline / Online Synchronization & Database Backup</h1>
-                <p className="text-xs text-gray-500">Outbox Transaction Queue, Push/Pull Engine & SQLite Local Backup Manager</p>
+                <p className="text-xs text-gray-500">Bidirectional Sync: Download Online Orders & Upload Offline Counter Sales</p>
+                {syncStats.lastSyncAt && (
+                    <div className="text-[11px] text-emerald-700 font-semibold pt-1">
+                        Last Cloud Sync: {new Date(syncStats.lastSyncAt).toLocaleString()}
+                    </div>
+                )}
             </div>
 
             {/* Sync Queue Overview */}
@@ -113,22 +137,29 @@ export default function SyncPage() {
                 <div className="w-14 h-14 mx-auto rounded-2xl bg-[#FEF9E7] border border-[#F3E5AB] flex items-center justify-center text-[#B8860B]">
                     <IconSync className={`w-8 h-8 ${isSyncing ? 'animate-spin' : ''}`} />
                 </div>
-                <h3 className="font-bold text-gray-900 text-base">Cloud Server Synchronization</h3>
+                <h3 className="font-bold text-gray-900 text-base">Two-Way Cloud Server Synchronization</h3>
                 <p className="text-xs text-gray-500 max-w-md mx-auto">
-                    All offline transactions are safely stored in local SQLite outbox queue (`sync_queue`) with UUID idempotency signatures. Clicking Sync pushes all pending sales, payments & inventory movements to cloud PostgreSQL.
+                    When you click Sync, the app <strong>downloads new products & orders created online</strong> from Supabase Cloud into your local counter SQLite database, and <strong>pushes offline sales</strong> up to the cloud.
                 </p>
+
+                {syncFeedback && (
+                    <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-bold text-emerald-800 animate-fadeIn">
+                        {syncFeedback}
+                    </div>
+                )}
 
                 <div className="pt-2 flex justify-center gap-3">
                     <button
                         onClick={handleTriggerSync}
                         disabled={isSyncing}
-                        className="px-6 py-3 gold-gradient text-white font-extrabold text-xs rounded-xl shadow-md disabled:opacity-50"
+                        className="px-6 py-3 gold-gradient text-white font-extrabold text-xs rounded-xl shadow-md disabled:opacity-50 cursor-pointer hover:opacity-90 transition-all flex items-center gap-2"
                     >
-                        {isSyncing ? 'Syncing with Server...' : 'Trigger Cloud Sync Now'}
+                        <IconSync className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                        <span>{isSyncing ? 'Syncing Bidirectionally...' : 'Trigger Cloud Sync Now (Pull & Push)'}</span>
                     </button>
                     <button
                         onClick={fetchSyncStatus}
-                        className="px-4 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl"
+                        className="px-4 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl cursor-pointer"
                     >
                         Refresh Queue Status
                     </button>

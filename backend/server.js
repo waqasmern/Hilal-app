@@ -3102,7 +3102,7 @@ app.get('/api/sync/status', async (req, res) => {
 
 app.post('/api/sync/trigger', async (req, res) => {
     try {
-        const result = await syncEngine.processPushSync();
+        const result = await syncEngine.processTwoWaySync();
         res.json(result);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -3811,6 +3811,20 @@ app.listen(PORT, () => {
             console.error('[WhatsApp Service] Startup init failed:', e.message);
         }
     }, 1000);
+
+    // Initial background two-way sync on startup (after 4s)
+    setTimeout(() => {
+        syncEngine.processTwoWaySync().catch(err => {
+            console.warn('[SyncEngine Auto] Initial cloud sync note:', err.message);
+        });
+    }, 4000);
+
+    // Recurring two-way background sync every 3 minutes
+    setInterval(() => {
+        syncEngine.processTwoWaySync().catch(err => {
+            console.warn('[SyncEngine Auto] Background sync note:', err.message);
+        });
+    }, 3 * 60 * 1000);
 });
 
 // Process-level unhandled rejection & exception guards

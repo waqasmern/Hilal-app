@@ -542,8 +542,15 @@ function initializeDatabase() {
         db.run(`CREATE INDEX IF NOT EXISTS idx_products_essential ON products(is_essential)`);
         db.run("ALTER TABLE sale_returns ADD COLUMN refund_method TEXT DEFAULT 'credit'", () => {});
         db.run("ALTER TABLE sale_returns ADD COLUMN status TEXT DEFAULT 'completed'", () => {});
-        db.run("ALTER TABLE purchase_returns ADD COLUMN refund_method TEXT DEFAULT 'credit'", () => {});
         db.run("ALTER TABLE customer_ledger ADD COLUMN return_id INTEGER", () => {});
+        db.run("ALTER TABLE sales ADD COLUMN order_status TEXT DEFAULT 'COMPLETED'", () => {});
+        db.run("ALTER TABLE sales ADD COLUMN online_order_id TEXT", () => {});
+        db.run("ALTER TABLE stock_movements ADD COLUMN is_synced INTEGER DEFAULT 0", () => {});
+        db.run("ALTER TABLE customer_ledger ADD COLUMN is_synced INTEGER DEFAULT 0", () => {});
+        db.run("CREATE UNIQUE INDEX IF NOT EXISTS uq_stock_movements_uuid ON stock_movements(uuid)", () => {});
+        db.run("CREATE UNIQUE INDEX IF NOT EXISTS uq_customer_ledger_uuid ON customer_ledger(uuid)", () => {});
+        db.run("CREATE UNIQUE INDEX IF NOT EXISTS uq_sales_uuid ON sales(uuid)", () => {});
+        db.run("CREATE INDEX IF NOT EXISTS idx_sales_order_status ON sales(order_status)", () => {});
 
         console.log('Wholesale database schema created successfully.');
 
