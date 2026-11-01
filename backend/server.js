@@ -498,9 +498,9 @@ app.post('/api/products', authenticateToken, requireAdmin, (req, res) => {
 
                         if (initialQty > 0) {
                             db.run(
-                                `INSERT INTO stock_movements (uuid, variant_id, packaging_type_id, movement_type, quantity, equivalent_qty, notes, user_id, device_id)
-                                 VALUES (?, ?, 1, 'OPENING_STOCK', ?, ?, 'Opening stock on product registration', ?, 'DEVICE-CASHIER-01')`,
-                                [generateUUID(), variantId, initialQty, initialQty, req.user.id]
+                                `INSERT INTO stock_movements (uuid, variant_id, packaging_type_id, movement_type, quantity, equivalent_qty, quantity_delta, notes, user_id, device_id)
+                                 VALUES (?, ?, 1, 'OPENING_STOCK', ?, ?, ?, 'Opening stock on product registration', ?, 'DEVICE-CASHIER-01')`,
+                                [generateUUID(), variantId, initialQty, initialQty, initialQty, req.user.id]
                             );
                         }
 
@@ -946,17 +946,19 @@ app.post('/api/inventory/adjustments', authenticateToken, requireAdmin, (req, re
         // Fetch conversion factor
         db.get("SELECT conversion_factor FROM product_packagings WHERE variant_id = ? AND packaging_type_id = ?", [variant_id, packaging_type_id || 1], (err, pack) => {
             const factor = pack ? pack.conversion_factor : 1;
-            const equivalentQty = quantity * factor;
-            const delta = adjustment_type === 'ADD' ? equivalentQty : -equivalentQty;
+            const equivalentQty = Math.abs(Number(quantity) || 0) * factor;
+            const isIncrease = adjustment_type === 'ADD' || adjustment_type === 'increase';
+            const delta = isIncrease ? equivalentQty : -equivalentQty;
+            const mvType = isIncrease ? 'ADJUSTMENT' : (adjustment_type === 'DAMAGE' ? 'DAMAGE' : 'ADJUSTMENT');
 
             db.run(`UPDATE product_variants SET current_stock = current_stock + ? WHERE id = ?`, [delta, variant_id]);
             db.run(`UPDATE inventory_stock SET quantity = quantity + ? WHERE variant_id = ?`, [delta, variant_id]);
 
             const movementUUID = generateUUID();
             db.run(
-                `INSERT INTO stock_movements (uuid, variant_id, packaging_type_id, movement_type, quantity, equivalent_qty, notes, user_id, device_id)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                [movementUUID, variant_id, packaging_type_id || null, adjustment_type === 'ADD' ? 'ADJUSTMENT' : 'DAMAGE', quantity, equivalentQty, notes || 'Manual adjustment', req.user.id, 'DEVICE-CASHIER-01'],
+                `INSERT INTO stock_movements (uuid, variant_id, packaging_type_id, movement_type, quantity, equivalent_qty, quantity_delta, notes, user_id, device_id)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [movementUUID, variant_id, packaging_type_id || null, mvType, Math.abs(Number(quantity) || 0), equivalentQty, delta, notes || 'Manual adjustment', req.user.id, 'DEVICE-CASHIER-01'],
                 function(err) {
                     if (err) {
                         db.run("ROLLBACK");
@@ -965,7 +967,18 @@ app.post('/api/inventory/adjustments', authenticateToken, requireAdmin, (req, re
                     db.run("COMMIT", (err) => {
                         if (err) return res.status(500).json({ error: err.message });
                         logAudit(req.user.id, req.user.username, 'STOCK_ADJUSTMENT', 'product_variants', variant_id, `${adjustment_type} ${quantity} (${notes})`);
-                        syncEngine.enqueueSync('ADJUSTMENT', 'stock_movements', this.lastID, req.body);
+                        syncEngine.enqueueSync('ADJUSTMENT', 'stock_movements', this.lastID, {
+                            uuid: movementUUID,
+                            variant_id,
+                            packaging_type_id: packaging_type_id || 1,
+                            adjustment_type: isIncrease ? 'increase' : 'decrease',
+                            quantity: Math.abs(Number(quantity) || 0),
+                            equivalent_qty: equivalentQty,
+                            quantity_delta: delta,
+                            reason: notes || 'Manual adjustment',
+                            notes: notes || 'Manual adjustment',
+                            created_at: getLocalNow()
+                        });
                         res.json({ success: true, movementId: this.lastID });
                     });
                 }
@@ -1074,8 +1087,8 @@ app.post('/api/sales', authenticateToken, (req, res) => {
                     `);
 
                     const movementStmt = db.prepare(`
-                        INSERT INTO stock_movements (uuid, variant_id, packaging_type_id, movement_type, quantity, equivalent_qty, reference_id, reference_type, user_id, device_id, created_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        INSERT INTO stock_movements (uuid, variant_id, packaging_type_id, movement_type, quantity, equivalent_qty, quantity_delta, reference_id, reference_type, user_id, device_id, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     `);
 
                     items.forEach(item => {
@@ -1089,7 +1102,7 @@ app.post('/api/sales', authenticateToken, (req, res) => {
                         db.run(`UPDATE product_variants SET current_stock = current_stock - ? WHERE id = ?`, [equivalentQty, item.variant_id]);
                         db.run(`UPDATE inventory_stock SET quantity = quantity - ? WHERE variant_id = ?`, [equivalentQty, item.variant_id]);
 
-                        movementStmt.run(generateUUID(), item.variant_id, item.packaging_type_id, 'SALE', item.quantity, equivalentQty, invoiceNo, 'SALE', req.user.id, device_id || 'DEVICE-CASHIER-01', saleNow);
+                        movementStmt.run(generateUUID(), item.variant_id, item.packaging_type_id, 'SALE', item.quantity, equivalentQty, -equivalentQty, invoiceNo, 'SALE', req.user.id, device_id || 'DEVICE-CASHIER-01', saleNow);
                     });
 
                     itemStmt.finalize();
@@ -1782,6 +1795,20 @@ app.post('/api/customers', authenticateToken, (req, res) => {
                 );
             }
             logAudit(req.user.id, req.user.username, 'CREATE_CUSTOMER', 'customers', customerId, name);
+            syncEngine.enqueueSync('CUSTOMER', 'customers', customerId, {
+                uuid,
+                id: customerId,
+                name,
+                business_name: business_name || '',
+                phone: phone || '',
+                mobile: mobile || '',
+                address: address || '',
+                cnic_ntn: cnic_ntn || '',
+                credit_limit: credit_limit || 0,
+                opening_balance: opBal,
+                balance: opBal,
+                created_at: getLocalNow()
+            });
             res.json({ id: customerId, uuid, name, balance: opBal });
         }
     );
@@ -1874,6 +1901,17 @@ app.put('/api/customers/:id', authenticateToken, (req, res) => {
             if (err) return res.status(500).json({ error: err.message });
             if (this.changes === 0) return res.status(404).json({ error: 'Customer not found' });
             logAudit(req.user.id, req.user.username, 'UPDATE_CUSTOMER', 'customers', id, `Updated customer: ${name}`);
+            syncEngine.enqueueSync('CUSTOMER_UPDATE', 'customers', id, {
+                id: parseInt(id),
+                name,
+                business_name: business_name || '',
+                phone: phone || '',
+                mobile: mobile || '',
+                address: address || '',
+                cnic_ntn: cnic_ntn || '',
+                credit_limit: parseFloat(credit_limit) || 0,
+                updated_at: getLocalNow()
+            });
             res.json({ success: true, message: 'Customer updated successfully' });
         }
     );
@@ -2656,8 +2694,8 @@ app.post('/api/purchases', authenticateToken, (req, res) => {
                 `);
 
                 const movementStmt = db.prepare(`
-                    INSERT INTO stock_movements (uuid, variant_id, packaging_type_id, movement_type, quantity, equivalent_qty, reference_id, reference_type, user_id)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO stock_movements (uuid, variant_id, packaging_type_id, movement_type, quantity, equivalent_qty, quantity_delta, reference_id, reference_type, user_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `);
 
                 items.forEach(item => {
@@ -2674,7 +2712,7 @@ app.post('/api/purchases', authenticateToken, (req, res) => {
                         db.run(`UPDATE product_packagings SET purchase_price = ? WHERE variant_id = ? AND packaging_type_id = ?`, [item.purchase_price, item.variant_id, item.packaging_type_id]);
                     }
 
-                    movementStmt.run(generateUUID(), item.variant_id, item.packaging_type_id, 'PURCHASE', item.quantity, equivalentQty, String(purchaseId), 'PURCHASE', req.user.id);
+                    movementStmt.run(generateUUID(), item.variant_id, item.packaging_type_id, 'PURCHASE', item.quantity, equivalentQty, equivalentQty, String(purchaseId), 'PURCHASE', req.user.id);
                 });
 
                 itemStmt.finalize();
@@ -3305,8 +3343,8 @@ app.post('/api/sales/returns', authenticateToken, (req, res) => {
                     `);
 
                     const movementStmt = db.prepare(`
-                        INSERT INTO stock_movements (uuid, variant_id, packaging_type_id, movement_type, quantity, equivalent_qty, reference_id, reference_type, notes, user_id, created_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, 'SALE_RETURN', ?, ?, ?)
+                        INSERT INTO stock_movements (uuid, variant_id, packaging_type_id, movement_type, quantity, equivalent_qty, quantity_delta, reference_id, reference_type, notes, user_id, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'SALE_RETURN', ?, ?, ?)
                     `);
 
                     items.forEach(it => {
@@ -3314,6 +3352,7 @@ app.post('/api/sales/returns', authenticateToken, (req, res) => {
 
                         const factor = it.conversion_factor || 1;
                         const equivalentQty = it.quantity * factor;
+                        const delta = return_type === 'damaged' ? 0 : equivalentQty;
 
                         // If saleable stock: increase stock back!
                         if (return_type !== 'damaged') {
@@ -3324,7 +3363,7 @@ app.post('/api/sales/returns', authenticateToken, (req, res) => {
                         movementStmt.run(
                             generateUUID(), it.variant_id, it.packaging_type_id,
                             return_type === 'damaged' ? 'DAMAGE' : 'SALE_RETURN',
-                            it.quantity, equivalentQty, String(returnId),
+                            it.quantity, equivalentQty, delta, String(returnId),
                             return_type === 'damaged' ? 'Damaged customer return (Quarantined Scrap)' : 'Restocked sale return',
                             req.user.id, returnNow
                         );
@@ -3671,8 +3710,8 @@ app.post('/api/purchases/returns', authenticateToken, (req, res) => {
                 `);
 
                 const movementStmt = db.prepare(`
-                    INSERT INTO stock_movements (uuid, variant_id, packaging_type_id, movement_type, quantity, equivalent_qty, reference_id, reference_type, notes, user_id, created_at)
-                    VALUES (?, ?, ?, 'PURCHASE_RETURN', ?, ?, ?, 'PURCHASE_RETURN', ?, ?, ?)
+                    INSERT INTO stock_movements (uuid, variant_id, packaging_type_id, movement_type, quantity, equivalent_qty, quantity_delta, reference_id, reference_type, notes, user_id, created_at)
+                    VALUES (?, ?, ?, 'PURCHASE_RETURN', ?, ?, ?, ?, 'PURCHASE_RETURN', ?, ?, ?)
                 `);
 
                 items.forEach(it => {
@@ -3687,7 +3726,7 @@ app.post('/api/purchases/returns', authenticateToken, (req, res) => {
 
                     movementStmt.run(
                         generateUUID(), it.variant_id, it.packaging_type_id,
-                        it.quantity, equivalentQty, String(returnId),
+                        it.quantity, equivalentQty, -equivalentQty, String(returnId),
                         `Purchase return to supplier #${supplier_id}`, req.user.id, returnNow
                     );
                 });

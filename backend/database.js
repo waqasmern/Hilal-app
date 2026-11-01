@@ -547,9 +547,27 @@ function initializeDatabase() {
         db.run("ALTER TABLE sales ADD COLUMN online_order_id TEXT", () => {});
         db.run("ALTER TABLE stock_movements ADD COLUMN is_synced INTEGER DEFAULT 0", () => {});
         db.run("ALTER TABLE customer_ledger ADD COLUMN is_synced INTEGER DEFAULT 0", () => {});
+        db.run("ALTER TABLE stock_movements ADD COLUMN quantity_delta REAL", () => {
+            db.run(`
+                UPDATE stock_movements 
+                SET quantity_delta = CASE 
+                    WHEN movement_type IN ('PURCHASE', 'OPENING_STOCK', 'RESTOCK', 'RETURN') THEN ABS(COALESCE(equivalent_qty, quantity, 0))
+                    WHEN movement_type = 'SALE_RETURN' AND (LOWER(COALESCE(notes, '')) LIKE '%damage%' OR LOWER(COALESCE(notes, '')) LIKE '%scrap%' OR LOWER(COALESCE(notes, '')) LIKE '%quarantin%') THEN 0
+                    WHEN movement_type = 'SALE_RETURN' THEN ABS(COALESCE(equivalent_qty, quantity, 0))
+                    WHEN movement_type IN ('SALE', 'DAMAGE', 'PURCHASE_RETURN', 'LOSS') THEN -ABS(COALESCE(equivalent_qty, quantity, 0))
+                    WHEN movement_type = 'ADJUSTMENT' AND (LOWER(COALESCE(notes, '')) LIKE '%decrease%' OR LOWER(COALESCE(notes, '')) LIKE '%loss%' OR LOWER(COALESCE(notes, '')) LIKE '%damage%' OR LOWER(COALESCE(notes, '')) LIKE '%reduction%') THEN -ABS(COALESCE(equivalent_qty, quantity, 0))
+                    WHEN movement_type = 'ADJUSTMENT' THEN ABS(COALESCE(equivalent_qty, quantity, 0))
+                    ELSE -ABS(COALESCE(equivalent_qty, quantity, 0))
+                END
+                WHERE quantity_delta IS NULL
+            `, () => {});
+        });
         db.run("CREATE UNIQUE INDEX IF NOT EXISTS uq_stock_movements_uuid ON stock_movements(uuid)", () => {});
         db.run("CREATE UNIQUE INDEX IF NOT EXISTS uq_customer_ledger_uuid ON customer_ledger(uuid)", () => {});
         db.run("CREATE UNIQUE INDEX IF NOT EXISTS uq_sales_uuid ON sales(uuid)", () => {});
+        db.run("CREATE UNIQUE INDEX IF NOT EXISTS uq_payments_uuid ON payments(uuid)", () => {});
+        db.run("CREATE UNIQUE INDEX IF NOT EXISTS uq_sale_returns_uuid ON sale_returns(uuid)", () => {});
+        db.run("CREATE UNIQUE INDEX IF NOT EXISTS uq_purchases_uuid ON purchases(uuid)", () => {});
         db.run("CREATE INDEX IF NOT EXISTS idx_sales_order_status ON sales(order_status)", () => {});
 
         console.log('Wholesale database schema created successfully.');

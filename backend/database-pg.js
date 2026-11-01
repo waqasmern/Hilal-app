@@ -125,6 +125,7 @@ CREATE TABLE IF NOT EXISTS stock_movements (
     movement_type VARCHAR(50) NOT NULL,
     quantity NUMERIC NOT NULL,
     equivalent_qty NUMERIC NOT NULL,
+    quantity_delta NUMERIC,
     reference_id VARCHAR(100),
     reference_type VARCHAR(50),
     notes TEXT,
@@ -423,6 +424,20 @@ async function initPostgres() {
         const client = await pool.connect();
         try {
             await client.query(PG_SCHEMA);
+            await client.query(`
+                ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS quantity_delta NUMERIC;
+                UPDATE stock_movements 
+                SET quantity_delta = CASE 
+                    WHEN movement_type IN ('PURCHASE', 'OPENING_STOCK', 'RESTOCK', 'RETURN') THEN ABS(COALESCE(equivalent_qty, quantity, 0))
+                    WHEN movement_type = 'SALE_RETURN' AND (LOWER(COALESCE(notes, '')) LIKE '%damage%' OR LOWER(COALESCE(notes, '')) LIKE '%scrap%' OR LOWER(COALESCE(notes, '')) LIKE '%quarantin%') THEN 0
+                    WHEN movement_type = 'SALE_RETURN' THEN ABS(COALESCE(equivalent_qty, quantity, 0))
+                    WHEN movement_type IN ('SALE', 'DAMAGE', 'PURCHASE_RETURN', 'LOSS') THEN -ABS(COALESCE(equivalent_qty, quantity, 0))
+                    WHEN movement_type = 'ADJUSTMENT' AND (LOWER(COALESCE(notes, '')) LIKE '%decrease%' OR LOWER(COALESCE(notes, '')) LIKE '%loss%' OR LOWER(COALESCE(notes, '')) LIKE '%damage%' OR LOWER(COALESCE(notes, '')) LIKE '%reduction%') THEN -ABS(COALESCE(equivalent_qty, quantity, 0))
+                    WHEN movement_type = 'ADJUSTMENT' THEN ABS(COALESCE(equivalent_qty, quantity, 0))
+                    ELSE -ABS(COALESCE(equivalent_qty, quantity, 0))
+                END
+                WHERE quantity_delta IS NULL;
+            `);
             console.log('[PostgreSQL] Cloud schema verified and ready.');
         } finally {
             client.release();

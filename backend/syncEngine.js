@@ -489,15 +489,29 @@ async function processPullSync() {
 
                 const equivQty = Number(m.equivalent_qty) || Number(m.quantity) || 0;
                 const vId = parseInt(m.variant_id);
-                const isPositive = ['PURCHASE', 'ADJUSTMENT', 'RETURN', 'OPENING_STOCK'].includes(m.movement_type);
-                const delta = isPositive ? equivQty : -equivQty;
+                let delta = m.quantity_delta !== undefined && m.quantity_delta !== null ? Number(m.quantity_delta) : null;
+                if (delta === null || isNaN(delta)) {
+                    if (['PURCHASE', 'OPENING_STOCK', 'RESTOCK', 'RETURN'].includes(m.movement_type)) {
+                        delta = Math.abs(equivQty);
+                    } else if (m.movement_type === 'SALE_RETURN') {
+                        const note = (m.notes || '').toLowerCase();
+                        delta = (note.includes('damage') || note.includes('scrap') || note.includes('quarantin')) ? 0 : Math.abs(equivQty);
+                    } else if (['SALE', 'DAMAGE', 'PURCHASE_RETURN', 'LOSS', 'RETURN_VOID'].includes(m.movement_type)) {
+                        delta = -Math.abs(equivQty);
+                    } else if (m.movement_type === 'ADJUSTMENT') {
+                        const note = (m.notes || '').toLowerCase();
+                        delta = (note.includes('decrease') || note.includes('loss') || note.includes('damage') || note.includes('reduction')) ? -Math.abs(equivQty) : Math.abs(equivQty);
+                    } else {
+                        delta = -Math.abs(equivQty);
+                    }
+                }
 
                 await runQuery(
-                    `INSERT INTO stock_movements (uuid, variant_id, packaging_type_id, movement_type, quantity, equivalent_qty, reference_id, reference_type, notes, user_id, device_id, created_at, is_synced)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+                    `INSERT INTO stock_movements (uuid, variant_id, packaging_type_id, movement_type, quantity, equivalent_qty, quantity_delta, reference_id, reference_type, notes, user_id, device_id, created_at, is_synced)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
                     [
                         m.uuid, vId, m.packaging_type_id || null, m.movement_type,
-                        Number(m.quantity) || 0, equivQty, m.reference_id || '', m.reference_type || '',
+                        Number(m.quantity) || 0, equivQty, delta, m.reference_id || '', m.reference_type || '',
                         m.notes || 'Cloud sync movement', m.user_id || 1, m.device_id || 'CLOUD-WEB',
                         formatToLocalDbTime(m.created_at)
                     ]
