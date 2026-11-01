@@ -44,20 +44,27 @@ export async function GET(request, { params }) {
         const variantIds = [...new Set((saleItems || []).map(i => i.variant_id))];
         const pkgTypeIds = [...new Set((saleItems || []).map(i => i.packaging_type_id))];
 
-        const [variantsRes, pkgTypesRes, prodsRes] = await Promise.all([
+        const [variantsRes, pkgTypesRes, prodsRes, unitsRes, packagingsRes] = await Promise.all([
             variantIds.length > 0 ? supabase.from('product_variants').select('id, product_id, sku, variant_name, base_unit_id').in('id', variantIds) : { data: [] },
             pkgTypeIds.length > 0 ? supabase.from('packaging_types').select('id, name').in('id', pkgTypeIds) : { data: [] },
-            supabase.from('products').select('id, name')
+            supabase.from('products').select('id, name'),
+            supabase.from('units').select('id, name, symbol'),
+            variantIds.length > 0 ? supabase.from('product_packagings').select('variant_id, packaging_type_id, conversion_factor').in('variant_id', variantIds) : { data: [] }
         ]);
 
         const varMap = Object.fromEntries((variantsRes.data || []).map(v => [v.id, v]));
         const pkgTypeMap = Object.fromEntries((pkgTypesRes.data || []).map(pt => [pt.id, pt.name]));
         const prodMap = Object.fromEntries((prodsRes.data || []).map(p => [p.id, p.name]));
+        const unitMap = Object.fromEntries((unitsRes.data || []).map(u => [u.id, u]));
+        const ppMap = Object.fromEntries((packagingsRes.data || []).map(pp => [`${pp.variant_id}_${pp.packaging_type_id}`, Number(pp.conversion_factor) || 1]));
 
         const items = (saleItems || []).map(item => {
             const variant = varMap[item.variant_id] || {};
             const productName = prodMap[variant.product_id] || 'Product';
-            const packagingName = pkgTypeMap[item.packaging_type_id] || item.unit_name || 'Unit';
+            const baseUnit = unitMap[variant.base_unit_id] || { name: 'Piece', symbol: 'pcs' };
+            const ppKey = `${item.variant_id}_${item.packaging_type_id}`;
+            const convFactor = ppMap[ppKey] || 1;
+            const packagingName = pkgTypeMap[item.packaging_type_id] || item.unit_name || (convFactor > 1 ? 'Bulk' : baseUnit.symbol);
 
             return {
                 ...item,
@@ -65,7 +72,9 @@ export async function GET(request, { params }) {
                 variant_name: variant.variant_name || '',
                 sku: variant.sku || '',
                 packaging_name: packagingName,
-                conversion_factor: 1
+                conversion_factor: convFactor,
+                base_unit: baseUnit.symbol,
+                unit_full_name: baseUnit.name
             };
         });
 

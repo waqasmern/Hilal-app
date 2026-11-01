@@ -8,6 +8,7 @@ import ThermalReceipt from '../components/ThermalReceipt';
 import WholesaleA4InvoiceModal from '../components/WholesaleA4InvoiceModal';
 import CreditNoteModal from '../components/CreditNoteModal';
 import { triggerPrintHtml, generateThermalReceiptHtml, generateWholesaleInvoiceA4Html, truncateItemName, formatPackShort } from '../../lib/printHelper';
+import { apiUrl } from '../../lib/api';
 import {
     IconCustomers, IconPlus, IconSearch, IconWarning, IconCheck,
     IconClose, IconEye, IconEdit, IconTrash, IconReceipt,
@@ -638,7 +639,7 @@ export default function CustomersPage() {
             const localDate = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
             const localDateTime = `${localDate} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
 
-            const res = await fetch('http://localhost:5000/api/sales/returns', {
+            const res = await fetch(apiUrl('/api/sales/returns'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 body: JSON.stringify({

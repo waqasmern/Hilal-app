@@ -101,7 +101,19 @@ export async function GET(request) {
         }
 
         if (search && search.trim()) {
-            query = query.ilike('invoice_no', `%${search.trim()}%`);
+            const q = search.trim();
+            // Match customer fields as well as invoice number
+            const { data: matchedCusts } = await supabase
+                .from('customers')
+                .select('id')
+                .or(`name.ilike.%${q}%,business_name.ilike.%${q}%,phone.ilike.%${q}%,mobile.ilike.%${q}%`);
+            const custIds = (matchedCusts || []).map(c => c.id);
+
+            if (custIds.length > 0) {
+                query = query.or(`invoice_no.ilike.%${q}%,customer_id.in.(${custIds.join(',')})`);
+            } else {
+                query = query.ilike('invoice_no', `%${q}%`);
+            }
         }
 
         if (isPaginated) {
@@ -123,10 +135,102 @@ export async function GET(request) {
                 cashier_name: s.users?.username || 'Cashier'
             }));
 
+            // Calculate date-range summary metrics across all sales in date range
+            let summaryQuery = supabase
+                .from('sales')
+                .select('id, net_amount, amount_paid, remaining_balance, discount, special_discount, payment_status, created_at');
+            if (dateBounds) {
+                summaryQuery = summaryQuery.gte('created_at', dateBounds.start).lte('created_at', dateBounds.end);
+            }
+            const { data: allDateSales } = await summaryQuery;
+
+            let totalSaleAmount = 0;
+            let checkoutCollected = 0;
+            let totalPendingDues = 0;
+            let totalDiscount = 0;
+            let paidCount = 0;
+            let partialCount = 0;
+            let pendingCount = 0;
+
+            (allDateSales || []).forEach(s => {
+                const net = Number(s.net_amount) || 0;
+                const paid = Number(s.amount_paid) || 0;
+                const rem = Number(s.remaining_balance) || Math.max(0, net - paid);
+                const disc = (Number(s.discount) || 0) + (Number(s.special_discount) || 0);
+
+                totalSaleAmount += net;
+                checkoutCollected += Math.min(paid, net);
+                totalPendingDues += rem;
+                totalDiscount += disc;
+
+                if (rem <= 0.01 && net > 0) paidCount++;
+                else if (paid > 0 && rem > 0.01) partialCount++;
+                else if (paid <= 0 && rem > 0.01) pendingCount++;
+            });
+
+            // Recovered dues from customer payments in the same date range
+            let recQuery = supabase
+                .from('payments')
+                .select(`
+                    id, uuid, amount, payment_method, reference_no, payment_date, created_at, notes, party_id,
+                    customers ( name, business_name, phone )
+                `)
+                .eq('party_type', 'customer')
+                .gt('amount', 0);
+
+            if (dateBounds) {
+                recQuery = recQuery.gte('created_at', dateBounds.start).lte('created_at', dateBounds.end);
+            }
+            const { data: recPayments } = await recQuery;
+
+            const recoveredPaymentsList = (recPayments || []).filter(p => {
+                const ref = String(p.reference_no || '');
+                const notes = String(p.notes || '').toLowerCase();
+                return !ref.startsWith('SALE-') && !ref.startsWith('RET-') && !notes.includes('refund') && !notes.includes('return');
+            }).map(p => ({
+                payment_id: p.id,
+                payment_uuid: p.uuid,
+                recovered_amount: Number(p.amount) || 0,
+                payment_method: p.payment_method,
+                reference_no: p.reference_no,
+                recovery_date: p.payment_date || (p.created_at ? p.created_at.slice(0, 10) : ''),
+                payment_created_at: p.created_at,
+                notes: p.notes,
+                customer_id: p.party_id,
+                customer_name: p.customers?.name || 'Customer',
+                customer_business: p.customers?.business_name || '',
+                customer_phone: p.customers?.phone || '',
+                cashier_name: 'Cashier'
+            }));
+
+            const recoveredDues = recoveredPaymentsList.reduce((sum, p) => sum + p.recovered_amount, 0);
+            const totalCollected = checkoutCollected + recoveredDues;
+
+            const summary = {
+                totalSalesCount: (allDateSales || []).length,
+                totalSaleAmount,
+                totalSale: totalSaleAmount,
+                checkoutCollected,
+                recoveredDues,
+                totalRecoveredDues: recoveredDues,
+                totalCollected,
+                totalPendingDues,
+                totalDiscount,
+                paidCount,
+                partialCount,
+                pendingCount,
+                statusCounts: {
+                    ALL: (allDateSales || []).length,
+                    PAID: paidCount,
+                    PARTIAL: partialCount,
+                    PENDING: pendingCount
+                }
+            };
+
             return NextResponse.json({
                 data: sales,
                 sales,
-                recoveredPayments: [],
+                recoveredPayments: recoveredPaymentsList,
                 pagination: {
                     total: count || 0,
                     page,
@@ -135,7 +239,8 @@ export async function GET(request) {
                 },
                 total: count || 0,
                 page,
-                totalPages: Math.max(1, Math.ceil((count || 0) / limit))
+                totalPages: Math.max(1, Math.ceil((count || 0) / limit)),
+                summary
             });
         } else {
             query = query.limit(500);

@@ -37,6 +37,7 @@ import ThermalReceipt from '../components/ThermalReceipt';
 import WholesaleA4InvoiceModal from '../components/WholesaleA4InvoiceModal';
 import CreditNoteModal from '../components/CreditNoteModal';
 import { triggerPrintHtml, generateThermalReceiptHtml, generateWholesaleInvoiceA4Html, truncateItemName, formatPackShort } from '../../lib/printHelper';
+import { apiUrl } from '../../lib/api';
 
 function getPageNumbers(current, total) {
     if (total <= 7) {
@@ -164,7 +165,7 @@ export default function SalesHistoryPage() {
 
     const fetchGlobalSettings = async () => {
         try {
-            const res = await fetch('http://localhost:5000/api/settings');
+            const res = await fetch(apiUrl('/api/settings'));
             if (res.ok) {
                 const data = await res.json();
                 dispatch(setSettings(data));
@@ -198,7 +199,7 @@ export default function SalesHistoryPage() {
                 params.append('search', searchQ.trim());
             }
 
-            const res = await fetch(`http://localhost:5000/api/sales?${params.toString()}`);
+            const res = await fetch(apiUrl(`/api/sales?${params.toString()}`));
             if (res.ok) {
                 const result = await res.json();
                 if (result && result.pagination) {
@@ -260,7 +261,7 @@ export default function SalesHistoryPage() {
 
     const fetchPayments = async () => {
         try {
-            const res = await fetch('http://localhost:5000/api/payments');
+            const res = await fetch(apiUrl('/api/payments'));
             if (res.ok) {
                 const data = await res.json();
                 setPayments(Array.isArray(data) ? data : []);
@@ -272,7 +273,7 @@ export default function SalesHistoryPage() {
 
     const fetchSaleDetails = async (id, openModal = true) => {
         try {
-            const res = await fetch(`http://localhost:5000/api/sales/${id}`);
+            const res = await fetch(apiUrl(`/api/sales/${id}`));
             if (res.ok) {
                 const data = await res.json();
                 setSelectedSale(data);
@@ -638,7 +639,7 @@ export default function SalesHistoryPage() {
             const localDate = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
             const localDateTime = `${localDate} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
 
-            const res = await fetch('http://localhost:5000/api/sales/returns', {
+            const res = await fetch(apiUrl('/api/sales/returns'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 body: JSON.stringify({
@@ -807,7 +808,7 @@ export default function SalesHistoryPage() {
             const headers = { 'Content-Type': 'application/json' };
             if (token && token !== 'null' && token !== 'undefined') headers['Authorization'] = `Bearer ${token}`;
 
-            const res = await fetch('http://localhost:5000/api/whatsapp/send-bill', {
+            const res = await fetch(apiUrl('/api/whatsapp/send-bill'), {
                 method: 'POST',
                 headers,
                 body: JSON.stringify({

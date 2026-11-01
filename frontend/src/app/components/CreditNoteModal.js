@@ -4,6 +4,7 @@ import {
     IconPrinter, IconWhatsApp, IconDownload, IconClose, IconSpinner, IconReturn
 } from './Icons';
 import { triggerPrint } from '../../lib/printHelper';
+import { apiUrl } from '../../lib/api';
 
 function formatDisplayDate(dateInput) {
     if (!dateInput) return '-';
@@ -48,7 +49,7 @@ export default function CreditNoteModal({
         try {
             const token = localStorage.getItem('token');
             const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-            const res = await fetch(`http://localhost:5000/api/sales/returns/${id}`, { headers });
+            const res = await fetch(apiUrl(`/api/sales/returns/${id}`), { headers });
             if (res.ok) {
                 const data = await res.json();
                 setCreditNote(data);
@@ -90,7 +91,7 @@ export default function CreditNoteModal({
 
         setDownloadingPdf(true);
         try {
-            const res = await fetch(`http://localhost:5000/api/sales/returns/${idToFetch}/pdf`);
+            const res = await fetch(apiUrl(`/api/sales/returns/${idToFetch}/pdf`));
             if (res.ok) {
                 const blob = await res.blob();
                 const url = window.URL.createObjectURL(blob);
@@ -157,7 +158,7 @@ export default function CreditNoteModal({
         setWaFeedback(null);
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch(`http://localhost:5000/api/sales/returns/${idToSend}/send-whatsapp`, {
+            const res = await fetch(apiUrl(`/api/sales/returns/${idToSend}/send-whatsapp`), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

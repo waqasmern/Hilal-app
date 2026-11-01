@@ -254,6 +254,150 @@ export async function POST(request) {
                     await supabase.from('product_variants').update({ current_stock: Number(curV.current_stock || 0) + delta }).eq('id', variantId);
                 }
             }
+        } else if (operation_type === 'SALE_RETURN') {
+            const saleId = parsedPayload.sale_id ? parseInt(parsedPayload.sale_id) : null;
+            const customerId = parsedPayload.customer_id ? parseInt(parsedPayload.customer_id) : null;
+            const totalRefund = Number(parsedPayload.total_refund) || 0;
+            const returnType = parsedPayload.return_type || 'saleable';
+            const refundMethod = parsedPayload.refund_method || 'credit';
+
+            // Check if return already exists by uuid
+            const { data: existingReturn } = await supabase
+                .from('sale_returns')
+                .select('id')
+                .eq('uuid', uuid)
+                .single();
+
+            if (!existingReturn) {
+                const nextReturnId = await getNextId('sale_returns');
+                const cnNumber = `CN-${String(nextReturnId).padStart(5, '0')}`;
+
+                const { data: insertedReturn, error: rErr } = await supabase
+                    .from('sale_returns')
+                    .insert([{
+                        id: nextReturnId,
+                        uuid: uuid || crypto.randomUUID(),
+                        sale_id: saleId,
+                        customer_id: customerId,
+                        user_id: 1,
+                        total_refund: totalRefund,
+                        return_type: returnType,
+                        refund_method: refundMethod,
+                        status: 'completed',
+                        remarks: parsedPayload.remarks || `Customer return ${cnNumber}`,
+                        created_at: toUtcIso(parsedPayload.created_at)
+                    }])
+                    .select()
+                    .single();
+
+                if (!rErr && insertedReturn && Array.isArray(parsedPayload.items)) {
+                    let nextReturnItemId = await getNextId('sale_return_items');
+                    let nextMvId = await getNextId('stock_movements');
+
+                    for (const item of parsedPayload.items) {
+                        const vId = parseInt(item.variant_id);
+                        const pkgId = parseInt(item.packaging_type_id || 1);
+                        const qty = Number(item.quantity) || 0;
+                        const factor = Number(item.conversion_factor) || 1;
+                        const equivalentQty = qty * factor;
+                        const price = Number(item.refund_price) || 0;
+
+                        await supabase.from('sale_return_items').insert([{
+                            id: nextReturnItemId++,
+                            uuid: crypto.randomUUID(),
+                            sale_return_id: insertedReturn.id,
+                            variant_id: vId,
+                            packaging_type_id: pkgId,
+                            quantity: qty,
+                            refund_price: price
+                        }]);
+
+                        // Restock if saleable
+                        if (returnType !== 'damaged') {
+                            const { data: curV } = await supabase.from('product_variants').select('current_stock').eq('id', vId).single();
+                            if (curV) {
+                                await supabase.from('product_variants').update({
+                                    current_stock: Number(curV.current_stock || 0) + equivalentQty
+                                }).eq('id', vId);
+                            }
+                        }
+
+                        // Stock movement audit
+                        await supabase.from('stock_movements').insert([{
+                            id: nextMvId++,
+                            uuid: crypto.randomUUID(),
+                            variant_id: vId,
+                            packaging_type_id: pkgId,
+                            movement_type: returnType === 'damaged' ? 'DAMAGE' : 'SALE_RETURN',
+                            quantity: qty,
+                            equivalent_qty: equivalentQty,
+                            reference_id: String(insertedReturn.id),
+                            reference_type: 'SALE_RETURN',
+                            notes: returnType === 'damaged' ? 'Damaged customer return (Quarantined Scrap)' : 'Restocked sale return',
+                            user_id: 1,
+                            device_id: effectiveDeviceId,
+                            created_at: toUtcIso(parsedPayload.created_at)
+                        }]);
+                    }
+
+                    // Ledger and balance updates
+                    if (refundMethod === 'cash') {
+                        const nextPayId = await getNextId('payments');
+                        await supabase.from('payments').insert([{
+                            id: nextPayId,
+                            uuid: crypto.randomUUID(),
+                            party_type: 'customer',
+                            party_id: customerId,
+                            amount: -totalRefund,
+                            payment_method: 'cash',
+                            reference_no: cnNumber,
+                            user_id: 1,
+                            device_id: effectiveDeviceId,
+                            notes: `Cash Refund for Credit Note #${cnNumber}`,
+                            payment_date: (parsedPayload.created_at ? toUtcIso(parsedPayload.created_at).slice(0, 10) : new Date().toISOString().slice(0, 10)),
+                            created_at: toUtcIso(parsedPayload.created_at)
+                        }]);
+
+                        if (customerId) {
+                            const nextLedgerId = await getNextId('customer_ledger');
+                            await supabase.from('customer_ledger').insert([{
+                                id: nextLedgerId,
+                                uuid: crypto.randomUUID(),
+                                customer_id: customerId,
+                                sale_id: saleId,
+                                amount: totalRefund,
+                                type: 'return',
+                                description: `Sales Return #${cnNumber} (${returnType}) - Cash Refund Paid Out`,
+                                payment_method: 'cash',
+                                created_at: toUtcIso(parsedPayload.created_at)
+                            }]);
+                        }
+                    } else {
+                        // Store credit (Khata deduction)
+                        if (customerId) {
+                            const nextLedgerId = await getNextId('customer_ledger');
+                            await supabase.from('customer_ledger').insert([{
+                                id: nextLedgerId,
+                                uuid: crypto.randomUUID(),
+                                customer_id: customerId,
+                                sale_id: saleId,
+                                amount: totalRefund,
+                                type: 'return',
+                                description: `Sales Return #${cnNumber} (${returnType}) - Credited to Khata`,
+                                payment_method: 'credit_note',
+                                created_at: toUtcIso(parsedPayload.created_at)
+                            }]);
+
+                            const { data: cust } = await supabase.from('customers').select('balance').eq('id', customerId).single();
+                            if (cust) {
+                                await supabase.from('customers').update({
+                                    balance: Number(cust.balance || 0) - totalRefund
+                                }).eq('id', customerId);
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // 3. Mark ingested event to ensure exact-once delivery

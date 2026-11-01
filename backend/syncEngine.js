@@ -598,6 +598,49 @@ async function processPullSync() {
             }
         }
 
+        // 11. Sales Returns & Return Items
+        if (Array.isArray(data.saleReturns)) {
+            for (const r of data.saleReturns) {
+                const returnUuid = r.uuid || generateUUID();
+                const existingReturn = await getQuery("SELECT id FROM sale_returns WHERE uuid = ? OR id = ?", [returnUuid, r.id]);
+                let localReturnId;
+
+                if (existingReturn) {
+                    localReturnId = existingReturn.id;
+                } else {
+                    const insRes = await runQuery(
+                        `INSERT INTO sale_returns (
+                            id, uuid, sale_id, customer_id, user_id, total_refund, return_type, refund_method, status, remarks, created_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                        [
+                            r.id, returnUuid, r.sale_id || null, r.customer_id || null, r.user_id || 1,
+                            Number(r.total_refund) || 0, r.return_type || 'saleable', r.refund_method || 'credit',
+                            r.status || 'completed', r.remarks || 'Customer return', formatToLocalDbTime(r.created_at)
+                        ]
+                    );
+                    localReturnId = insRes.lastID || r.id;
+                }
+
+                // If return items are provided
+                const itemsForThisReturn = (data.saleReturnItems || []).filter(i => String(i.sale_return_id) === String(r.id));
+                for (const it of itemsForThisReturn) {
+                    const itemUuid = it.uuid || generateUUID();
+                    const existingItem = await getQuery("SELECT id FROM sale_return_items WHERE uuid = ?", [itemUuid]);
+                    if (!existingItem) {
+                        await runQuery(
+                            `INSERT INTO sale_return_items (
+                                uuid, sale_return_id, variant_id, packaging_type_id, quantity, refund_price
+                            ) VALUES (?, ?, ?, ?, ?, ?)`,
+                            [
+                                itemUuid, localReturnId, it.variant_id, it.packaging_type_id || 1,
+                                Number(it.quantity) || 0, Number(it.refund_price) || 0
+                            ]
+                        );
+                    }
+                }
+            }
+        }
+
         // Commit transaction
         await runQuery("COMMIT");
     } catch (txErr) {
