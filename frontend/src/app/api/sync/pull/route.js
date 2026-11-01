@@ -9,35 +9,41 @@ export async function GET(request) {
 
         const serverTimestamp = new Date().toISOString();
 
-        // 1. Core catalog dictionaries (always return active sets to ensure reference integrity)
-        const [catsRes, unitsRes, pkgTypesRes] = await Promise.all([
-            supabase.from('categories').select('*'),
-            supabase.from('units').select('*'),
-            supabase.from('packaging_types').select('*')
+        // 1. Core catalog reference data (categories, units, packagingTypes, products, productVariants, productPackagings, customers)
+        // Catalog data is lightweight reference metadata without updated_at columns in cloud DB;
+        // always returning the active catalog ensures counter desktops never miss products or price changes.
+        const [
+            catsRes,
+            unitsRes,
+            pkgTypesRes,
+            prodsRes,
+            varsRes,
+            pkgsRes,
+            custsRes
+        ] = await Promise.all([
+            supabase.from('categories').select('*').order('id', { ascending: true }),
+            supabase.from('units').select('*').order('id', { ascending: true }),
+            supabase.from('packaging_types').select('*').order('id', { ascending: true }),
+            supabase.from('products').select('*').order('id', { ascending: true }),
+            supabase.from('product_variants').select('*').order('id', { ascending: true }),
+            supabase.from('product_packagings').select('*').order('id', { ascending: true }),
+            supabase.from('customers').select('*').order('id', { ascending: true })
         ]);
 
-        // 2. Incremental or Full queries for Products & Packagings
-        let prodsQuery = supabase.from('products').select('*');
-        let varsQuery = supabase.from('product_variants').select('*');
-        let pkgsQuery = supabase.from('product_packagings').select('*');
-        let custsQuery = supabase.from('customers').select('*');
+        // 2. Incremental or Full queries for Transactional Streams (movements, ledger, sales, payments)
         let movementsQuery = supabase.from('stock_movements').select('*').order('created_at', { ascending: true });
         let ledgerQuery = supabase.from('customer_ledger').select('*').order('created_at', { ascending: true });
         let salesQuery = supabase.from('sales').select('*').order('created_at', { ascending: true });
         let paymentsQuery = supabase.from('payments').select('*').order('created_at', { ascending: true });
 
         if (isIncremental) {
-            // Incremental: only changes after cursor
-            prodsQuery = prodsQuery.gt('created_at', cursor);
-            varsQuery = varsQuery.gt('created_at', cursor);
-            pkgsQuery = pkgsQuery.gt('created_at', cursor);
-            custsQuery = custsQuery.gt('created_at', cursor);
+            // Incremental: only transactional events after cursor
             movementsQuery = movementsQuery.gt('created_at', cursor);
             ledgerQuery = ledgerQuery.gt('created_at', cursor);
             salesQuery = salesQuery.gt('created_at', cursor);
             paymentsQuery = paymentsQuery.gt('created_at', cursor);
         } else {
-            // Initial sync: fetch all active products, customers, and recent history
+            // Initial sync: fetch recent history
             movementsQuery = movementsQuery.limit(2000);
             ledgerQuery = ledgerQuery.limit(2000);
             salesQuery = salesQuery.limit(1000);
@@ -45,19 +51,11 @@ export async function GET(request) {
         }
 
         const [
-            prodsRes,
-            varsRes,
-            pkgsRes,
-            custsRes,
             movementsRes,
             ledgerRes,
             salesRes,
             paymentsRes
         ] = await Promise.all([
-            prodsQuery,
-            varsQuery,
-            pkgsQuery,
-            custsQuery,
             movementsQuery,
             ledgerQuery,
             salesQuery,

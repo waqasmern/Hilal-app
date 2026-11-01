@@ -383,6 +383,14 @@ async function processPullSync() {
                          is_deleted = excluded.is_deleted`,
                     [v.id, v.uuid || generateUUID(), v.product_id, v.sku, v.barcode, v.variant_name || 'Standard', v.base_unit_id || 1, v.minimum_stock || 10, v.reorder_level || 15, v.is_loose_allowed ? 1 : 0, Number(v.current_stock || 0), v.is_deleted ? 1 : 0]
                 );
+
+                // Ensure corresponding inventory_stock row exists without overwriting current stock
+                await runQuery(
+                    `INSERT INTO inventory_stock (uuid, variant_id, quantity, loose_quantity, updated_at)
+                     VALUES (?, ?, ?, 0, datetime('now', 'localtime'))
+                     ON CONFLICT(variant_id) DO NOTHING`,
+                    [generateUUID(), v.id, Number(v.current_stock || 0)]
+                );
             }
         }
 

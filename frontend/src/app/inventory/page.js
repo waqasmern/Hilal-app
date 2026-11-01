@@ -1015,6 +1015,16 @@ export default function InventoryPage() {
         return () => clearTimeout(handler);
     }, [searchQuery, selectedCategoryFilter, stockStatusFilter, currentPage, pageSize]);
 
+    // Auto-refresh inventory & KPIs whenever cloud sync completes
+    useEffect(() => {
+        const handleSyncEvent = () => {
+            fetchStock(currentPage, pageSize, searchQuery, selectedCategoryFilter, stockStatusFilter);
+            fetchKpis();
+        };
+        window.addEventListener('app:synced', handleSyncEvent);
+        return () => window.removeEventListener('app:synced', handleSyncEvent);
+    }, [currentPage, pageSize, searchQuery, selectedCategoryFilter, stockStatusFilter]);
+
     const fetchKpis = async () => {
         try {
             const res = await fetch('http://localhost:5000/api/inventory/kpis');

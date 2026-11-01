@@ -50,6 +50,9 @@ export default function Navbar() {
             if (res.ok) {
                 const data = await res.json();
                 dispatch(setPendingCount(data.failed || 0));
+                if (typeof window !== 'undefined') {
+                    window.dispatchEvent(new CustomEvent('app:synced', { detail: data }));
+                }
             }
         } catch (err) {
             console.error('Manual sync failed:', err);

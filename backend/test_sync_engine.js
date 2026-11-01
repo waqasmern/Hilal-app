@@ -13,6 +13,13 @@ async function runTests() {
     let passedTests = 0;
     let failedTests = 0;
 
+    // Backup real database state so tests never contaminate live application
+    const originalCursor = await syncEngine.getSetting('last_pull_cursor');
+    const originalPullAt = await syncEngine.getSetting('last_pull_at');
+    const originalPushAt = await syncEngine.getSetting('last_push_at');
+    const origVariant1 = await new Promise(r => db.get("SELECT current_stock FROM product_variants WHERE id = 1", [], (e, row) => r(row)));
+    const origCust1 = await new Promise(r => db.get("SELECT balance, name FROM customers WHERE id = 1", [], (e, row) => r(row)));
+
     async function runTest(testNumber, testName, testFn) {
         try {
             await testFn();
@@ -24,6 +31,8 @@ async function runTests() {
             failedTests++;
         }
     }
+
+    try {
 
     // ─────────────────────────────────────────────────────────────────────────
     // Test 1: Offline sale followed by internet reconnection
@@ -452,8 +461,19 @@ async function runTests() {
         assert.strictEqual(c2.balance, 2000, 'Duplicate ledger entry must not reduce balance twice');
     });
 
-    // Restore fetch
-    global.fetch = originalFetch;
+    } finally {
+        // Restore fetch and live database state
+        global.fetch = originalFetch;
+        if (originalCursor) await syncEngine.setSetting('last_pull_cursor', originalCursor);
+        if (originalPullAt) await syncEngine.setSetting('last_pull_at', originalPullAt);
+        if (originalPushAt) await syncEngine.setSetting('last_push_at', originalPushAt);
+        if (origVariant1) {
+            await new Promise(r => db.run("UPDATE product_variants SET current_stock = ? WHERE id = 1", [origVariant1.current_stock], r));
+        }
+        if (origCust1) {
+            await new Promise(r => db.run("UPDATE customers SET balance = ?, name = ? WHERE id = 1", [origCust1.balance, origCust1.name], r));
+        }
+    }
 
     console.log('\n====================================================');
     console.log(`Test Execution Complete: ${passedTests} Passed, ${failedTests} Failed`);
