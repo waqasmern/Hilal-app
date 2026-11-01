@@ -52,7 +52,11 @@ export default function ThermalReceipt({
     // Date formatting
     let formattedDate = '';
     try {
-        const rawDate = invoice.created_at ? new Date(invoice.created_at) : new Date();
+        let dt = invoice.created_at;
+        if (typeof dt === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(dt.trim())) {
+            dt = dt.trim() + 'Z';
+        }
+        const rawDate = dt ? new Date(dt) : new Date();
         formattedDate = isNaN(rawDate.getTime())
             ? new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
             : rawDate.toLocaleDateString() + ' ' + rawDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });

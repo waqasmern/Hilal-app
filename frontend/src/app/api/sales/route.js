@@ -20,31 +20,38 @@ async function getNextId(tableName) {
     return (data?.[0]?.id || 0) + 1;
 }
 
+function getPakistanTimeParts(d = new Date()) {
+    const s = d.toLocaleString('en-US', { timeZone: 'Asia/Karachi', hour12: false });
+    const [datePart, timePart] = s.split(', ');
+    const [m, day, y] = datePart.split('/');
+    const pad = n => String(n).padStart(2, '0');
+    return {
+        date: `${y}-${pad(m)}-${pad(day)}`,
+        now: `${y}-${pad(m)}-${pad(day)} ${timePart}`
+    };
+}
+
 function getDateBoundaries(filter, startDate, endDate) {
-    const now = new Date();
-    const pad = (n) => String(n).padStart(2, '0');
-    const formatDate = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const pk = getPakistanTimeParts();
+    const today = pk.date;
 
     if (filter === 'today') {
-        const d = formatDate(now);
-        return { start: `${d} 00:00:00`, end: `${d} 23:59:59` };
+        return { start: `${today} 00:00:00`, end: `${today} 23:59:59` };
     } else if (filter === 'yesterday') {
-        const y = new Date(now);
-        y.setDate(y.getDate() - 1);
-        const d = formatDate(y);
-        return { start: `${d} 00:00:00`, end: `${d} 23:59:59` };
+        const y = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const yDate = getPakistanTimeParts(y).date;
+        return { start: `${yDate} 00:00:00`, end: `${yDate} 23:59:59` };
     } else if (filter === 'this_week') {
-        const curr = new Date(now);
+        const curr = new Date();
         const first = curr.getDate() - curr.getDay();
         const firstDay = new Date(curr.setDate(first));
-        const dStart = formatDate(firstDay);
-        const dEnd = formatDate(now);
-        return { start: `${dStart} 00:00:00`, end: `${dEnd} 23:59:59` };
+        const dStart = getPakistanTimeParts(firstDay).date;
+        return { start: `${dStart} 00:00:00`, end: `${today} 23:59:59` };
     } else if (filter === 'this_month') {
+        const now = new Date();
         const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-        const dStart = formatDate(firstDay);
-        const dEnd = formatDate(now);
-        return { start: `${dStart} 00:00:00`, end: `${dEnd} 23:59:59` };
+        const dStart = getPakistanTimeParts(firstDay).date;
+        return { start: `${dStart} 00:00:00`, end: `${today} 23:59:59` };
     } else if (filter === 'custom' && startDate && endDate) {
         return { start: `${startDate} 00:00:00`, end: `${endDate} 23:59:59` };
     }
@@ -192,8 +199,9 @@ export async function POST(request) {
         const saleUUID = crypto.randomUUID();
         const invoiceNo = `INV-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 90 + 10)}`;
         const finalRemarks = remarks || (party_type === 'walkin' && walkin_name ? `Walk-in: ${walkin_name} ${walkin_phone ? '(' + walkin_phone + ')' : ''}` : '');
-        const nowIso = new Date().toISOString();
-        const nowDate = nowIso.slice(0, 10);
+        const pkTime = getPakistanTimeParts();
+        const localDateTime = pkTime.now;
+        const nowDate = pkTime.date;
 
         // 1. Insert into sales
         const { data: saleData, error: saleErr } = await supabase
@@ -217,7 +225,7 @@ export async function POST(request) {
                 payment_method: payment_method || 'cash',
                 remarks: finalRemarks,
                 is_synced: 1,
-                created_at: nowIso
+                created_at: localDateTime
             }])
             .select()
             .single();
@@ -248,7 +256,7 @@ export async function POST(request) {
                 price: item.price,
                 discount: item.discount || 0,
                 total: item.total,
-                created_at: nowIso
+                created_at: localDateTime
             });
 
             const factor = parseFloat(item.conversion_factor) || 1;
@@ -270,7 +278,7 @@ export async function POST(request) {
 
                 await supabase
                     .from('inventory_stock')
-                    .update({ quantity: newStock, updated_at: nowIso })
+                    .update({ quantity: newStock, updated_at: localDateTime })
                     .eq('variant_id', item.variant_id);
             }
 
@@ -286,7 +294,7 @@ export async function POST(request) {
                 reference_type: 'SALE',
                 user_id: user.id || 1,
                 device_id: device_id || 'CLOUD-WEB-01',
-                created_at: nowIso
+                created_at: localDateTime
             });
         }
 
@@ -312,7 +320,7 @@ export async function POST(request) {
                 description: `Wholesale Invoice ${invoiceNo}`,
                 payment_method: payment_method || 'cash',
                 payment_date: nowDate,
-                created_at: nowIso
+                created_at: localDateTime
             }]);
 
             // Credit payment
@@ -327,7 +335,7 @@ export async function POST(request) {
                     description: `Payment for Invoice ${invoiceNo}`,
                     payment_method: payment_method || 'cash',
                     payment_date: nowDate,
-                    created_at: nowIso
+                    created_at: localDateTime
                 }]);
 
                 const nextPayId = await getNextId('payments');
@@ -343,7 +351,7 @@ export async function POST(request) {
                     device_id: device_id || 'CLOUD-WEB-01',
                     notes: `Payment for Invoice ${invoiceNo}`,
                     payment_date: nowDate,
-                    created_at: nowIso
+                    created_at: localDateTime
                 }]);
             }
 

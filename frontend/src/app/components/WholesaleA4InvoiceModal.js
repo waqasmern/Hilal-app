@@ -9,7 +9,10 @@ export function parseDate(dateInput) {
     if (!dateInput) return null;
     if (dateInput instanceof Date) return dateInput;
     let s = String(dateInput).trim();
-    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?/.test(s)) {
+    if (!s) return null;
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(s)) {
+        s = s + 'Z';
+    } else if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?/.test(s)) {
         s = s.replace(' ', 'T');
     }
     const d = new Date(s);

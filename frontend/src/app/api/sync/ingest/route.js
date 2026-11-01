@@ -1,6 +1,18 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
+function getPakistanTimestamp(dateStr) {
+    if (dateStr) {
+        return dateStr;
+    }
+    const d = new Date();
+    const s = d.toLocaleString('en-US', { timeZone: 'Asia/Karachi', hour12: false });
+    const [datePart, timePart] = s.split(', ');
+    const [m, day, y] = datePart.split('/');
+    const pad = n => String(n).padStart(2, '0');
+    return `${y}-${pad(m)}-${pad(day)} ${timePart}`;
+}
+
 async function getNextId(tableName) {
     const { data } = await supabase.from(tableName).select('id').order('id', { ascending: false }).limit(1);
     return (data?.[0]?.id || 0) + 1;
@@ -74,7 +86,7 @@ export async function POST(request) {
                         payment_method: parsedPayload.payment_method || 'cash',
                         remarks: parsedPayload.remarks || 'Synced from Counter Desktop',
                         is_synced: 1,
-                        created_at: parsedPayload.created_at || new Date().toISOString()
+                        created_at: getPakistanTimestamp(parsedPayload.created_at)
                     }])
                     .select()
                     .single();
@@ -116,7 +128,7 @@ export async function POST(request) {
                             reference_id: invoiceNo,
                             reference_type: 'SALE',
                             device_id: effectiveDeviceId,
-                            created_at: parsedPayload.created_at || new Date().toISOString()
+                            created_at: getPakistanTimestamp(parsedPayload.created_at)
                         }]);
 
                         // Deduct stock in Supabase
@@ -139,7 +151,7 @@ export async function POST(request) {
                             type: 'charge',
                             description: `Wholesale Invoice ${invoiceNo}`,
                             payment_method: parsedPayload.payment_method || 'cash',
-                            created_at: parsedPayload.created_at || new Date().toISOString()
+                            created_at: getPakistanTimestamp(parsedPayload.created_at)
                         }]);
 
                         if (paidAmount > 0) {
@@ -152,7 +164,7 @@ export async function POST(request) {
                                 type: 'payment',
                                 description: `Payment for Invoice ${invoiceNo}`,
                                 payment_method: parsedPayload.payment_method || 'cash',
-                                created_at: parsedPayload.created_at || new Date().toISOString()
+                                created_at: getPakistanTimestamp(parsedPayload.created_at)
                             }]);
                         }
 
@@ -236,7 +248,7 @@ export async function POST(request) {
                     equivalent_qty: Math.abs(qty),
                     notes: parsedPayload.reason || 'Inventory Adjustment',
                     device_id: effectiveDeviceId,
-                    created_at: parsedPayload.created_at || new Date().toISOString()
+                    created_at: getPakistanTimestamp(parsedPayload.created_at)
                 }]);
 
                 const { data: curV } = await supabase.from('product_variants').select('current_stock').eq('id', variantId).single();

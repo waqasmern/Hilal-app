@@ -275,13 +275,19 @@ export default function SalesHistoryPage() {
         return null;
     };
 
-    // Helper to safely parse any date string (preserving local time when string lacks timezone)
+    // Helper to safely parse any date string (converting cloud ISO UTC strings or preserving Pakistan local time)
     const parseDate = (dateInput) => {
         if (!dateInput) return null;
         if (dateInput instanceof Date) return dateInput;
         let s = String(dateInput).trim();
-        // If string is "YYYY-MM-DD HH:MM:SS", convert space to T so Date parses it as local time
-        if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?$/.test(s)) {
+        if (!s) return null;
+
+        // If string is ISO with 'T' but lacks timezone offset (e.g. from cloud Supabase UTC timestamps like 2026-11-01T01:55:01.111),
+        // append 'Z' so it correctly converts from UTC to local device timezone (Pakistan Asia/Karachi, +5h)
+        if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(s)) {
+            s = s + 'Z';
+        } else if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?/.test(s)) {
+            // Local time string format "YYYY-MM-DD HH:MM:SS" (e.g. from SQLite getLocalNow())
             s = s.replace(' ', 'T');
         }
         const d = new Date(s);

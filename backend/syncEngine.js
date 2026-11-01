@@ -15,6 +15,32 @@ function generateUUID() {
 }
 
 /**
+ * Format any cloud ISO or UTC timestamp strictly into Pakistan Standard Time (Asia/Karachi)
+ * stored as "YYYY-MM-DD HH:MM:SS" matching local SQLite standards.
+ */
+function formatToLocalDbTime(dateStr) {
+    if (!dateStr) {
+        const d = new Date();
+        const str = d.toLocaleString('en-US', { timeZone: 'Asia/Karachi', hour12: false });
+        const [datePart, timePart] = str.split(', ');
+        const [m, day, y] = datePart.split('/');
+        const pad = n => String(n).padStart(2, '0');
+        return `${y}-${pad(m)}-${pad(day)} ${timePart}`;
+    }
+    let s = String(dateStr).trim();
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(s)) {
+        s = s + 'Z';
+    }
+    const d = new Date(s);
+    if (isNaN(d.getTime())) return dateStr;
+    const pad = n => String(n).padStart(2, '0');
+    const str = d.toLocaleString('en-US', { timeZone: 'Asia/Karachi', hour12: false });
+    const [datePart, timePart] = str.split(', ');
+    const [m, day, y] = datePart.split('/');
+    return `${y}-${pad(m)}-${pad(day)} ${timePart}`;
+}
+
+/**
  * Promise-wrapped db.run with strict error callback
  */
 function runQuery(sql, params = []) {
@@ -456,7 +482,7 @@ async function processPullSync() {
                         m.uuid, vId, m.packaging_type_id || null, m.movement_type,
                         Number(m.quantity) || 0, equivQty, m.reference_id || '', m.reference_type || '',
                         m.notes || 'Cloud sync movement', m.user_id || 1, m.device_id || 'CLOUD-WEB',
-                        m.created_at || new Date().toISOString()
+                        formatToLocalDbTime(m.created_at)
                     ]
                 );
 
@@ -484,8 +510,8 @@ async function processPullSync() {
                     [
                         l.uuid, cId, l.sale_id || null, l.payment_id || null, amt,
                         l.type, l.description || '', l.payment_method || 'cash',
-                        l.payment_date || new Date().toISOString().split('T')[0],
-                        l.created_at || new Date().toISOString()
+                        l.payment_date || formatToLocalDbTime(l.created_at).split(' ')[0],
+                        formatToLocalDbTime(l.created_at)
                     ]
                 );
 
@@ -528,7 +554,7 @@ async function processPullSync() {
                             Number(s.gross_amount) || 0, Number(s.discount) || 0, Number(s.special_discount) || 0, Number(s.additional_charges) || 0,
                             Number(s.net_amount) || 0, Number(s.amount_paid) || 0, Number(s.remaining_balance) || 0,
                             status, s.payment_status || 'unpaid', s.payment_method || 'cash',
-                            s.remarks || 'Online Order', orderStatus, String(s.id), s.created_at || new Date().toISOString()
+                            s.remarks || 'Online Order', orderStatus, String(s.id), formatToLocalDbTime(s.created_at)
                         ]
                     );
                     localSaleId = insRes.lastID;
@@ -547,7 +573,7 @@ async function processPullSync() {
                             [
                                 itemUuid, localSaleId, i.variant_id, i.packaging_type_id || 1,
                                 i.unit_name || 'Units', Number(i.quantity) || 1, Number(i.price) || 0, Number(i.discount) || 0,
-                                Number(i.total) || 0, i.created_at || new Date().toISOString()
+                                Number(i.total) || 0, formatToLocalDbTime(i.created_at)
                             ]
                         );
                     }
