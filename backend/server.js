@@ -456,7 +456,8 @@ app.patch('/api/products/:identifier/essential', (req, res) => {
 });
 
 app.post('/api/products', authenticateToken, requireAdmin, (req, res) => {
-    const { category_id, brand_id, name, description, variant_name, sku, barcode, base_unit_id, minimum_stock, reorder_level, is_loose_allowed, packagings, is_essential } = req.body;
+    const { category_id, brand_id, name, description, variant_name, sku, barcode, base_unit_id, minimum_stock, reorder_level, is_loose_allowed, packagings, is_essential, initial_stock, opening_stock } = req.body;
+    const initialQty = parseFloat(initial_stock || opening_stock || req.body.initial_quantity) || 0;
 
     if (!category_id || !name || !base_unit_id) {
         return res.status(400).json({ error: 'Category, Product Name, and Base Unit are required' });
@@ -482,9 +483,9 @@ app.post('/api/products', authenticateToken, requireAdmin, (req, res) => {
                 const variantUUID = generateUUID();
 
                 db.run(
-                    `INSERT INTO product_variants (uuid, product_id, sku, barcode, variant_name, base_unit_id, minimum_stock, reorder_level, is_loose_allowed)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                    [variantUUID, productId, finalSku, finalBarcode, finalVariantName, base_unit_id, minimum_stock || 10, reorder_level || 15, is_loose_allowed ? 1 : 0],
+                    `INSERT INTO product_variants (uuid, product_id, sku, barcode, variant_name, base_unit_id, minimum_stock, reorder_level, is_loose_allowed, current_stock)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    [variantUUID, productId, finalSku, finalBarcode, finalVariantName, base_unit_id, minimum_stock || 10, reorder_level || 15, is_loose_allowed ? 1 : 0, initialQty],
                     function(err) {
                         if (err) {
                             db.run("ROLLBACK");
@@ -493,7 +494,15 @@ app.post('/api/products', authenticateToken, requireAdmin, (req, res) => {
                         const variantId = this.lastID;
 
                         // Create inventory stock record
-                        db.run(`INSERT INTO inventory_stock (uuid, variant_id, quantity) VALUES (?, ?, 0)`, [generateUUID(), variantId]);
+                        db.run(`INSERT INTO inventory_stock (uuid, variant_id, quantity) VALUES (?, ?, ?)`, [generateUUID(), variantId, initialQty]);
+
+                        if (initialQty > 0) {
+                            db.run(
+                                `INSERT INTO stock_movements (uuid, variant_id, packaging_type_id, movement_type, quantity, equivalent_qty, notes, user_id, device_id)
+                                 VALUES (?, ?, 1, 'OPENING_STOCK', ?, ?, 'Opening stock on product registration', ?, 'DEVICE-CASHIER-01')`,
+                                [generateUUID(), variantId, initialQty, initialQty, req.user.id]
+                            );
+                        }
 
                         // Create product packaging conversions
                         if (Array.isArray(packagings) && packagings.length > 0) {

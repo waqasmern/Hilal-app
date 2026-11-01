@@ -102,8 +102,12 @@ export async function POST(request) {
             reorder_level,
             is_loose_allowed,
             packagings,
-            is_essential
+            is_essential,
+            initial_stock,
+            opening_stock
         } = body;
+
+        const initialQty = parseFloat(initial_stock || opening_stock || body.initial_quantity) || 0;
 
         if (!category_id || !name || !base_unit_id) {
             return NextResponse.json({ error: 'Category, Product Name, and Base Unit are required' }, { status: 400 });
@@ -156,7 +160,7 @@ export async function POST(request) {
                 minimum_stock: parseFloat(minimum_stock) || 10,
                 reorder_level: parseFloat(reorder_level) || 15,
                 is_loose_allowed: is_loose_allowed ? 1 : 0,
-                current_stock: 0,
+                current_stock: initialQty,
                 is_deleted: 0
             }])
             .select()
@@ -177,9 +181,28 @@ export async function POST(request) {
                 id: nextStockId,
                 uuid: crypto.randomUUID(),
                 variant_id: variantId,
-                quantity: 0,
+                quantity: initialQty,
                 loose_quantity: 0
             }]);
+
+        // If opening stock > 0, log opening stock movement
+        if (initialQty > 0) {
+            const nextMovementId = await getNextId('stock_movements');
+            await supabase
+                .from('stock_movements')
+                .insert([{
+                    id: nextMovementId,
+                    uuid: crypto.randomUUID(),
+                    variant_id: variantId,
+                    packaging_type_id: 1,
+                    movement_type: 'OPENING_STOCK',
+                    quantity: initialQty,
+                    equivalent_qty: initialQty,
+                    notes: 'Opening stock on product registration',
+                    user_id: 1,
+                    device_id: 'DEVICE-CLOUD-01'
+                }]);
+        }
 
         // 4. Insert packagings
         let nextPackId = await getNextId('product_packagings');

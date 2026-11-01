@@ -121,6 +121,7 @@ export default function InventoryPage() {
     const [newPieceBuyPrice, setNewPieceBuyPrice] = useState('');
     const [newPieceSalePrice, setNewPieceSalePrice] = useState('');
     const [newIsEssential, setNewIsEssential] = useState(false);
+    const [newInitialStock, setNewInitialStock] = useState('0');
 
     // Bulk / Carton Packaging State
     const [hasCartonPackaging, setHasCartonPackaging] = useState(true);
@@ -143,6 +144,7 @@ export default function InventoryPage() {
     const handleOpenAddItemModal = () => {
         setNewProductName('');
         setNewVariantName('Standard');
+        setNewInitialStock('0');
         setNewBaseBarcode(generateBarcode('896'));
         setNewCartonBarcode(generateBarcode('897'));
         setNewInnerBarcode(generateBarcode('898'));
@@ -1395,6 +1397,8 @@ export default function InventoryPage() {
             const headers = { 'Content-Type': 'application/json' };
             if (token) headers['Authorization'] = `Bearer ${token}`;
 
+            const initStockQty = parseFloat(newInitialStock) || 0;
+
             const res = await fetch('http://localhost:5000/api/products', {
                 method: 'POST',
                 headers,
@@ -1409,6 +1413,7 @@ export default function InventoryPage() {
                     reorder_level: 20,
                     is_loose_allowed: true,
                     is_essential: newIsEssential ? 1 : 0,
+                    initial_stock: initStockQty,
                     packagings: packagingsList
                 })
             });
@@ -1430,9 +1435,14 @@ export default function InventoryPage() {
                 setNewBaseBarcode('');
                 setNewCartonBarcode('');
                 setNewIsEssential(false);
+                setNewInitialStock('0');
                 fetchStock();
                 fetchKpis();
-                showAlert(`Product "${newProductName}" registered with 0 initial stock! Use "Inward Stock from Supplier" to add physical warehouse inventory.`, 'success', 'Product Registered');
+                if (initStockQty > 0) {
+                    showAlert(`Product "${newProductName}" registered with ${initStockQty} units opening stock!`, 'success', 'Product Registered');
+                } else {
+                    showAlert(`Product "${newProductName}" registered successfully! Use "Inward Stock from Supplier" to add inventory.`, 'success', 'Product Registered');
+                }
             } else {
                 const data = await res.json();
                 showAlert(data.error || 'Failed to add item', 'error');
@@ -3581,11 +3591,28 @@ export default function InventoryPage() {
                                                         </span>
                                                     </div>
                                                 )}
-                                                <div className="pt-2 border-t border-[#F3E5AB] flex flex-wrap justify-between items-center text-xs text-gray-600 gap-2">
-                                                    <span className="font-bold">Initial Physical Stock in Warehouse:</span>
-                                                    <span className="font-black text-rose-700 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200">
-                                                        0 Units (Starts at zero, inwarded from supplier)
-                                                    </span>
+                                                <div className="pt-2 border-t border-[#F3E5AB] flex flex-wrap justify-between items-center text-xs text-gray-700 gap-2 bg-[#FCF8E3]/60 p-2.5 rounded-xl border border-[#F3E5AB]">
+                                                    <div>
+                                                        <div className="font-bold text-gray-900 flex items-center gap-1.5">
+                                                            <span>Opening Warehouse Stock:</span>
+                                                            <span className="text-[10px] text-gray-500 font-normal">({baseUnitName})</span>
+                                                        </div>
+                                                        <div className="text-[10px] text-gray-500 mt-0.5">
+                                                            Enter physical units on hand, or leave 0 to inward from supplier
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            step="any"
+                                                            value={newInitialStock}
+                                                            onChange={(e) => setNewInitialStock(e.target.value)}
+                                                            placeholder="0"
+                                                            className="w-24 px-2.5 py-1.5 bg-white border border-gray-300 focus:border-[#B8860B] focus:ring-1 focus:ring-[#B8860B] rounded-lg text-right font-black text-sm text-gray-900 shadow-2xs outline-none"
+                                                        />
+                                                        <span className="font-bold text-xs text-gray-600 uppercase font-mono">{baseUnitName}</span>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
@@ -3610,7 +3637,7 @@ export default function InventoryPage() {
                                 className="btn-black !bg-black !text-white flex-1 py-3 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 hover:opacity-90"
                             >
                                 <IconCheck className="w-4 h-4" style={{ color: '#ffffff', stroke: '#ffffff' }} />
-                                <span style={{ color: '#ffffff' }}>Save Product Item (0 Stock)</span>
+                                <span style={{ color: '#ffffff' }}>Save Product Item</span>
                             </button>
                         </div>
                     </form>
