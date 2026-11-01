@@ -185,7 +185,7 @@ export default function CustomersPage() {
         if (!cust || !cust.id) return;
         setDownloadingStatement(true);
         try {
-            const res = await fetch(`http://localhost:5000/api/customers/${cust.id}/statement-pdf`);
+            const res = await fetch(apiUrl(`/api/customers/${cust.id}/statement-pdf`));
             if (!res.ok) {
                 const err = await res.json().catch(() => ({}));
                 throw new Error(err.error || 'Failed to generate statement PDF');
@@ -224,7 +224,7 @@ export default function CustomersPage() {
             const headers = { 'Content-Type': 'application/json' };
             if (token && token !== 'null' && token !== 'undefined') headers['Authorization'] = `Bearer ${token}`;
 
-            const res = await fetch('http://localhost:5000/api/whatsapp/send-pdf', {
+            const res = await fetch(apiUrl('/api/whatsapp/send-pdf'), {
                 method: 'POST',
                 headers,
                 body: JSON.stringify({
@@ -261,7 +261,7 @@ export default function CustomersPage() {
             const headers = { 'Content-Type': 'application/json' };
             if (token && token !== 'null' && token !== 'undefined') headers['Authorization'] = `Bearer ${token}`;
 
-            const res = await fetch('http://localhost:5000/api/whatsapp/send-reminder', {
+            const res = await fetch(apiUrl('/api/whatsapp/send-reminder'), {
                 method: 'POST',
                 headers,
                 body: JSON.stringify({
@@ -299,7 +299,7 @@ export default function CustomersPage() {
             const headers = { 'Content-Type': 'application/json' };
             if (token && token !== 'null' && token !== 'undefined') headers['Authorization'] = `Bearer ${token}`;
 
-            const res = await fetch('http://localhost:5000/api/whatsapp/send-bill', {
+            const res = await fetch(apiUrl('/api/whatsapp/send-bill'), {
                 method: 'POST',
                 headers,
                 body: JSON.stringify({
@@ -448,7 +448,7 @@ export default function CustomersPage() {
             if (search && search.trim()) params.append('search', search.trim());
             if (status && status !== 'ALL') params.append('status', status);
 
-            const res = await fetch(`http://localhost:5000/api/customers?${params.toString()}`);
+            const res = await fetch(apiUrl(`/api/customers?${params.toString()}`));
             if (res.ok) {
                 const result = await res.json();
                 if (result && result.pagination) {
@@ -520,7 +520,7 @@ export default function CustomersPage() {
 
     const fetchPayments = async () => {
         try {
-            const res = await fetch('http://localhost:5000/api/payments');
+            const res = await fetch(apiUrl('/api/payments'));
             if (res.ok) {
                 const data = await res.json();
                 setPayments(Array.isArray(data) ? data : []);
@@ -532,7 +532,7 @@ export default function CustomersPage() {
 
     const fetchSales = async () => {
         try {
-            const res = await fetch('http://localhost:5000/api/sales');
+            const res = await fetch(apiUrl('/api/sales'));
             if (res.ok) {
                 const data = await res.json();
                 setSales(Array.isArray(data) ? data : []);
@@ -560,7 +560,7 @@ export default function CustomersPage() {
     const fetchCustomerLedgerData = async (customerId) => {
         setLedgerLoading(true);
         try {
-            const res = await fetch(`http://localhost:5000/api/customers/${customerId}/ledger`);
+            const res = await fetch(apiUrl(`/api/customers/${customerId}/ledger`));
             if (res.ok) {
                 const data = await res.json();
                 setSelectedCustomer(data.customer);
@@ -580,7 +580,7 @@ export default function CustomersPage() {
         if (!sale) return;
         try {
             setReturnSelectedSale(sale);
-            const res = await fetch(`http://localhost:5000/api/sales/${sale.id}`);
+            const res = await fetch(apiUrl(`/api/sales/${sale.id}`));
             if (res.ok) {
                 const fullSale = await res.json();
                 const initialReturnItems = (fullSale.items || []).map(it => ({
@@ -721,8 +721,8 @@ export default function CustomersPage() {
         try {
             const token = localStorage.getItem('token');
             const url = isEditing
-                ? `http://localhost:5000/api/customers/${editingCustomerId}`
-                : 'http://localhost:5000/api/customers';
+                ? apiUrl(`/api/customers/${editingCustomerId}`)
+                : apiUrl('/api/customers');
             const method = isEditing ? 'PUT' : 'POST';
 
             const res = await fetch(url, {
@@ -770,7 +770,7 @@ export default function CustomersPage() {
                     const headers = {};
                     if (token && token !== 'null' && token !== 'undefined') headers['Authorization'] = `Bearer ${token}`;
 
-                    const res = await fetch(`http://localhost:5000/api/customers/${customer.id}`, {
+                    const res = await fetch(apiUrl(`/api/customers/${customer.id}`), {
                         method: 'DELETE',
                         headers
                     });
@@ -804,7 +804,7 @@ export default function CustomersPage() {
             const headers = { 'Content-Type': 'application/json' };
             if (token && token !== 'null' && token !== 'undefined') headers['Authorization'] = `Bearer ${token}`;
 
-            const res = await fetch('http://localhost:5000/api/payments', {
+            const res = await fetch(apiUrl('/api/payments'), {
                 method: 'POST',
                 headers,
                 body: JSON.stringify({
@@ -853,7 +853,7 @@ export default function CustomersPage() {
         setSaleDetailLoading(true);
         setSaleDetailModalOpen(true);
         try {
-            const res = await fetch(`http://localhost:5000/api/sales/${saleId}`);
+            const res = await fetch(apiUrl(`/api/sales/${saleId}`));
             if (res.ok) {
                 const data = await res.json();
                 setSelectedSaleDetail(data);
@@ -875,7 +875,7 @@ export default function CustomersPage() {
             setSaleDetailLoading(true);
             setThermalModalOpen(true);
             try {
-                const res = await fetch(`http://localhost:5000/api/sales/${saleId}`);
+                const res = await fetch(apiUrl(`/api/sales/${saleId}`));
                 if (res.ok) {
                     const data = await res.json();
                     setSelectedSaleDetail(data);
@@ -1000,7 +1000,7 @@ export default function CustomersPage() {
             const headers = { 'Content-Type': 'application/json' };
             if (token && token !== 'null' && token !== 'undefined') headers['Authorization'] = `Bearer ${token}`;
 
-            const res = await fetch(`http://localhost:5000/api/customers/${selectedCustomer.id}/pay-fifo`, {
+            const res = await fetch(apiUrl(`/api/customers/${selectedCustomer.id}/pay-fifo`), {
                 method: 'POST',
                 headers,
                 body: JSON.stringify({
@@ -1071,7 +1071,7 @@ export default function CustomersPage() {
             const headers = { 'Content-Type': 'application/json' };
             if (token && token !== 'null' && token !== 'undefined') headers['Authorization'] = `Bearer ${token}`;
 
-            const res = await fetch(`http://localhost:5000/api/sales/${selectedBillToPay.id}/pay`, {
+            const res = await fetch(apiUrl(`/api/sales/${selectedBillToPay.id}/pay`), {
                 method: 'POST',
                 headers,
                 body: JSON.stringify({
@@ -2202,13 +2202,13 @@ export default function CustomersPage() {
 
             {/* CUSTOMER LEDGER STATEMENT & BILLS MODAL */}
             {ledgerModalOpen && selectedCustomer && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-2 sm:p-5 overflow-y-auto">
-                    <div className="bg-white rounded-3xl max-w-6xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-[#F3E5AB] overflow-hidden">
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-2 sm:p-4 overflow-y-auto">
+                    <div className="bg-white rounded-2xl sm:rounded-3xl max-w-6xl w-full max-h-[96vh] sm:max-h-[92vh] flex flex-col shadow-2xl border border-[#F3E5AB] overflow-hidden">
                         {/* Modal Header */}
-                        <div className="p-3.5 sm:p-4 border-b border-gray-200 bg-gray-50/70 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-2.5">
+                        <div className="p-3 sm:p-4 border-b border-gray-200 bg-gray-50/70 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-2.5 shrink-0">
                             <div className="min-w-0 shrink">
                                 <div className="flex items-center gap-1.5 flex-wrap">
-                                    <h2 className="text-base font-extrabold text-gray-900 truncate">
+                                    <h2 className="text-sm sm:text-base font-extrabold text-gray-900 truncate">
                                         {selectedCustomer.name}
                                     </h2>
                                     <span className="px-1.5 py-0.5 rounded bg-[#FEF9E7] border border-[#F3E5AB] text-[10px] font-bold text-[#B8860B] truncate">
@@ -2220,12 +2220,12 @@ export default function CustomersPage() {
                                 </p>
                             </div>
 
-                            {/* Header Quick Actions (Optimized single-row typography) */}
-                            <div className="flex items-center gap-1.5 flex-nowrap shrink-0 overflow-x-auto w-full lg:w-auto">
+                            {/* Header Quick Actions (Smoothly horizontally scrollable on mobile) */}
+                            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar w-full lg:w-auto pb-1 shrink-0">
                                 <button
                                     type="button"
                                     onClick={() => handleStartNewBill(selectedCustomer)}
-                                    className="px-2.5 py-1.5 gold-gradient text-white rounded-lg font-bold text-[11px] shadow-2xs hover:opacity-95 transition-all flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                                    className="px-2.5 py-1.5 gold-gradient text-white rounded-lg font-bold text-[11px] shadow-2xs hover:opacity-95 transition-all flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0"
                                     title="Create new bill in POS for this customer"
                                 >
                                     <IconPOS className="w-3.5 h-3.5" />
@@ -2236,7 +2236,7 @@ export default function CustomersPage() {
                                     type="button"
                                     onClick={() => handleOpenReceivePayment(selectedCustomer)}
                                     style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                    className="btn-black !bg-black !text-white px-2.5 py-1.5 rounded-lg font-bold text-[11px] shadow-2xs hover:opacity-90 active:scale-95 transition-all flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                                    className="btn-black !bg-black !text-white px-2.5 py-1.5 rounded-lg font-bold text-[11px] shadow-2xs hover:opacity-90 active:scale-95 transition-all flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0"
                                     title="Receive customer payment using FIFO invoice allocation"
                                 >
                                     <IconPayments className="w-3.5 h-3.5 text-white" />
@@ -2258,18 +2258,18 @@ export default function CustomersPage() {
                                         }
                                     }}
                                     style={{ backgroundColor: '#7e22ce', color: '#ffffff', border: '1px solid #7e22ce' }}
-                                    className="px-2.5 py-1.5 bg-purple-700 hover:bg-purple-800 text-white rounded-lg font-bold text-[11px] shadow-2xs hover:opacity-95 active:scale-95 transition-all flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                                    className="px-2.5 py-1.5 bg-purple-700 hover:bg-purple-800 text-white rounded-lg font-bold text-[11px] shadow-2xs hover:opacity-95 active:scale-95 transition-all flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0"
                                     title="Process a customer return / issue Credit Note"
                                 >
                                     <IconReturn className="w-3.5 h-3.5 text-white" />
-                                    <span>+ Return / Credit Note</span>
+                                    <span>+ Return / CN</span>
                                 </button>
 
                                 <button
                                     type="button"
                                     onClick={() => handleSendWhatsAppReminder(selectedCustomer)}
                                     disabled={waSending}
-                                    className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-[11px] shadow-2xs transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50 whitespace-nowrap"
+                                    className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-[11px] shadow-2xs transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50 whitespace-nowrap shrink-0"
                                     title="Send WhatsApp Dues Reminder Message to Customer"
                                 >
                                     <IconWhatsApp className="w-3.5 h-3.5 text-white" />
@@ -2281,18 +2281,18 @@ export default function CustomersPage() {
                                     onClick={() => handleDownloadStatementPdf(selectedCustomer)}
                                     disabled={downloadingStatement}
                                     style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                    className="btn-black !bg-black !text-white px-2.5 py-1.5 rounded-lg font-bold text-[11px] shadow-2xs hover:opacity-90 active:scale-95 transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50 whitespace-nowrap"
+                                    className="btn-black !bg-black !text-white px-2.5 py-1.5 rounded-lg font-bold text-[11px] shadow-2xs hover:opacity-90 active:scale-95 transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50 whitespace-nowrap shrink-0"
                                     title="Download comprehensive A4 Customer Statement PDF"
                                 >
                                     <IconDownload className="w-3.5 h-3.5 text-white" />
-                                    <span>{downloadingStatement ? 'Downloading...' : 'Download PDF'}</span>
+                                    <span>{downloadingStatement ? 'Downloading...' : 'PDF'}</span>
                                 </button>
 
                                 <button
                                     type="button"
                                     onClick={() => handleSendWhatsAppPdf(selectedCustomer)}
                                     disabled={waSending}
-                                    className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-[11px] shadow-2xs transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50 whitespace-nowrap"
+                                    className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-[11px] shadow-2xs transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50 whitespace-nowrap shrink-0"
                                     title="Send full Account Statement PDF directly to customer via WhatsApp"
                                 >
                                     <IconWhatsApp className="w-3.5 h-3.5 text-white" />
@@ -2302,7 +2302,7 @@ export default function CustomersPage() {
                                 <button
                                     type="button"
                                     onClick={() => window.print()}
-                                    className="px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-semibold text-[11px] border border-gray-200 transition-colors flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                                    className="px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-semibold text-[11px] border border-gray-200 transition-colors flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0"
                                     title="Print Statement"
                                 >
                                     <IconPrinter className="w-3.5 h-3.5" />
@@ -2321,27 +2321,27 @@ export default function CustomersPage() {
                         </div>
 
                         {/* PROPER KPI CARDS INSIDE LEDGER MODAL */}
-                        <div className="p-5 bg-white border-b border-gray-100">
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                {/* Card 1:Total addedbils balance */}
-                                <div className="p-3.5 rounded-2xl bg-gray-50 border border-gray-200 space-y-1">
-                                    <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                        <div className="p-2.5 sm:p-4 bg-white border-b border-gray-100 shrink-0">
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
+                                {/* Card 1: Total added bills balance */}
+                                <div className="p-2.5 sm:p-3.5 rounded-xl sm:rounded-2xl bg-gray-50 border border-gray-200 space-y-0.5 sm:space-y-1">
+                                    <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider truncate">
                                         Total Invoices Billed
                                     </div>
-                                    <div className="text-xl font-black text-gray-900 font-mono">
+                                    <div className="text-base sm:text-xl font-black text-gray-900 font-mono truncate">
                                         Rs. {Math.round(totalBilled).toLocaleString()}
                                     </div>
-                                    <div className="text-[10px] text-gray-400">
+                                    <div className="text-[10px] text-gray-400 truncate">
                                         {customerSales.length} sale invoice(s)
                                     </div>
                                 </div>
 
                                 {/* Card 2: Total Payments & Returns */}
-                                <div className="p-3.5 rounded-2xl bg-emerald-50/70 border border-emerald-200 space-y-1">
-                                    <div className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider">
+                                <div className="p-2.5 sm:p-3.5 rounded-xl sm:rounded-2xl bg-emerald-50/70 border border-emerald-200 space-y-0.5 sm:space-y-1">
+                                    <div className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider truncate">
                                         Total Paid &amp; Returns
                                     </div>
-                                    <div className="text-xl font-black text-emerald-700 font-mono">
+                                    <div className="text-base sm:text-xl font-black text-emerald-700 font-mono truncate">
                                         Rs. {Math.round(totalPaid).toLocaleString()}
                                     </div>
                                     <div className="text-[10px] text-emerald-700 font-medium">
@@ -2355,35 +2355,31 @@ export default function CustomersPage() {
                                                 )}
                                             </div>
                                         ) : (
-                                            <span>{totalPaymentsReceived > 0 ? `Total Paid: Rs. ${Math.round(totalPaymentsReceived).toLocaleString()}` : 'Collections received'}</span>
+                                            <span className="truncate block">{totalPaymentsReceived > 0 ? `Total Paid: Rs. ${Math.round(totalPaymentsReceived).toLocaleString()}` : 'Collections received'}</span>
                                         )}
                                     </div>
                                 </div>
-                                {/* Card 2: Total outstanding */}
-                                <div className="p-3.5 rounded-2xl bg-[#FEF9E7] border border-[#F3E5AB] space-y-1">
-                                    <div className="text-[10px] font-bold text-[#B8860B] uppercase tracking-wider">
+
+                                {/* Card 3: Total outstanding */}
+                                <div className="p-2.5 sm:p-3.5 rounded-xl sm:rounded-2xl bg-[#FEF9E7] border border-[#F3E5AB] space-y-0.5 sm:space-y-1">
+                                    <div className="text-[10px] font-bold text-[#B8860B] uppercase tracking-wider truncate">
                                         Current Due Balance
                                     </div>
-                                    <div className={`text-xl font-black font-mono ${currentBalance > 0 ? 'text-rose-600' : 'text-emerald-700'
-                                        }`}>
+                                    <div className={`text-base sm:text-xl font-black font-mono truncate ${currentBalance > 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
                                         Rs. {Math.round(currentBalance).toLocaleString()}
                                     </div>
-                                    <div className="text-[10px] text-gray-500">
+                                    <div className="text-[10px] text-gray-500 truncate">
                                         {currentBalance > 0 ? 'Customer owes you' : 'Account fully settled'}
                                     </div>
                                 </div>
-
-
-
-
                             </div>
                         </div>
 
-                        {/* MODAL TABS */}
-                        <div className="px-5 border-b border-gray-200 flex items-center gap-4 bg-gray-50/40 text-xs font-bold">
+                        {/* MODAL TABS (Scrollable on small viewports) */}
+                        <div className="px-3 sm:px-5 border-b border-gray-200 flex items-center gap-2 sm:gap-4 bg-gray-50/40 text-xs font-bold shrink-0 overflow-x-auto no-scrollbar">
                             <button
                                 onClick={() => setActiveLedgerTab('statement')}
-                                className={`py-3 border-b-2 transition-all cursor-pointer flex items-center gap-1.5 ${activeLedgerTab === 'statement'
+                                className={`py-2.5 sm:py-3 border-b-2 transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${activeLedgerTab === 'statement'
                                     ? 'border-[#B8860B] text-[#B8860B]'
                                     : 'border-transparent text-gray-500 hover:text-gray-900'
                                     }`}
@@ -2394,7 +2390,7 @@ export default function CustomersPage() {
 
                             <button
                                 onClick={() => setActiveLedgerTab('bills')}
-                                className={`py-3 border-b-2 transition-all cursor-pointer flex items-center gap-1.5 ${activeLedgerTab === 'bills'
+                                className={`py-2.5 sm:py-3 border-b-2 transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${activeLedgerTab === 'bills'
                                     ? 'border-[#B8860B] text-[#B8860B]'
                                     : 'border-transparent text-gray-500 hover:text-gray-900'
                                     }`}
@@ -2405,7 +2401,7 @@ export default function CustomersPage() {
 
                             <button
                                 onClick={() => setActiveLedgerTab('returns')}
-                                className={`py-3 border-b-2 transition-all cursor-pointer flex items-center gap-1.5 ${activeLedgerTab === 'returns'
+                                className={`py-2.5 sm:py-3 border-b-2 transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${activeLedgerTab === 'returns'
                                     ? 'border-purple-600 text-purple-700'
                                     : 'border-transparent text-gray-500 hover:text-gray-900'
                                     }`}
@@ -2416,7 +2412,7 @@ export default function CustomersPage() {
                         </div>
 
                         {/* MODAL TAB CONTENT (Scrollable) */}
-                        <div className="p-5 overflow-y-auto flex-1">
+                        <div className="p-2.5 sm:p-4 overflow-y-auto flex-1 min-h-0">
                             {ledgerLoading ? (
                                 <div className="py-12 text-center text-gray-400 text-xs flex items-center justify-center gap-2">
                                     <IconSpinner className="w-4 h-4 text-[#B8860B]" />
@@ -2424,12 +2420,12 @@ export default function CustomersPage() {
                                 </div>
                             ) : activeLedgerTab === 'statement' ? (
                                 /* TAB 1: STATEMENT TABLE */
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-left text-xs border-collapse">
+                                <div className="overflow-x-auto w-full border border-gray-200 rounded-xl">
+                                    <table className="w-full text-left text-xs border-collapse min-w-[680px]">
                                         <thead>
                                             <tr className="bg-gray-50 border-b border-gray-200 text-gray-600 font-bold uppercase tracking-wider text-[10px]">
                                                 <th className="p-2.5">Date</th>
-                                                <th className="p-2.5 min-w-[200px]">Description / Voucher</th>
+                                                <th className="p-2.5 min-w-[190px]">Description / Voucher</th>
                                                 <th className="p-2.5 text-center">Type</th>
                                                 <th className="p-2.5 text-right">Purchase (Debit+)</th>
                                                 <th className="p-2.5 text-right">Payment / Return (Credit-)</th>
@@ -2530,21 +2526,21 @@ export default function CustomersPage() {
                             ) : activeLedgerTab === 'bills' ? (
                                 /* TAB 2: INVOICES & BILLS TABLE */
                                 <div className="space-y-3">
-                                    <div className="flex justify-between items-center text-xs">
+                                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 text-xs">
                                         <div className="text-gray-500 font-medium">
                                             All sales invoices generated for {selectedCustomer.name}
                                         </div>
                                         <button
                                             onClick={() => handleStartNewBill(selectedCustomer)}
-                                            className="px-3 py-1 gold-gradient text-white rounded-lg font-bold text-xs flex items-center gap-1 cursor-pointer"
+                                            className="px-3 py-1.5 gold-gradient text-white rounded-lg font-bold text-xs flex items-center justify-center gap-1 cursor-pointer w-full sm:w-auto shadow-2xs"
                                         >
-                                            <IconPOS className="w-3 h-3" />
+                                            <IconPOS className="w-3.5 h-3.5" />
                                             <span>Create New Bill</span>
                                         </button>
                                     </div>
 
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full text-left text-xs border-collapse">
+                                    <div className="overflow-x-auto w-full border border-gray-200 rounded-xl">
+                                        <table className="w-full text-left text-xs border-collapse min-w-[720px]">
                                             <thead>
                                                 <tr className="bg-gray-50 border-b border-gray-200 text-gray-600 font-bold uppercase tracking-wider text-[10px]">
                                                     <th className="p-2.5">Invoice #</th>
@@ -2595,7 +2591,7 @@ export default function CustomersPage() {
                                                                         type="button"
                                                                         onClick={() => handleViewSaleBill(sale.id)}
                                                                         style={{ backgroundColor: '#ffffff', color: '#000000', border: '1px solid #d1d5db' }}
-                                                                        className="px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer transition-all hover:bg-gray-100"
+                                                                        className="px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer transition-all hover:bg-gray-100 shadow-2xs"
                                                                         title="View wholesale invoice (A4)"
                                                                     >
                                                                         <IconEye className="w-3 h-3 text-gray-700" />
@@ -2606,7 +2602,7 @@ export default function CustomersPage() {
                                                                         type="button"
                                                                         onClick={() => handleOpenThermalSlip(sale)}
                                                                         style={{ backgroundColor: '#ffffff', color: '#000000', border: '1px solid #d1d5db' }}
-                                                                        className="px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer transition-all hover:bg-gray-100"
+                                                                        className="px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer transition-all hover:bg-gray-100 shadow-2xs"
                                                                         title="View and print 80mm thermal receipt"
                                                                     >
                                                                         <IconReceipt className="w-3 h-3 text-gray-700" />
@@ -2617,7 +2613,7 @@ export default function CustomersPage() {
                                                                         type="button"
                                                                         onClick={() => handleSendSaleBillWhatsApp(sale)}
                                                                         disabled={waSending}
-                                                                        className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-50"
+                                                                        className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-50 shadow-2xs"
                                                                         title={`Send Invoice #${sale.invoice_no} PDF via WhatsApp`}
                                                                     >
                                                                         <IconWhatsApp className="w-3.5 h-3.5 text-emerald-600" />
@@ -2686,7 +2682,7 @@ export default function CustomersPage() {
                                                         setActiveLedgerTab('bills');
                                                     }
                                                 }}
-                                                className="px-3 py-1.5 bg-purple-700 hover:bg-purple-800 text-white rounded-lg font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs transition-all"
+                                                className="px-3 py-1.5 bg-purple-700 hover:bg-purple-800 text-white rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-xs transition-all w-full sm:w-auto"
                                             >
                                                 <IconReturn className="w-3.5 h-3.5" />
                                                 <span>+ Issue New Sales Return</span>
@@ -2695,7 +2691,7 @@ export default function CustomersPage() {
                                     </div>
 
                                     {customerReturns.length === 0 ? (
-                                        <div className="p-12 text-center bg-gray-50/50 rounded-2xl border border-dashed border-gray-200 space-y-3">
+                                        <div className="p-8 sm:p-12 text-center bg-gray-50/50 rounded-2xl border border-dashed border-gray-200 space-y-3">
                                             <div className="w-12 h-12 mx-auto rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center">
                                                 <IconReturn className="w-6 h-6" />
                                             </div>
@@ -2717,8 +2713,8 @@ export default function CustomersPage() {
                                             )}
                                         </div>
                                     ) : (
-                                        <div className="overflow-x-auto">
-                                            <table className="w-full text-left text-xs border-collapse">
+                                        <div className="overflow-x-auto w-full border border-gray-200 rounded-xl">
+                                            <table className="w-full text-left text-xs border-collapse min-w-[650px]">
                                                 <thead>
                                                     <tr className="bg-gray-50 border-b border-gray-200 text-gray-600 font-bold uppercase tracking-wider text-[10px]">
                                                         <th className="p-2.5">Credit Note #</th>
@@ -2773,7 +2769,7 @@ export default function CustomersPage() {
                                                                             setSelectedReturnIdForCreditNote(ret.id);
                                                                             setCreditNoteModalOpen(true);
                                                                         }}
-                                                                        className="px-2.5 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-xs font-bold inline-flex items-center gap-1 cursor-pointer transition-all hover:scale-105"
+                                                                        className="px-2.5 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-xs font-bold inline-flex items-center gap-1 cursor-pointer transition-all hover:scale-105 shadow-2xs"
                                                                         title="View Official Credit Note A4 PDF, WhatsApp & Print"
                                                                     >
                                                                         <IconReceipt className="w-3.5 h-3.5 text-purple-600" />
@@ -2807,12 +2803,12 @@ export default function CustomersPage() {
 
             {/* MODAL: FIFO CUSTOMER PAYMENT */}
             {payFifoModalOpen && selectedCustomer && (
-                <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-[100] p-4 overflow-y-auto">
-                    <form onSubmit={handleSubmitFifoPay} className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl border border-[#F3E5AB]">
+                <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-[100] p-2.5 sm:p-4 overflow-y-auto">
+                    <form onSubmit={handleSubmitFifoPay} className="bg-white rounded-2xl sm:rounded-3xl max-w-lg w-full p-4 sm:p-6 space-y-3.5 sm:space-y-4 shadow-2xl border border-[#F3E5AB] max-h-[96vh] overflow-y-auto">
                         <div className="flex justify-between items-start border-b border-gray-100 pb-3">
                             <div>
-                                <h3 className="font-black text-gray-900 text-base flex items-center gap-2">
-                                    <IconPayments className="w-5 h-5 text-emerald-700" />
+                                <h3 className="font-black text-gray-900 text-sm sm:text-base flex items-center gap-2">
+                                    <IconPayments className="w-4 sm:w-5 h-4 sm:h-5 text-emerald-700" />
                                     <span>Receive Customer Payment (FIFO System)</span>
                                 </h3>
                                 <p className="text-xs text-gray-500">
@@ -2828,7 +2824,7 @@ export default function CustomersPage() {
                         <div className="bg-[#FEF9E7] rounded-xl p-3 border border-[#F3E5AB] flex items-center justify-between">
                             <div>
                                 <div className="text-[10px] uppercase font-bold text-gray-500">Current Outstanding Due</div>
-                                <div className="text-xl font-black text-rose-600">
+                                <div className="text-lg sm:text-xl font-black text-rose-600">
                                     Rs. {Number(selectedCustomer.balance || 0).toLocaleString()}
                                 </div>
                             </div>
@@ -2914,7 +2910,7 @@ export default function CustomersPage() {
                                 />
                             </div>
 
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
                                 <div>
                                     <label className="block font-bold text-gray-700 mb-1">Payment Method</label>
                                     <select
@@ -2963,12 +2959,12 @@ export default function CustomersPage() {
                         </div>
 
                         {/* Actions */}
-                        <div className="flex gap-2 pt-2 border-t border-gray-100">
+                        <div className="flex flex-col-reverse sm:flex-row gap-2 pt-2 border-t border-gray-100">
                             <button
                                 type="button"
                                 onClick={() => setPayFifoModalOpen(false)}
                                 style={{ backgroundColor: '#ffffff', color: '#000000', border: '1px solid #d1d5db' }}
-                                className="flex-1 py-2.5 rounded-xl font-bold text-xs hover:bg-gray-100 transition-all cursor-pointer flex items-center justify-center"
+                                className="w-full sm:flex-1 py-2.5 rounded-xl font-bold text-xs hover:bg-gray-100 transition-all cursor-pointer flex items-center justify-center"
                             >
                                 Cancel
                             </button>
@@ -2976,7 +2972,7 @@ export default function CustomersPage() {
                                 type="submit"
                                 disabled={payFifoSubmitting}
                                 style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                className="btn-black !bg-black !text-white flex-1 py-2.5 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5 hover:opacity-90 disabled:opacity-50"
+                                className="btn-black !bg-black !text-white w-full sm:flex-1 py-2.5 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5 hover:opacity-90 disabled:opacity-50"
                             >
                                 {payFifoSubmitting ? (
                                     <>
@@ -2997,12 +2993,12 @@ export default function CustomersPage() {
 
             {/* MODAL: PAY SPECIFIC BILL */}
             {paySpecificBillModalOpen && selectedBillToPay && (
-                <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-[100] p-4 overflow-y-auto">
-                    <form onSubmit={handleSubmitPaySpecificBill} className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl border border-[#F3E5AB]">
+                <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-[100] p-2.5 sm:p-4 overflow-y-auto">
+                    <form onSubmit={handleSubmitPaySpecificBill} className="bg-white rounded-2xl sm:rounded-3xl max-w-lg w-full p-4 sm:p-6 space-y-3.5 sm:space-y-4 shadow-2xl border border-[#F3E5AB] max-h-[96vh] overflow-y-auto">
                         <div className="flex justify-between items-start border-b border-gray-100 pb-3">
                             <div>
-                                <h3 className="font-black text-gray-900 text-base flex items-center gap-2">
-                                    <IconBill className="w-5 h-5 text-[#B8860B]" />
+                                <h3 className="font-black text-gray-900 text-sm sm:text-base flex items-center gap-2">
+                                    <IconBill className="w-4 sm:w-5 h-4 sm:h-5 text-[#B8860B]" />
                                     <span>Pay Specific Bill</span>
                                 </h3>
                                 <p className="text-xs text-gray-500">
@@ -3015,22 +3011,22 @@ export default function CustomersPage() {
                         </div>
 
                         {/* Bill Summary Box */}
-                        <div className="bg-[#FEF9E7] rounded-xl p-3.5 border border-[#F3E5AB] grid grid-cols-3 gap-2 text-center text-xs">
+                        <div className="bg-[#FEF9E7] rounded-xl p-2.5 sm:p-3.5 border border-[#F3E5AB] grid grid-cols-3 gap-1.5 sm:gap-2 text-center text-xs">
                             <div>
-                                <div className="text-[10px] uppercase font-bold text-gray-500">Invoice Total</div>
-                                <div className="text-sm font-extrabold text-gray-900 font-mono mt-0.5">
+                                <div className="text-[10px] uppercase font-bold text-gray-500 truncate">Invoice Total</div>
+                                <div className="text-xs sm:text-sm font-extrabold text-gray-900 font-mono mt-0.5 truncate">
                                     Rs. {Number(selectedBillToPay.net_amount || 0).toLocaleString()}
                                 </div>
                             </div>
                             <div>
-                                <div className="text-[10px] uppercase font-bold text-gray-500">Already Paid</div>
-                                <div className="text-sm font-extrabold text-emerald-700 font-mono mt-0.5">
+                                <div className="text-[10px] uppercase font-bold text-gray-500 truncate">Already Paid</div>
+                                <div className="text-xs sm:text-sm font-extrabold text-emerald-700 font-mono mt-0.5 truncate">
                                     Rs. {Number(selectedBillToPay.amount_paid || 0).toLocaleString()}
                                 </div>
                             </div>
                             <div>
-                                <div className="text-[10px] uppercase font-bold text-rose-700">Remaining Due</div>
-                                <div className="text-sm font-black text-rose-600 font-mono mt-0.5">
+                                <div className="text-[10px] uppercase font-bold text-rose-700 truncate">Remaining Due</div>
+                                <div className="text-xs sm:text-sm font-black text-rose-600 font-mono mt-0.5 truncate">
                                     Rs. {Number(selectedBillToPay.remaining_balance || 0).toLocaleString()}
                                 </div>
                             </div>
@@ -3064,7 +3060,7 @@ export default function CustomersPage() {
                                 />
                             </div>
 
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
                                 <div>
                                     <label className="block font-bold text-gray-700 mb-1">Payment Method</label>
                                     <select
@@ -3113,12 +3109,12 @@ export default function CustomersPage() {
                         </div>
 
                         {/* Actions */}
-                        <div className="flex gap-2 pt-2 border-t border-gray-100">
+                        <div className="flex flex-col-reverse sm:flex-row gap-2 pt-2 border-t border-gray-100">
                             <button
                                 type="button"
                                 onClick={() => setPaySpecificBillModalOpen(false)}
                                 style={{ backgroundColor: '#ffffff', color: '#000000', border: '1px solid #d1d5db' }}
-                                className="flex-1 py-2.5 rounded-xl font-bold text-xs hover:bg-gray-100 transition-all cursor-pointer flex items-center justify-center"
+                                className="w-full sm:flex-1 py-2.5 rounded-xl font-bold text-xs hover:bg-gray-100 transition-all cursor-pointer flex items-center justify-center"
                             >
                                 Cancel
                             </button>
@@ -3126,7 +3122,7 @@ export default function CustomersPage() {
                                 type="submit"
                                 disabled={payBillSubmitting}
                                 style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                className="btn-black !bg-black !text-white flex-1 py-2.5 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5 hover:opacity-90 disabled:opacity-50"
+                                className="btn-black !bg-black !text-white w-full sm:flex-1 py-2.5 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5 hover:opacity-90 disabled:opacity-50"
                             >
                                 {payBillSubmitting ? (
                                     <>
@@ -3251,14 +3247,14 @@ export default function CustomersPage() {
 
             {/* ADD / EDIT WHOLESALE CUSTOMER MODAL (CRUD) */}
             {customerModalOpen && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-2.5 sm:p-4 overflow-y-auto">
                     <form
                         onSubmit={handleSaveCustomer}
-                        className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-[#F3E5AB]"
+                        className="bg-white rounded-2xl sm:rounded-3xl max-w-md w-full p-4 sm:p-6 space-y-3.5 sm:space-y-4 shadow-2xl border border-[#F3E5AB] max-h-[96vh] overflow-y-auto"
                     >
                         <div className="flex justify-between items-center border-b pb-3">
-                            <h3 className="font-extrabold text-gray-900 text-base flex items-center gap-2">
-                                <IconCustomers className="w-5 h-5 text-[#B8860B]" />
+                            <h3 className="font-extrabold text-gray-900 text-sm sm:text-base flex items-center gap-2">
+                                <IconCustomers className="w-4 sm:w-5 h-4 sm:h-5 text-[#B8860B]" />
                                 <span>{isEditing ? 'Edit Customer Profile' : 'Add New Wholesale Customer'}</span>
                             </h3>
                             <button
@@ -3345,17 +3341,17 @@ export default function CustomersPage() {
                             )}
                         </div>
 
-                        <div className="flex gap-3 pt-2">
+                        <div className="flex flex-col-reverse sm:flex-row gap-2 sm:gap-3 pt-2">
                             <button
                                 type="button"
                                 onClick={() => setCustomerModalOpen(false)}
-                                className="flex-1 py-2.5 border border-gray-200 rounded-xl font-bold text-xs text-gray-600 hover:bg-gray-100 transition-colors cursor-pointer"
+                                className="w-full sm:flex-1 py-2.5 border border-gray-200 rounded-xl font-bold text-xs text-gray-600 hover:bg-gray-100 transition-colors cursor-pointer"
                             >
                                 Cancel
                             </button>
                             <button
                                 type="submit"
-                                className="flex-1 py-2.5 gold-gradient text-white rounded-xl font-bold text-xs shadow-md hover:opacity-95 transition-all cursor-pointer"
+                                className="w-full sm:flex-1 py-2.5 gold-gradient text-white rounded-xl font-bold text-xs shadow-md hover:opacity-95 transition-all cursor-pointer"
                             >
                                 {isEditing ? 'Update Profile' : 'Save Customer Profile'}
                             </button>
@@ -3366,12 +3362,12 @@ export default function CustomersPage() {
 
             {/* PAYMENT RECOVERY VOUCHER / RECEIPT MODAL (Printable) */}
             {paymentReceiptModalOpen && selectedPaymentReceipt && (
-                <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-[100] p-4">
-                    <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-[#F3E5AB]">
+                <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-[100] p-2.5 sm:p-4 overflow-y-auto">
+                    <div className="bg-white rounded-2xl max-w-md w-full p-4 sm:p-6 space-y-3.5 sm:space-y-4 shadow-2xl border border-[#F3E5AB] max-h-[96vh] overflow-y-auto">
                         {/* Printable Voucher Section */}
-                        <div id="printable-payment-receipt" className="border border-gray-200 rounded-xl p-4 bg-white space-y-3">
+                        <div id="printable-payment-receipt" className="border border-gray-200 rounded-xl p-3 sm:p-4 bg-white space-y-3">
                             <div className="text-center border-b border-gray-100 pb-2">
-                                <h3 className="font-black text-base text-[#B8860B]">{(settings?.shop_name || 'HILAL WHOLESALE TRADERS').toUpperCase()}</h3>
+                                <h3 className="font-black text-sm sm:text-base text-[#B8860B]">{(settings?.shop_name || 'HILAL WHOLESALE TRADERS').toUpperCase()}</h3>
                                 <p className="text-[10px] text-gray-500">{settings?.shop_address || 'Main Market, Timergara, Dir Lower'} • Phone: {settings?.shop_phone || '0945-825555 / 0300-1234567'}</p>
                                 <div className="inline-block mt-1 px-2.5 py-0.5 bg-emerald-50 text-emerald-800 text-[10px] font-black rounded border border-emerald-200 uppercase tracking-wider">
                                     Customer Payment Recovery Receipt
@@ -3436,7 +3432,7 @@ export default function CustomersPage() {
                             <div className="bg-[#FEF9E7] p-3 rounded-xl border border-[#F3E5AB] space-y-1">
                                 <div className="flex justify-between items-center">
                                     <span className="font-bold text-xs text-gray-700">Amount Received:</span>
-                                    <span className="text-lg font-black text-emerald-800 font-mono">
+                                    <span className="text-base sm:text-lg font-black text-emerald-800 font-mono">
                                         Rs. {Number(selectedPaymentReceipt.amount || 0).toLocaleString()}
                                     </span>
                                 </div>
@@ -3452,18 +3448,18 @@ export default function CustomersPage() {
                         </div>
 
                         {/* Modal Action Buttons */}
-                        <div className="flex gap-2">
+                        <div className="flex flex-col-reverse sm:flex-row gap-2">
                             <button
                                 type="button"
                                 onClick={() => setPaymentReceiptModalOpen(false)}
-                                className="flex-1 py-2 border border-gray-300 rounded-xl font-bold text-xs hover:bg-gray-50 transition-colors cursor-pointer"
+                                className="w-full sm:flex-1 py-2 border border-gray-300 rounded-xl font-bold text-xs hover:bg-gray-50 transition-colors cursor-pointer"
                             >
                                 Close
                             </button>
                             <button
                                 type="button"
                                 onClick={handlePrintPaymentReceipt}
-                                className="flex-1 py-2 gold-gradient hover:opacity-90 text-white rounded-xl font-bold text-xs shadow-md flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                                className="w-full sm:flex-1 py-2 gold-gradient hover:opacity-90 text-white rounded-xl font-bold text-xs shadow-md flex items-center justify-center gap-1.5 transition-all cursor-pointer"
                             >
                                 <IconPrinter className="w-4 h-4" />
                                 <span>Print Receipt</span>
@@ -3654,12 +3650,12 @@ export default function CustomersPage() {
 
             {/* PROCESS SALES RETURN & CREDIT NOTE MODAL */}
             {returnModalOpen && returnSelectedSale && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[100] p-4 overflow-y-auto">
-                    <form onSubmit={handleSubmitReturn} className="bg-white rounded-3xl max-w-xl w-full p-6 space-y-4 shadow-2xl my-8 border border-[#F3E5AB]">
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[100] p-2.5 sm:p-4 overflow-y-auto">
+                    <form onSubmit={handleSubmitReturn} className="bg-white rounded-2xl sm:rounded-3xl max-w-xl w-full p-4 sm:p-6 space-y-3.5 sm:space-y-4 shadow-2xl my-4 sm:my-8 border border-[#F3E5AB] max-h-[96vh] overflow-y-auto">
                         <div className="flex justify-between items-center border-b pb-3">
                             <div>
-                                <h3 className="font-extrabold text-gray-900 text-base flex items-center gap-2">
-                                    <IconReturn className="w-5 h-5 text-purple-700" />
+                                <h3 className="font-extrabold text-gray-900 text-sm sm:text-base flex items-center gap-2">
+                                    <IconReturn className="w-4 sm:w-5 h-4 sm:h-5 text-purple-700" />
                                     <span>Process Customer Sales Return</span>
                                 </h3>
                                 <div className="text-xs text-[#B8860B] font-bold mt-0.5">
@@ -3678,7 +3674,7 @@ export default function CustomersPage() {
                         <div className="space-y-3.5 text-xs">
                             <div>
                                 <label className="block font-bold text-gray-700 mb-1.5">Return Condition &amp; Restock Policy</label>
-                                <div className="grid grid-cols-2 gap-3">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
                                     <label className={`p-3 rounded-2xl border flex items-center gap-2 cursor-pointer font-bold transition-all ${
                                         returnType === 'saleable' ? 'bg-emerald-50 border-emerald-400 text-emerald-800' : 'bg-gray-50 text-gray-700 border-gray-200'
                                     }`}>
@@ -3742,7 +3738,7 @@ export default function CustomersPage() {
                                 <label className="block font-bold text-gray-700 mb-1.5">
                                     Refund Settlement Method / کھاتہ یا کیش کا فیصلہ
                                 </label>
-                                <div className="grid grid-cols-2 gap-2.5">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                                     <div
                                         onClick={() => setRefundMethod('credit')}
                                         className={`p-3 rounded-2xl border flex flex-col gap-1 cursor-pointer transition-all ${
@@ -3795,24 +3791,24 @@ export default function CustomersPage() {
 
                             <div className="p-3 bg-purple-50 rounded-2xl border border-purple-200 flex justify-between items-center">
                                 <span className="font-bold text-purple-900">Total Refund / Credit Value:</span>
-                                <span className="text-base font-black text-purple-900 font-mono">
+                                <span className="text-sm sm:text-base font-black text-purple-900 font-mono">
                                     Rs. {refundAmount.toLocaleString()}
                                 </span>
                             </div>
                         </div>
 
-                        <div className="flex justify-end gap-2 pt-3 border-t">
+                        <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-3 border-t">
                             <button
                                 type="button"
                                 onClick={() => setReturnModalOpen(false)}
-                                className="px-4 py-2 border rounded-xl text-xs font-semibold text-gray-600 hover:bg-gray-50 cursor-pointer"
+                                className="w-full sm:w-auto px-4 py-2 border rounded-xl text-xs font-semibold text-gray-600 hover:bg-gray-50 cursor-pointer"
                             >
                                 Cancel
                             </button>
                             <button
                                 type="submit"
                                 disabled={returnSubmitting || refundAmount <= 0}
-                                className="px-5 py-2 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-bold shadow-md cursor-pointer disabled:opacity-50 flex items-center gap-1.5 transition-all"
+                                className="w-full sm:w-auto px-5 py-2 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-bold shadow-md cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5 transition-all"
                             >
                                 <IconReturn className="w-3.5 h-3.5" />
                                 <span>{returnSubmitting ? 'Processing...' : 'Issue Credit Note & Restock'}</span>

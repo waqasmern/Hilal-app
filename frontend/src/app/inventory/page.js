@@ -1713,7 +1713,7 @@ export default function InventoryPage() {
                     </div>
 
                     {/* Filters */}
-                    <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto max-w-full pb-1 sm:pb-0 scrollbar-none w-full md:w-auto">
+                    <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto max-w-full pb-1 sm:pb-0 no-scrollbar w-full md:w-auto">
                         {/* Category Selector */}
                         <div className="shrink-0">
                             <select
@@ -3140,9 +3140,9 @@ export default function InventoryPage() {
                                                             </div>
 
                                                             {/* Formula Visual Banner */}
-                                                            <div className="bg-white p-3 rounded-xl border border-amber-300 shadow-2xs flex items-center justify-between text-xs flex-wrap gap-2">
-                                                                <div className="font-extrabold text-gray-800 flex items-center gap-1.5">
-                                                                    <IconBox className="w-4 h-4 text-[#B8860B]" />
+                                                            <div className="bg-white p-2.5 sm:p-3 rounded-xl border border-amber-300 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between text-xs gap-1.5 sm:gap-2">
+                                                                <div className="font-extrabold text-gray-800 flex items-center gap-1.5 flex-wrap">
+                                                                    <IconBox className="w-4 h-4 text-[#B8860B] shrink-0" />
                                                                     <span>Hierarchy Formula:</span>
                                                                     <span className="text-[#B8860B] font-black">
                                                                         1 {bulkPackName} = {newCartonPacketsCount || 4} {innerPackName}s = {totalCartonPieces} {baseUnitSymbol}
@@ -3563,9 +3563,9 @@ export default function InventoryPage() {
                                             <div className="space-y-2">
                                                 {hasCartonPackaging ? (
                                                     <>
-                                                        <div className="flex flex-wrap justify-between items-center text-xs bg-white p-2.5 rounded-xl border border-[#F3E5AB]">
+                                                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center text-xs bg-white p-2.5 rounded-xl border border-[#F3E5AB] gap-1 sm:gap-2">
                                                             <span className="font-bold text-[#B8860B] flex items-center gap-1.5">
-                                                                <IconBox className="w-4 h-4 text-[#B8860B]" />
+                                                                <IconBox className="w-4 h-4 text-[#B8860B] shrink-0" />
                                                                 <span>1 {bulkPackName} ({totalCartonPieces} {baseUnitName})</span>
                                                             </span>
                                                             <span className="font-semibold text-gray-700">
@@ -3573,9 +3573,9 @@ export default function InventoryPage() {
                                                             </span>
                                                         </div>
                                                         {hasInnerPackaging && (
-                                                            <div className="flex flex-wrap justify-between items-center text-xs bg-white p-2.5 rounded-xl border border-blue-200">
+                                                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center text-xs bg-white p-2.5 rounded-xl border border-blue-200 gap-1 sm:gap-2">
                                                                 <span className="font-bold text-blue-900 flex items-center gap-1.5">
-                                                                    <IconPackage className="w-4 h-4 text-blue-700" />
+                                                                    <IconPackage className="w-4 h-4 text-blue-700 shrink-0" />
                                                                     <span>1 {innerPackName} ({newInnerPiecesCount || 50} {baseUnitSymbol})</span>
                                                                 </span>
                                                                 <span className="font-semibold text-gray-700">
@@ -3583,9 +3583,9 @@ export default function InventoryPage() {
                                                                 </span>
                                                             </div>
                                                         )}
-                                                        <div className="flex flex-wrap justify-between items-center text-xs bg-white p-2.5 rounded-xl border border-[#F3E5AB]">
+                                                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center text-xs bg-white p-2.5 rounded-xl border border-[#F3E5AB] gap-1 sm:gap-2">
                                                             <span className="font-bold text-gray-800 flex items-center gap-1.5">
-                                                                <IconTag className="w-4 h-4 text-gray-600" />
+                                                                <IconTag className="w-4 h-4 text-gray-600 shrink-0" />
                                                                 <span>1 {baseUnitSymbol} (Loose Piece)</span>
                                                             </span>
                                                             <span className="font-semibold text-gray-700">
@@ -3594,9 +3594,9 @@ export default function InventoryPage() {
                                                         </div>
                                                     </>
                                                 ) : (
-                                                    <div className="flex flex-wrap justify-between items-center text-xs bg-white p-2.5 rounded-xl border border-[#F3E5AB]">
+                                                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center text-xs bg-white p-2.5 rounded-xl border border-[#F3E5AB] gap-1 sm:gap-2">
                                                         <span className="font-bold text-[#B8860B] flex items-center gap-1.5">
-                                                            <IconTag className="w-4 h-4 text-[#B8860B]" />
+                                                            <IconTag className="w-4 h-4 text-[#B8860B] shrink-0" />
                                                             <span>1 {baseUnitName} (Standalone)</span>
                                                         </span>
                                                         <span className="font-semibold text-gray-700">
@@ -3604,7 +3604,7 @@ export default function InventoryPage() {
                                                         </span>
                                                     </div>
                                                 )}
-                                                <div className="pt-2 border-t border-[#F3E5AB] flex flex-wrap justify-between items-center text-xs text-gray-700 gap-2 bg-[#FCF8E3]/60 p-2.5 rounded-xl border border-[#F3E5AB]">
+                                                <div className="pt-2 border-t border-[#F3E5AB] flex flex-col sm:flex-row justify-between items-start sm:items-center text-xs text-gray-700 gap-2 bg-[#FCF8E3]/60 p-2.5 rounded-xl border border-[#F3E5AB]">
                                                     <div>
                                                         <div className="font-bold text-gray-900 flex items-center gap-1.5">
                                                             <span>Opening Warehouse Stock:</span>
@@ -3989,9 +3989,9 @@ export default function InventoryPage() {
                                                             </div>
 
                                                             {/* Formula Visual Banner */}
-                                                            <div className="bg-white p-3 rounded-xl border border-blue-200 shadow-2xs flex items-center justify-between text-xs flex-wrap gap-2">
-                                                                <div className="font-extrabold text-gray-800 flex items-center gap-1.5">
-                                                                    <IconBox className="w-4 h-4 text-blue-700" />
+                                                            <div className="bg-white p-2.5 sm:p-3 rounded-xl border border-blue-200 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between text-xs gap-1.5 sm:gap-2">
+                                                                <div className="font-extrabold text-gray-800 flex items-center gap-1.5 flex-wrap">
+                                                                    <IconBox className="w-4 h-4 text-blue-700 shrink-0" />
                                                                     <span>Hierarchy Formula:</span>
                                                                     <span className="text-blue-900 font-black">
                                                                         1 {bulkPackName} = {editCartonPacketsCount || 4} {innerPackName}s = {totalCartonPieces} {baseUnitSymbol}
@@ -4373,9 +4373,9 @@ export default function InventoryPage() {
                                             <div className="space-y-2">
                                                 {editHasCartonPackaging ? (
                                                     <>
-                                                        <div className="flex flex-wrap justify-between items-center text-xs bg-white p-2.5 rounded-xl border border-[#F3E5AB]">
+                                                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center text-xs bg-white p-2.5 rounded-xl border border-[#F3E5AB] gap-1 sm:gap-2">
                                                             <span className="font-bold text-[#B8860B] flex items-center gap-1.5">
-                                                                <IconBox className="w-4 h-4 text-[#B8860B]" />
+                                                                <IconBox className="w-4 h-4 text-[#B8860B] shrink-0" />
                                                                 <span>1 {bulkPackName} ({totalCartonPieces} {baseUnitName})</span>
                                                             </span>
                                                             <span className="font-semibold text-gray-700">
@@ -4383,9 +4383,9 @@ export default function InventoryPage() {
                                                             </span>
                                                         </div>
                                                         {editHasInnerPackaging && (
-                                                            <div className="flex flex-wrap justify-between items-center text-xs bg-white p-2.5 rounded-xl border border-blue-200">
+                                                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center text-xs bg-white p-2.5 rounded-xl border border-blue-200 gap-1 sm:gap-2">
                                                                 <span className="font-bold text-blue-900 flex items-center gap-1.5">
-                                                                    <IconPackage className="w-4 h-4 text-blue-700" />
+                                                                    <IconPackage className="w-4 h-4 text-blue-700 shrink-0" />
                                                                     <span>1 {innerPackName} ({editInnerPiecesCount || 50} {baseUnitSymbol})</span>
                                                                 </span>
                                                                 <span className="font-semibold text-gray-700">
@@ -4393,9 +4393,9 @@ export default function InventoryPage() {
                                                                 </span>
                                                             </div>
                                                         )}
-                                                        <div className="flex flex-wrap justify-between items-center text-xs bg-white p-2.5 rounded-xl border border-[#F3E5AB]">
+                                                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center text-xs bg-white p-2.5 rounded-xl border border-[#F3E5AB] gap-1 sm:gap-2">
                                                             <span className="font-bold text-gray-800 flex items-center gap-1.5">
-                                                                <IconTag className="w-4 h-4 text-gray-600" />
+                                                                <IconTag className="w-4 h-4 text-gray-600 shrink-0" />
                                                                 <span>1 {baseUnitSymbol} (Loose Piece)</span>
                                                             </span>
                                                             <span className="font-semibold text-gray-700">
@@ -4404,9 +4404,9 @@ export default function InventoryPage() {
                                                         </div>
                                                     </>
                                                 ) : (
-                                                    <div className="flex flex-wrap justify-between items-center text-xs bg-white p-2.5 rounded-xl border border-[#F3E5AB]">
+                                                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center text-xs bg-white p-2.5 rounded-xl border border-[#F3E5AB] gap-1 sm:gap-2">
                                                         <span className="font-bold text-[#B8860B] flex items-center gap-1.5">
-                                                            <IconTag className="w-4 h-4 text-[#B8860B]" />
+                                                            <IconTag className="w-4 h-4 text-[#B8860B] shrink-0" />
                                                             <span>1 {baseUnitName} (Standalone)</span>
                                                         </span>
                                                         <span className="font-semibold text-gray-700">
