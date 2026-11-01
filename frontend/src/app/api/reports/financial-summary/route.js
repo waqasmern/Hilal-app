@@ -1,24 +1,34 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
+function getUtcBoundaries(startDate, endDate) {
+    if (!startDate || !endDate) return null;
+    const s = `${startDate}T00:00:00+05:00`;
+    const e = `${endDate}T23:59:59.999+05:00`;
+    return {
+        startUtc: new Date(s).toISOString(),
+        endUtc: new Date(e).toISOString()
+    };
+}
+
 export async function GET(request) {
     try {
         const { searchParams } = new URL(request.url);
         const startDate = searchParams.get('startDate');
         const endDate = searchParams.get('endDate');
 
+        const boundaries = getUtcBoundaries(startDate, endDate);
+
         let salesQuery = supabase.from('sales').select('*').eq('status', 'completed');
         let paymentsQuery = supabase.from('payments').select('*');
         let expensesQuery = supabase.from('expenses').select('*');
         let returnsQuery = supabase.from('sale_returns').select('*');
 
-        if (startDate && endDate) {
-            const startDt = `${startDate} 00:00:00`;
-            const endDt = `${endDate} 23:59:59`;
-            salesQuery = salesQuery.gte('created_at', startDt).lte('created_at', endDt);
-            paymentsQuery = paymentsQuery.gte('payment_date', startDate).lte('payment_date', endDate);
-            expensesQuery = expensesQuery.gte('expense_date', startDate).lte('expense_date', endDate);
-            returnsQuery = returnsQuery.gte('created_at', startDt).lte('created_at', endDt);
+        if (boundaries) {
+            salesQuery = salesQuery.gte('created_at', boundaries.startUtc).lte('created_at', boundaries.endUtc);
+            paymentsQuery = paymentsQuery.gte('created_at', boundaries.startUtc).lte('created_at', boundaries.endUtc);
+            expensesQuery = expensesQuery.gte('created_at', boundaries.startUtc).lte('created_at', boundaries.endUtc);
+            returnsQuery = returnsQuery.gte('created_at', boundaries.startUtc).lte('created_at', boundaries.endUtc);
         }
 
         const [salesRes, paymentsRes, expensesRes, returnsRes] = await Promise.all([
@@ -88,8 +98,7 @@ export async function GET(request) {
         const newDuesAdded = netNewDuesAdded;
         const totalSale = totalGrossSale > 0 ? totalGrossSale : (totalNetSale + totalDiscount);
 
-        // Exact Formula:
-        // grossRevenue = totalSale + recoveredDues - newDuesAdded - expenses - discount - stockPaid - totalReturns;
+        // Standard gross revenue formula matching backend/server.js
         const grossRevenue = totalSale + recoveredDues - newDuesAdded - expenses - totalDiscount - stockPaid - totalReturns;
 
         return NextResponse.json({

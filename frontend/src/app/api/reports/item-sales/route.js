@@ -1,11 +1,23 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
+function getUtcBoundaries(startDate, endDate) {
+    if (!startDate || !endDate) return null;
+    const s = `${startDate}T00:00:00+05:00`;
+    const e = `${endDate}T23:59:59.999+05:00`;
+    return {
+        startUtc: new Date(s).toISOString(),
+        endUtc: new Date(e).toISOString()
+    };
+}
+
 export async function GET(request) {
     try {
         const { searchParams } = new URL(request.url);
         const startDate = searchParams.get('startDate');
         const endDate = searchParams.get('endDate');
+
+        const boundaries = getUtcBoundaries(startDate, endDate);
 
         let query = supabase.from('sale_items').select(`
             *,
@@ -16,8 +28,8 @@ export async function GET(request) {
             packaging_types ( id, name )
         `);
 
-        if (startDate && endDate) {
-            query = query.gte('created_at', `${startDate} 00:00:00`).lte('created_at', `${endDate} 23:59:59`);
+        if (boundaries) {
+            query = query.gte('created_at', boundaries.startUtc).lte('created_at', boundaries.endUtc);
         }
 
         const { data: items, error } = await query;
