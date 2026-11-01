@@ -232,10 +232,10 @@ export default function WholesaleA4InvoiceModal({
     const isPdfLoading = downloadingPdf || internalDownloadingPdf;
 
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-2 sm:p-4 md:p-6 overflow-hidden animate-in fade-in duration-150">
-            <div className="bg-white rounded-2xl sm:rounded-3xl max-w-4xl xl:max-w-5xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-gray-200 overflow-hidden">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-1.5 sm:p-4 md:p-6 overflow-hidden animate-in fade-in duration-150">
+            <div className="bg-white rounded-2xl sm:rounded-3xl max-w-4xl xl:max-w-5xl w-full max-h-[96vh] sm:max-h-[92vh] flex flex-col shadow-2xl border border-gray-200 overflow-hidden">
                 {/* 1. PINNED MODAL HEADER & ACTION BUTTONS */}
-                <div className="shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 sm:px-6 sm:py-4 border-b border-gray-200 bg-white">
+                <div className="shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3 p-3 sm:px-6 sm:py-4 border-b border-gray-200 bg-white">
                     <div>
                         <div className="flex items-center gap-2">
                             <h3 className="font-extrabold text-gray-900 text-sm sm:text-base">
@@ -257,17 +257,17 @@ export default function WholesaleA4InvoiceModal({
                     </div>
 
                     {/* ACTION BUTTONS (SOLID BLACK & EMERALD PER CLIENT SPECIFICATION) */}
-                    <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                    <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-1.5 shrink-0 w-full sm:w-auto">
                         {onSendWhatsApp && (
                             <button
                                 type="button"
                                 onClick={() => onSendWhatsApp(invoice)}
                                 disabled={waSending}
-                                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow-xs transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                                className="px-2.5 sm:px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 text-center"
                                 title="Send this invoice bill PDF directly to customer via WhatsApp"
                             >
-                                <IconWhatsApp className="w-3.5 h-3.5 text-white" />
-                                <span>{waSending ? 'Sending Bill...' : 'Send WA Bill'}</span>
+                                <IconWhatsApp className="w-3.5 h-3.5 text-white shrink-0" />
+                                <span className="truncate">{waSending ? 'Sending...' : 'Send WA'}</span>
                             </button>
                         )}
 
@@ -275,11 +275,11 @@ export default function WholesaleA4InvoiceModal({
                             type="button"
                             onClick={handlePrint}
                             style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                            className="btn-black !bg-black !text-white px-3 py-1.5 rounded-xl font-bold text-xs shadow-xs flex items-center gap-1.5 hover:opacity-90 active:scale-95 transition-all cursor-pointer"
+                            className="btn-black !bg-black !text-white px-2.5 sm:px-3 py-1.5 rounded-xl font-bold text-xs shadow-xs flex items-center justify-center gap-1.5 hover:opacity-90 active:scale-95 transition-all cursor-pointer text-center"
                             title="Print standard A4 Wholesale Invoice"
                         >
-                            <IconPrinter className="w-3.5 h-3.5 text-white" />
-                            <span>Print Invoice</span>
+                            <IconPrinter className="w-3.5 h-3.5 text-white shrink-0" />
+                            <span className="truncate">Print Invoice</span>
                         </button>
 
                         <button
@@ -287,18 +287,18 @@ export default function WholesaleA4InvoiceModal({
                             onClick={handleDownloadPdfInternal}
                             disabled={isPdfLoading}
                             style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                            className="btn-black !bg-black !text-white px-3 py-1.5 rounded-xl font-bold text-xs shadow-xs flex items-center gap-1.5 hover:opacity-90 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
+                            className="btn-black !bg-black !text-white px-2.5 sm:px-3 py-1.5 rounded-xl font-bold text-xs shadow-xs flex items-center justify-center gap-1.5 hover:opacity-90 active:scale-95 transition-all cursor-pointer disabled:opacity-50 text-center"
                             title="Export and Download as A4 PDF"
                         >
                             {isPdfLoading ? (
                                 <>
-                                    <IconSpinner className="w-3.5 h-3.5 text-white" />
-                                    <span>Downloading...</span>
+                                    <IconSpinner className="w-3.5 h-3.5 text-white shrink-0" />
+                                    <span className="truncate">Exporting...</span>
                                 </>
                             ) : (
                                 <>
-                                    <IconDownload className="w-3.5 h-3.5 text-white" />
-                                    <span>Download PDF (A4)</span>
+                                    <IconDownload className="w-3.5 h-3.5 text-white shrink-0" />
+                                    <span className="truncate">PDF (A4)</span>
                                 </>
                             )}
                         </button>
@@ -311,11 +311,11 @@ export default function WholesaleA4InvoiceModal({
                                     onOpenThermal();
                                 }}
                                 style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                className="btn-black !bg-black !text-white px-3 py-1.5 rounded-xl font-bold text-xs shadow-xs flex items-center gap-1.5 hover:opacity-90 active:scale-95 transition-all cursor-pointer"
+                                className="btn-black !bg-black !text-white px-2.5 sm:px-3 py-1.5 rounded-xl font-bold text-xs shadow-xs flex items-center justify-center gap-1.5 hover:opacity-90 active:scale-95 transition-all cursor-pointer text-center"
                                 title="Open 80mm thermal receipt modal"
                             >
-                                <IconReceipt className="w-3.5 h-3.5 text-white" />
-                                <span>Thermal Receipt</span>
+                                <IconReceipt className="w-3.5 h-3.5 text-white shrink-0" />
+                                <span className="truncate">Thermal</span>
                             </button>
                         )}
 
@@ -323,7 +323,7 @@ export default function WholesaleA4InvoiceModal({
                             type="button"
                             onClick={onClose}
                             style={{ backgroundColor: '#ffffff', color: '#000000', border: '1px solid #d1d5db' }}
-                            className="px-3 py-1.5 rounded-xl font-bold text-xs hover:bg-gray-100 transition-all cursor-pointer"
+                            className="col-span-2 sm:col-span-1 px-3 py-1.5 rounded-xl font-bold text-xs hover:bg-gray-100 transition-all cursor-pointer text-center"
                         >
                             Close
                         </button>
@@ -331,10 +331,10 @@ export default function WholesaleA4InvoiceModal({
                 </div>
 
                 {/* 2. SCROLLABLE A4 PRINTABLE BILL CONTAINER */}
-                <div className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-5 md:p-6 bg-gray-100/70">
+                <div className="flex-1 min-h-0 overflow-y-auto p-2 sm:p-5 md:p-6 bg-gray-100/70">
                     <div
                         id={elemId}
-                        className="bg-white p-4 sm:p-6 border border-gray-300 rounded-xl space-y-3.5 text-gray-900 text-xs font-sans shadow-xs max-w-4xl mx-auto"
+                        className="bg-white p-3 sm:p-6 border border-gray-300 rounded-xl space-y-3.5 text-gray-900 text-xs font-sans shadow-xs max-w-4xl mx-auto overflow-x-hidden"
                     >
                         {/* Bill Header: Left Side (Shop Info & Logo) | Right Side (Invoice & Customer Details) */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-3 border-b border-gray-300">
@@ -430,8 +430,8 @@ export default function WholesaleA4InvoiceModal({
                         </div>
 
                         {/* Line Items Table with Unified Quantity Column & Responsive Horizontal Scroll */}
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left text-xs border-collapse border-t border-b border-gray-300 my-2">
+                        <div className="overflow-x-auto w-full border border-gray-200 rounded-lg my-2">
+                            <table className="w-full text-left text-xs border-collapse min-w-[580px] sm:min-w-[640px]">
                                 <thead>
                                     <tr className="border-b border-gray-300 font-bold text-emerald-700 bg-gray-50/70">
                                         <th className="py-2 px-2 text-center w-8">#</th>
@@ -549,7 +549,7 @@ export default function WholesaleA4InvoiceModal({
                                     </span>
                                     <span className="text-[10px] text-gray-500 font-medium">WhatsApp proof: {settings?.shop_phone || ''}</span>
                                 </div>
-                                <div className={`grid gap-2 ${bankAccounts.length === 1 ? 'grid-cols-1' : bankAccounts.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+                                <div className="grid gap-2 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
                                     {bankAccounts.map((acc, idx) => (
                                         <div key={idx} className="p-2 border border-gray-300 rounded-lg bg-gray-50/70 text-[10.5px] leading-tight space-y-0.5">
                                             <div className="font-bold text-gray-900 flex items-center justify-between">

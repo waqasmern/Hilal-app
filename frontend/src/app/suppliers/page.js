@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useSelector } from 'react-redux';
 import CustomModalAlert from '../components/CustomModalAlert';
+import { apiUrl } from '../../lib/api';
 import {
     IconPlus, IconClose, IconSuppliers, IconBill,
     IconPayments, IconWhatsApp, IconEdit, IconTrash,
@@ -418,7 +419,7 @@ export default function SuppliersPage() {
             if (search && search.trim()) params.append('search', search.trim());
             if (status && status !== 'all') params.append('status', status);
 
-            const res = await fetch(`http://localhost:5000/api/suppliers?${params.toString()}`);
+            const res = await fetch(apiUrl(`/api/suppliers?${params.toString()}`));
             if (res.ok) {
                 const result = await res.json();
                 if (result && result.pagination) {
@@ -486,7 +487,7 @@ export default function SuppliersPage() {
 
     const fetchKpis = async () => {
         try {
-            const res = await fetch('http://localhost:5000/api/suppliers/kpis');
+            const res = await fetch(apiUrl('/api/suppliers/kpis'));
             if (res.ok) {
                 const data = await res.json();
                 setKpis(data);
@@ -513,7 +514,7 @@ export default function SuppliersPage() {
         }
 
         try {
-            globalProductsPromise = fetch('http://localhost:5000/api/products').then(res => res.json());
+            globalProductsPromise = fetch(apiUrl('/api/products')).then(res => res.json());
             const data = await globalProductsPromise;
             if (Array.isArray(data)) {
                 // Precompute lowercase search index for instant filtering
@@ -536,7 +537,7 @@ export default function SuppliersPage() {
     const handleOpenDetails = async (supplier) => {
         setActiveSupplier(supplier);
         try {
-            const res = await fetch(`http://localhost:5000/api/suppliers/${supplier.id}/details`);
+            const res = await fetch(apiUrl(`/api/suppliers/${supplier.id}/details`));
             if (res.ok) {
                 const data = await res.json();
                 setSupplierDetails(data);
@@ -563,7 +564,7 @@ export default function SuppliersPage() {
         setPayFifoModalOpen(true);
 
         try {
-            const res = await fetch(`http://localhost:5000/api/suppliers/${supplier.id}/details`);
+            const res = await fetch(apiUrl(`/api/suppliers/${supplier.id}/details`));
             if (res.ok) {
                 const data = await res.json();
                 setSupplierDetails(data);
@@ -584,7 +585,7 @@ export default function SuppliersPage() {
             const headers = { 'Content-Type': 'application/json' };
             if (token && token !== 'null' && token !== 'undefined') headers['Authorization'] = `Bearer ${token}`;
 
-            let res = await fetch(`http://localhost:5000/api/suppliers/${activeSupplier.id}/pay-fifo`, {
+            let res = await fetch(apiUrl(`/api/suppliers/${activeSupplier.id}/pay-fifo`), {
                 method: 'POST',
                 headers,
                 body: JSON.stringify(payForm)
@@ -592,7 +593,7 @@ export default function SuppliersPage() {
 
             // Resilient Fallback: If /pay-fifo endpoint is 404 (e.g. backend process not restarted), use /api/payments
             if (res.status === 404) {
-                res = await fetch('http://localhost:5000/api/payments', {
+                res = await fetch(apiUrl('/api/payments'), {
                     method: 'POST',
                     headers,
                     body: JSON.stringify({
@@ -635,7 +636,7 @@ export default function SuppliersPage() {
     const refreshActiveSupplierLedger = async (supplierId) => {
         if (!supplierId) return;
         try {
-            const res = await fetch(`http://localhost:5000/api/suppliers/${supplierId}/ledger`);
+            const res = await fetch(apiUrl(`/api/suppliers/${supplierId}/ledger`));
             if (res.ok) {
                 const data = await res.json();
                 setActiveLedger(data.ledger || []);
@@ -816,7 +817,7 @@ export default function SuppliersPage() {
             const headers = { 'Content-Type': 'application/json' };
             if (token && token !== 'null' && token !== 'undefined') headers['Authorization'] = `Bearer ${token}`;
 
-            const res = await fetch('http://localhost:5000/api/purchases', {
+            const res = await fetch(apiUrl('/api/purchases'), {
                 method: 'POST',
                 headers,
                 body: JSON.stringify({
@@ -863,7 +864,7 @@ export default function SuppliersPage() {
         setPurchaseDetailLoading(true);
         setPurchaseDetailModalOpen(true);
         try {
-            const res = await fetch(`http://localhost:5000/api/purchases/${purchaseId}`);
+            const res = await fetch(apiUrl(`/api/purchases/${purchaseId}`));
             if (res.ok) {
                 const data = await res.json();
                 setSelectedPurchaseDetail(data);
@@ -892,7 +893,7 @@ export default function SuppliersPage() {
         e.preventDefault();
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch(`http://localhost:5000/api/suppliers/${editForm.id}`, {
+            const res = await fetch(apiUrl(`/api/suppliers/${editForm.id}`), {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -929,7 +930,7 @@ export default function SuppliersPage() {
                     const headers = {};
                     if (token && token !== 'null' && token !== 'undefined') headers['Authorization'] = `Bearer ${token}`;
 
-                    const res = await fetch(`http://localhost:5000/api/suppliers/${supplier.id}`, {
+                    const res = await fetch(apiUrl(`/api/suppliers/${supplier.id}`), {
                         method: 'DELETE',
                         headers
                     });
@@ -957,7 +958,7 @@ export default function SuppliersPage() {
             const headers = { 'Content-Type': 'application/json' };
             if (token && token !== 'null' && token !== 'undefined') headers['Authorization'] = `Bearer ${token}`;
 
-            const res = await fetch('http://localhost:5000/api/suppliers', {
+            const res = await fetch(apiUrl('/api/suppliers'), {
                 method: 'POST',
                 headers,
                 body: JSON.stringify(addForm)
@@ -1015,10 +1016,10 @@ export default function SuppliersPage() {
     return (
         <div className="space-y-6 pb-12">
             {/* TOP HEADER: Title & + Add Supplier Button */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white p-6 rounded-2xl border border-[#F3E5AB] shadow-xs gap-4">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white p-4 sm:p-6 rounded-2xl border border-[#F3E5AB] shadow-xs gap-3 sm:gap-4">
                 <div>
-                    <h1 className="text-xl font-extrabold text-gray-900 flex items-center gap-2">
-                        <IconSuppliers className="w-6 h-6 text-[#B8860B]" />
+                    <h1 className="text-lg sm:text-xl font-extrabold text-gray-900 flex items-center gap-2">
+                        <IconSuppliers className="w-5 sm:w-6 h-5 sm:h-6 text-[#B8860B] shrink-0" />
                         <span>Supplier Accounts & Stock Inward</span>
                     </h1>
                     <p className="text-xs text-gray-500 mt-0.5">
@@ -1029,7 +1030,7 @@ export default function SuppliersPage() {
                 {/* Right Side "+ Add Supplier" Button */}
                 <button
                     onClick={() => setAddModalOpen(true)}
-                    className="px-5 py-2.5 gold-gradient hover:opacity-90 text-white rounded-xl font-bold text-xs shadow-md transition-all flex items-center gap-2 shrink-0 cursor-pointer"
+                    className="w-full sm:w-auto justify-center px-4 sm:px-5 py-2.5 gold-gradient hover:opacity-90 text-white rounded-xl font-bold text-xs shadow-md transition-all flex items-center gap-2 shrink-0 cursor-pointer"
                 >
                     <IconPlus className="w-4 h-4 text-[#FEF9E7]" />
                     <span>+ Add Supplier</span>
@@ -1037,75 +1038,75 @@ export default function SuppliersPage() {
             </div>
 
             {/* KPI STATS CARDS */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
                 {/* KPI 1: Total Stock Added */}
-                <div className="bg-white p-5 rounded-2xl border border-[#F3E5AB] shadow-xs space-y-2">
+                <div className="bg-white p-3.5 sm:p-5 rounded-xl sm:rounded-2xl border border-[#F3E5AB] shadow-xs space-y-1 sm:space-y-2">
                     <div className="flex items-center justify-between text-xs font-semibold text-gray-500">
-                        <span>Total Stock Added</span>
-                        <div className="p-2 rounded-xl bg-amber-50 text-[#B8860B]">
-                            <IconInventory className="w-4 h-4" />
+                        <span className="truncate">Total Stock Added</span>
+                        <div className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-amber-50 text-[#B8860B] shrink-0">
+                            <IconInventory className="w-3.5 sm:w-4 h-3.5 sm:h-4" />
                         </div>
                     </div>
-                    <div className="text-2xl font-black text-gray-900 tracking-tight">
+                    <div className="text-lg sm:text-2xl font-black text-gray-900 tracking-tight truncate">
                         Rs. {Number(totalStockAddedValue || 0).toLocaleString()}
                     </div>
-                    <div className="text-[11px] text-gray-500 font-medium flex items-center gap-1">
+                    <div className="text-[10px] sm:text-[11px] text-gray-500 font-medium flex items-center gap-1 truncate">
                         <span className="font-bold text-[#B8860B]">{totalPurchasesCount || 0}</span>
-                        <span>inward purchase bills recorded</span>
+                        <span>inward bills</span>
                     </div>
                 </div>
 
                 {/* KPI 2: Total Paid to Suppliers */}
-                <div className="bg-white p-5 rounded-2xl border border-[#F3E5AB] shadow-xs space-y-2">
+                <div className="bg-white p-3.5 sm:p-5 rounded-xl sm:rounded-2xl border border-[#F3E5AB] shadow-xs space-y-1 sm:space-y-2">
                     <div className="flex items-center justify-between text-xs font-semibold text-gray-500">
-                        <span>Total Amount Paid</span>
-                        <div className="p-2 rounded-xl bg-emerald-50 text-emerald-700">
-                            <IconPayments className="w-4 h-4" />
+                        <span className="truncate">Total Paid</span>
+                        <div className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-emerald-50 text-emerald-700 shrink-0">
+                            <IconPayments className="w-3.5 sm:w-4 h-3.5 sm:h-4" />
                         </div>
                     </div>
-                    <div className="text-2xl font-black text-emerald-700 tracking-tight">
+                    <div className="text-lg sm:text-2xl font-black text-emerald-700 tracking-tight truncate">
                         Rs. {Number(totalPaidValue || 0).toLocaleString()}
                     </div>
-                    <div className="text-[11px] text-gray-500 font-medium">
-                        Cleared via cash, bank & FIFO payments
+                    <div className="text-[10px] sm:text-[11px] text-gray-500 font-medium truncate">
+                        Cleared via cash, bank & FIFO
                     </div>
                 </div>
 
                 {/* KPI 3: Total Pending / Payables */}
-                <div className="bg-white p-5 rounded-2xl border border-[#F3E5AB] shadow-xs space-y-2">
+                <div className="bg-white p-3.5 sm:p-5 rounded-xl sm:rounded-2xl border border-[#F3E5AB] shadow-xs space-y-1 sm:space-y-2">
                     <div className="flex items-center justify-between text-xs font-semibold text-gray-500">
-                        <span>Outstanding Payables</span>
-                        <div className="p-2 rounded-xl bg-rose-50 text-rose-600">
-                            <IconWarning className="w-4 h-4" />
+                        <span className="truncate">Outstanding Payables</span>
+                        <div className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-rose-50 text-rose-600 shrink-0">
+                            <IconWarning className="w-3.5 sm:w-4 h-3.5 sm:h-4" />
                         </div>
                     </div>
-                    <div className="text-2xl font-black text-rose-600 tracking-tight">
+                    <div className="text-lg sm:text-2xl font-black text-rose-600 tracking-tight truncate">
                         Rs. {Number(totalPayablesAmount || 0).toLocaleString()}
                     </div>
-                    <div className="text-[11px] text-rose-700 font-medium">
-                        Current net amount owed to vendors
+                    <div className="text-[10px] sm:text-[11px] text-rose-700 font-medium truncate">
+                        Net amount owed to vendors
                     </div>
                 </div>
 
                 {/* KPI 4: Active Suppliers */}
-                <div className="bg-white p-5 rounded-2xl border border-[#F3E5AB] shadow-xs space-y-2">
+                <div className="bg-white p-3.5 sm:p-5 rounded-xl sm:rounded-2xl border border-[#F3E5AB] shadow-xs space-y-1 sm:space-y-2">
                     <div className="flex items-center justify-between text-xs font-semibold text-gray-500">
-                        <span>Registered Vendors</span>
-                        <div className="p-2 rounded-xl bg-[#FEF9E7] text-[#B8860B]">
-                            <IconSuppliers className="w-4 h-4" />
+                        <span className="truncate">Registered Vendors</span>
+                        <div className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-[#FEF9E7] text-[#B8860B] shrink-0">
+                            <IconSuppliers className="w-3.5 sm:w-4 h-3.5 sm:h-4" />
                         </div>
                     </div>
-                    <div className="text-2xl font-black text-[#B8860B]">
+                    <div className="text-lg sm:text-2xl font-black text-[#B8860B] truncate">
                         {totalSuppliersCount} Vendors
                     </div>
-                    <div className="text-[11px] text-gray-500 font-medium">
+                    <div className="text-[10px] sm:text-[11px] text-gray-500 font-medium truncate">
                         Active wholesale accounts
                     </div>
                 </div>
             </div>
 
             {/* SEARCH & FILTERS BAR */}
-            <div className="flex flex-col sm:flex-row justify-between items-center gap-3 bg-white p-3.5 rounded-2xl border border-[#F3E5AB] shadow-xs">
+            <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2.5 sm:gap-3 bg-white p-3 sm:p-3.5 rounded-2xl border border-[#F3E5AB] shadow-xs">
                 <div className="relative w-full sm:w-80">
                     <IconSearch className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                     <input
@@ -1132,13 +1133,13 @@ export default function SuppliersPage() {
                     )}
                 </div>
 
-                <div className="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto text-xs font-bold">
+                <div className="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto text-xs font-bold no-scrollbar py-0.5">
                     <button
                         onClick={() => {
                             setStatusFilter('all');
                             setCurrentPage(1);
                         }}
-                        className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${statusFilter === 'all'
+                        className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer whitespace-nowrap ${statusFilter === 'all'
                                 ? 'gold-gradient text-white shadow-xs'
                                 : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                             }`}
@@ -1150,7 +1151,7 @@ export default function SuppliersPage() {
                             setStatusFilter('pending');
                             setCurrentPage(1);
                         }}
-                        className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${statusFilter === 'pending'
+                        className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer whitespace-nowrap ${statusFilter === 'pending'
                                 ? 'bg-rose-600 text-white shadow-xs'
                                 : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                             }`}
@@ -1162,7 +1163,7 @@ export default function SuppliersPage() {
                             setStatusFilter('cleared');
                             setCurrentPage(1);
                         }}
-                        className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${statusFilter === 'cleared'
+                        className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer whitespace-nowrap ${statusFilter === 'cleared'
                                 ? 'bg-emerald-700 text-white shadow-xs'
                                 : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                             }`}
@@ -1172,9 +1173,9 @@ export default function SuppliersPage() {
                 </div>
             </div>
 
-            {/* MAIN SUPPLIERS TABLE */}
+            {/* MAIN SUPPLIERS TABLE & MOBILE VIEW */}
             <div className="bg-white rounded-2xl border border-[#F3E5AB] shadow-xs overflow-hidden">
-                <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+                <div className="p-3.5 sm:p-4 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div>
                         <h2 className="font-extrabold text-sm text-gray-900 flex items-center gap-2">
                             <span>Wholesale Suppliers Directory</span>
@@ -1186,12 +1187,122 @@ export default function SuppliersPage() {
                             Click any supplier row to view complete purchase bills, ledger statements & payment vouchers
                         </p>
                     </div>
-                    <span className="text-xs font-bold text-gray-500 bg-gray-100 px-2.5 py-1 rounded-lg">
+                    <span className="text-xs font-bold text-gray-500 bg-gray-100 px-2.5 py-1 rounded-lg self-start sm:self-auto">
                         {totalServerSuppliers} Vendors
                     </span>
                 </div>
 
-                <div className="overflow-x-auto lg:overflow-x-visible w-full px-4 pt-3 pb-2">
+                {/* MOBILE CARDS VIEW (block md:hidden) */}
+                <div className="block md:hidden p-3 space-y-3">
+                    {tableLoading && paginatedSuppliers.length === 0 ? (
+                        Array.from({ length: 3 }).map((_, i) => (
+                            <div key={`m-skel-${i}`} className="p-3.5 bg-gray-50/70 rounded-xl border border-gray-200 animate-pulse space-y-2">
+                                <div className="h-4 bg-gray-200 rounded w-1/2" />
+                                <div className="h-3 bg-gray-200 rounded w-1/3" />
+                            </div>
+                        ))
+                    ) : paginatedSuppliers.length === 0 ? (
+                        <div className="py-10 text-center text-gray-400 bg-gray-50/50 rounded-xl border border-dashed border-gray-200 p-4">
+                            <IconSuppliers className="w-10 h-10 mx-auto text-gray-300 mb-2" />
+                            <div className="font-bold text-gray-700 text-xs">No wholesale suppliers found</div>
+                        </div>
+                    ) : (
+                        paginatedSuppliers.map((sup) => {
+                            const hasPending = (sup.balance || 0) > 0.01;
+                            const initials = sup.name
+                                ? sup.name.split(' ').map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()
+                                : 'SP';
+
+                            return (
+                                <div
+                                    key={`m-${sup.id}`}
+                                    onClick={() => handleOpenLedger(sup)}
+                                    className="p-3.5 bg-white border border-gray-200/90 hover:border-[#D4AF37]/60 rounded-xl shadow-2xs space-y-2.5 transition-all cursor-pointer"
+                                >
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div className="flex items-center gap-2.5 min-w-0">
+                                            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#FEF9E7] to-[#FDF4D1] border border-[#F3E5AB] flex items-center justify-center font-black text-xs text-[#B8860B] shrink-0">
+                                                {initials}
+                                            </div>
+                                            <div className="min-w-0">
+                                                <div className="font-bold text-gray-900 text-sm truncate">{sup.name}</div>
+                                                <div className="text-[10.5px] text-gray-500 truncate">
+                                                    {sup.company_name || 'Individual Vendor'} • {sup.phone || 'No phone'}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <span className={`px-2 py-0.5 rounded-full text-[9.5px] font-bold shrink-0 ${
+                                            hasPending
+                                                ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                                                : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                        }`}>
+                                            {hasPending ? 'Pending Due' : 'Cleared (Rs. 0)'}
+                                        </span>
+                                    </div>
+
+                                    <div className="grid grid-cols-3 gap-1.5 p-2 bg-gray-50 rounded-lg text-center text-[10.5px]">
+                                        <div>
+                                            <div className="text-gray-400 font-medium">Inward Bills</div>
+                                            <div className="font-bold text-gray-800">{sup.total_purchases || 0} Bills</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-gray-400 font-medium">Total Paid</div>
+                                            <div className="font-bold text-emerald-700">Rs. {Math.round(sup.total_paid || 0).toLocaleString()}</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-gray-400 font-medium">Net Due</div>
+                                            <div className={`font-black ${hasPending ? 'text-rose-600' : 'text-emerald-700'}`}>
+                                                Rs. {Math.round(Math.abs(sup.balance || 0)).toLocaleString()}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center justify-between gap-2 pt-1 border-t border-gray-100" onClick={(e) => e.stopPropagation()}>
+                                        <div className="flex items-center gap-1.5 flex-1">
+                                            <button
+                                                type="button"
+                                                onClick={() => handleOpenAddBill(sup)}
+                                                className="flex-1 py-1 px-2 bg-amber-50 hover:bg-amber-100 text-[#B8860B] rounded-lg font-bold text-[11px] border border-amber-200 transition-all flex items-center justify-center gap-1"
+                                            >
+                                                <IconBill className="w-3 h-3 text-[#B8860B]" />
+                                                <span>+ Bill</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleOpenPayFifo(sup)}
+                                                className="flex-1 py-1 px-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-lg font-bold text-[11px] border border-emerald-200 transition-all flex items-center justify-center gap-1"
+                                            >
+                                                <IconPayments className="w-3 h-3 text-emerald-700" />
+                                                <span>Pay</span>
+                                            </button>
+                                        </div>
+                                        <div className="flex items-center gap-1 shrink-0">
+                                            <button
+                                                type="button"
+                                                onClick={() => handleOpenLedger(sup)}
+                                                className="p-1.5 bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-lg border border-gray-200"
+                                                title="View Ledger"
+                                            >
+                                                <IconReceipt className="w-3.5 h-3.5" />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setActionModalSupplier(sup)}
+                                                className="p-1.5 bg-gray-50 hover:bg-amber-50 text-gray-600 rounded-lg border border-gray-200"
+                                                title="More"
+                                            >
+                                                <IconDotsVertical className="w-3.5 h-3.5" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })
+                    )}
+                </div>
+
+                {/* DESKTOP DATA TABLE (hidden md:block) */}
+                <div className="hidden md:block overflow-x-auto lg:overflow-x-visible w-full px-4 pt-3 pb-2">
                     <table className="w-full text-left text-xs border-separate border-spacing-y-2.5">
                         <thead>
                             <tr className="text-gray-500 font-bold uppercase tracking-wider text-[10.5px]">
@@ -1648,13 +1759,13 @@ export default function SuppliersPage() {
             {/* MODAL 1: SUPPLIER DETAILS (Purchases & Payments on Row Click) */}
             {/* ───────────────────────────────────────────────────────────── */}
             {detailsModalOpen && activeSupplier && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden border border-[#F3E5AB]">
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-2 sm:p-4 overflow-y-auto">
+                    <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[96vh] sm:max-h-[90vh] flex flex-col shadow-2xl overflow-hidden border border-[#F3E5AB]">
                         {/* Header */}
-                        <div className="p-5 border-b border-gray-100 bg-[#FEF9E7]/70 flex items-start justify-between">
+                        <div className="p-3.5 sm:p-5 border-b border-gray-100 bg-[#FEF9E7]/70 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shrink-0">
                             <div>
-                                <div className="flex items-center gap-2">
-                                    <h3 className="font-black text-gray-900 text-lg">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <h3 className="font-black text-gray-900 text-base sm:text-lg">
                                         {activeSupplier.name}
                                     </h3>
                                     <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-white border border-[#F3E5AB] text-gray-700">
@@ -1667,10 +1778,10 @@ export default function SuppliersPage() {
                                 </div>
                             </div>
 
-                            <div className="flex items-center gap-4">
-                                <div className="text-right">
+                            <div className="flex items-center justify-between sm:justify-end gap-4 w-full sm:w-auto">
+                                <div className="text-left sm:text-right">
                                     <div className="text-[10px] uppercase font-bold text-gray-400">Current Payable</div>
-                                    <div className="text-xl font-black text-rose-600">
+                                    <div className="text-lg sm:text-xl font-black text-rose-600">
                                         Rs. {Number(activeSupplier.balance || 0).toLocaleString()}
                                     </div>
                                 </div>
@@ -1684,10 +1795,10 @@ export default function SuppliersPage() {
                         </div>
 
                         {/* Tabs: Purchases vs Payments */}
-                        <div className="flex items-center gap-2 p-3 border-b border-gray-100 bg-white">
+                        <div className="flex items-center gap-2 p-2.5 sm:p-3 border-b border-gray-100 bg-white overflow-x-auto no-scrollbar shrink-0">
                             <button
                                 onClick={() => setActiveDetailTab('purchases')}
-                                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${activeDetailTab === 'purchases'
+                                className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${activeDetailTab === 'purchases'
                                         ? 'gold-gradient text-white shadow-xs'
                                         : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                                     }`}
@@ -1698,7 +1809,7 @@ export default function SuppliersPage() {
 
                             <button
                                 onClick={() => setActiveDetailTab('payments')}
-                                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${activeDetailTab === 'payments'
+                                className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${activeDetailTab === 'payments'
                                         ? 'gold-gradient text-white shadow-xs'
                                         : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                                     }`}
@@ -1707,13 +1818,13 @@ export default function SuppliersPage() {
                                 <span>Payment Vouchers ({supplierDetails.payments?.length || 0})</span>
                             </button>
 
-                            <div className="ml-auto flex items-center gap-2">
+                            <div className="ml-auto flex items-center gap-2 shrink-0">
                                 <button
                                     onClick={() => {
                                         setDetailsModalOpen(false);
                                         handleOpenAddBill(activeSupplier);
                                     }}
-                                    className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-[#B8860B] rounded-xl font-bold text-xs border border-amber-200 cursor-pointer"
+                                    className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-[#B8860B] rounded-xl font-bold text-xs border border-amber-200 cursor-pointer whitespace-nowrap"
                                 >
                                     + Add Bill
                                 </button>
@@ -1722,7 +1833,7 @@ export default function SuppliersPage() {
                                         setDetailsModalOpen(false);
                                         handleOpenPayFifo(activeSupplier);
                                     }}
-                                    className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-bold text-xs shadow-xs cursor-pointer"
+                                    className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-bold text-xs shadow-xs cursor-pointer whitespace-nowrap"
                                 >
                                     Pay (FIFO)
                                 </button>
@@ -1730,7 +1841,7 @@ export default function SuppliersPage() {
                         </div>
 
                         {/* Tab Content */}
-                        <div className="flex-1 overflow-y-auto p-4 min-h-0">
+                        <div className="flex-1 overflow-y-auto p-3 sm:p-4 min-h-0">
                             {/* TAB 1: PURCHASES */}
                             {activeDetailTab === 'purchases' && (
                                 <div className="space-y-3">
@@ -1739,51 +1850,53 @@ export default function SuppliersPage() {
                                             No purchase bills found for this supplier.
                                         </div>
                                     ) : (
-                                        <table className="w-full text-left text-xs border-collapse">
-                                            <thead>
-                                                <tr className="bg-gray-50 border-b border-gray-200 text-gray-600 font-bold uppercase text-[10px]">
-                                                    <th className="p-2.5">Date</th>
-                                                    <th className="p-2.5">Invoice #</th>
-                                                    <th className="p-2.5 text-center">Items</th>
-                                                    <th className="p-2.5 text-right">Gross Total</th>
-                                                    <th className="p-2.5 text-right">Amount Paid</th>
-                                                    <th className="p-2.5 text-right">Remaining Due</th>
-                                                    <th className="p-2.5 text-center">Status</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-gray-100">
-                                                {supplierDetails.purchases.map(b => (
-                                                    <tr key={b.id} className="hover:bg-gray-50/50">
-                                                        <td className="p-2.5 text-gray-600">
-                                                            {new Date(b.created_at).toLocaleDateString()}
-                                                        </td>
-                                                        <td className="p-2.5 font-bold text-gray-900">
-                                                            {b.supplier_invoice_no || `BILL-${b.id}`}
-                                                        </td>
-                                                        <td className="p-2.5 text-center font-semibold text-gray-600">
-                                                            {b.item_count || 1} SKU(s)
-                                                        </td>
-                                                        <td className="p-2.5 text-right font-bold text-gray-900">
-                                                            Rs. {Number(b.net_amount).toLocaleString()}
-                                                        </td>
-                                                        <td className="p-2.5 text-right font-bold text-emerald-700">
-                                                            Rs. {Number(b.amount_paid || 0).toLocaleString()}
-                                                        </td>
-                                                        <td className="p-2.5 text-right font-black text-rose-600">
-                                                            Rs. {Number(b.remaining_balance || 0).toLocaleString()}
-                                                        </td>
-                                                        <td className="p-2.5 text-center">
-                                                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${b.remaining_balance <= 0
-                                                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                                                    : 'bg-amber-50 text-amber-800 border border-amber-200'
-                                                                }`}>
-                                                                {b.remaining_balance <= 0 ? 'Fully Paid' : 'Unpaid Due'}
-                                                            </span>
-                                                        </td>
+                                        <div className="overflow-x-auto w-full border border-gray-200 rounded-xl">
+                                            <table className="w-full text-left text-xs border-collapse min-w-[620px]">
+                                                <thead>
+                                                    <tr className="bg-gray-50 border-b border-gray-200 text-gray-600 font-bold uppercase text-[10px]">
+                                                        <th className="p-2.5">Date</th>
+                                                        <th className="p-2.5">Invoice #</th>
+                                                        <th className="p-2.5 text-center">Items</th>
+                                                        <th className="p-2.5 text-right">Gross Total</th>
+                                                        <th className="p-2.5 text-right">Amount Paid</th>
+                                                        <th className="p-2.5 text-right">Remaining Due</th>
+                                                        <th className="p-2.5 text-center">Status</th>
                                                     </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-100">
+                                                    {supplierDetails.purchases.map(b => (
+                                                        <tr key={b.id} className="hover:bg-gray-50/50">
+                                                            <td className="p-2.5 text-gray-600 font-mono text-[11px]">
+                                                                {new Date(b.created_at).toLocaleDateString()}
+                                                            </td>
+                                                            <td className="p-2.5 font-bold text-gray-900 font-mono">
+                                                                {b.supplier_invoice_no || `BILL-${b.id}`}
+                                                            </td>
+                                                            <td className="p-2.5 text-center font-semibold text-gray-600">
+                                                                {b.item_count || 1} SKU(s)
+                                                            </td>
+                                                            <td className="p-2.5 text-right font-bold text-gray-900 font-mono">
+                                                                Rs. {Number(b.net_amount).toLocaleString()}
+                                                            </td>
+                                                            <td className="p-2.5 text-right font-bold text-emerald-700 font-mono">
+                                                                Rs. {Number(b.amount_paid || 0).toLocaleString()}
+                                                            </td>
+                                                            <td className="p-2.5 text-right font-black text-rose-600 font-mono">
+                                                                Rs. {Number(b.remaining_balance || 0).toLocaleString()}
+                                                            </td>
+                                                            <td className="p-2.5 text-center">
+                                                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${b.remaining_balance <= 0
+                                                                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                                                        : 'bg-amber-50 text-amber-800 border border-amber-200'
+                                                                    }`}>
+                                                                    {b.remaining_balance <= 0 ? 'Fully Paid' : 'Unpaid Due'}
+                                                                </span>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
                                     )}
                                 </div>
                             )}
@@ -1796,71 +1909,73 @@ export default function SuppliersPage() {
                                             No payment records found for this supplier.
                                         </div>
                                     ) : (
-                                        <table className="w-full text-left text-xs border-collapse">
-                                            <thead>
-                                                <tr className="bg-gray-50 border-b border-gray-200 text-gray-600 font-bold uppercase text-[10px]">
-                                                    <th className="p-2.5">Date</th>
-                                                    <th className="p-2.5">Voucher #</th>
-                                                    <th className="p-2.5">Method</th>
-                                                    <th className="p-2.5">Reference / Notes</th>
-                                                    <th className="p-2.5 text-right">Amount Paid</th>
-                                                    <th className="p-2.5 text-center">Action</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-gray-100">
-                                                {supplierDetails.payments.map(pay => (
-                                                    <tr key={pay.id} className="hover:bg-gray-50/50">
-                                                        <td className="p-2.5 text-gray-600">
-                                                            {pay.payment_date || new Date(pay.created_at).toLocaleDateString()}
-                                                        </td>
-                                                        <td className="p-2.5 font-bold text-gray-900">
-                                                            PAY-{pay.id}
-                                                        </td>
-                                                        <td className="p-2.5 uppercase font-semibold text-gray-600 text-[10px]">
-                                                            {pay.payment_method}
-                                                        </td>
-                                                        <td className="p-2.5 text-gray-700 font-medium max-w-xs truncate">
-                                                            {pay.notes || pay.reference_no || 'Cash payment'}
-                                                        </td>
-                                                        <td className="p-2.5 text-right font-black text-emerald-700 text-sm">
-                                                            Rs. {Number(pay.amount).toLocaleString()}
-                                                        </td>
-                                                        <td className="p-2.5 text-center">
-                                                            <button
-                                                                onClick={() => {
-                                                                    setActiveReceipt({
-                                                                        supplier: activeSupplier,
-                                                                        paymentId: pay.id,
-                                                                        amount: pay.amount,
-                                                                        payment_method: pay.payment_method,
-                                                                        date: pay.payment_date || pay.created_at,
-                                                                        reference_no: pay.reference_no,
-                                                                        notes: pay.notes
-                                                                    });
-                                                                    setReceiptModalOpen(true);
-                                                                }}
-                                                                style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                                                className="btn-black !bg-black !text-white px-2 py-1 rounded text-[10px] font-bold flex items-center gap-1 mx-auto cursor-pointer shadow-sm hover:opacity-90"
-                                                            >
-                                                                <IconPrinter className="w-3 h-3" style={{ color: '#ffffff', stroke: '#ffffff' }} />
-                                                                <span style={{ color: '#ffffff' }}>Receipt</span>
-                                                            </button>
-                                                        </td>
+                                        <div className="overflow-x-auto w-full border border-gray-200 rounded-xl">
+                                            <table className="w-full text-left text-xs border-collapse min-w-[580px]">
+                                                <thead>
+                                                    <tr className="bg-gray-50 border-b border-gray-200 text-gray-600 font-bold uppercase text-[10px]">
+                                                        <th className="p-2.5">Date</th>
+                                                        <th className="p-2.5">Voucher #</th>
+                                                        <th className="p-2.5">Method</th>
+                                                        <th className="p-2.5">Reference / Notes</th>
+                                                        <th className="p-2.5 text-right">Amount Paid</th>
+                                                        <th className="p-2.5 text-center">Action</th>
                                                     </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-100">
+                                                    {supplierDetails.payments.map(pay => (
+                                                        <tr key={pay.id} className="hover:bg-gray-50/50">
+                                                            <td className="p-2.5 text-gray-600 font-mono text-[11px]">
+                                                                {pay.payment_date || new Date(pay.created_at).toLocaleDateString()}
+                                                            </td>
+                                                            <td className="p-2.5 font-bold text-gray-900 font-mono">
+                                                                PAY-{pay.id}
+                                                            </td>
+                                                            <td className="p-2.5 uppercase font-semibold text-gray-600 text-[10px]">
+                                                                {pay.payment_method}
+                                                            </td>
+                                                            <td className="p-2.5 text-gray-700 font-medium max-w-xs truncate">
+                                                                {pay.notes || pay.reference_no || 'Cash payment'}
+                                                            </td>
+                                                            <td className="p-2.5 text-right font-black text-emerald-700 text-sm font-mono">
+                                                                Rs. {Number(pay.amount).toLocaleString()}
+                                                            </td>
+                                                            <td className="p-2.5 text-center">
+                                                                <button
+                                                                    onClick={() => {
+                                                                        setActiveReceipt({
+                                                                            supplier: activeSupplier,
+                                                                            paymentId: pay.id,
+                                                                            amount: pay.amount,
+                                                                            payment_method: pay.payment_method,
+                                                                            date: pay.payment_date || pay.created_at,
+                                                                            reference_no: pay.reference_no,
+                                                                            notes: pay.notes
+                                                                        });
+                                                                        setReceiptModalOpen(true);
+                                                                    }}
+                                                                    style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
+                                                                    className="btn-black !bg-black !text-white px-2 py-1 rounded text-[10px] font-bold flex items-center gap-1 mx-auto cursor-pointer shadow-sm hover:opacity-90"
+                                                                >
+                                                                    <IconPrinter className="w-3 h-3" style={{ color: '#ffffff', stroke: '#ffffff' }} />
+                                                                    <span style={{ color: '#ffffff' }}>Receipt</span>
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
                                     )}
                                 </div>
                             )}
                         </div>
 
                         {/* Modal Footer */}
-                        <div className="p-3 border-t border-gray-100 bg-gray-50 flex justify-end">
+                        <div className="p-3 border-t border-gray-100 bg-gray-50 flex justify-end shrink-0">
                             <button
                                 onClick={() => setDetailsModalOpen(false)}
                                 style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                className="btn-black !bg-black !text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md hover:opacity-90 cursor-pointer"
+                                className="btn-black !bg-black !text-white w-full sm:w-auto px-4 py-2 rounded-xl text-xs font-bold shadow-md hover:opacity-90 cursor-pointer"
                             >
                                 <span style={{ color: '#ffffff' }}>Close Details</span>
                             </button>
@@ -1873,8 +1988,8 @@ export default function SuppliersPage() {
             {/* MODAL 2: MANUAL PAY (FIFO TERMINOLOGY ALLOCATION)            */}
             {/* ───────────────────────────────────────────────────────────── */}
             {payFifoModalOpen && activeSupplier && (
-                <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-[100] p-4">
-                    <form onSubmit={handleSubmitFifoPay} className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl border border-[#F3E5AB]">
+                <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-[100] p-2.5 sm:p-4 overflow-y-auto">
+                    <form onSubmit={handleSubmitFifoPay} className="bg-white rounded-2xl max-w-lg w-full p-4 sm:p-6 space-y-4 shadow-2xl border border-[#F3E5AB] max-h-[96vh] overflow-y-auto">
                         <div className="flex justify-between items-start border-b border-gray-100 pb-3">
                             <div>
                                 <h3 className="font-black text-gray-900 text-base flex items-center gap-2">
@@ -1923,7 +2038,7 @@ export default function SuppliersPage() {
                                 />
                             </div>
 
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
                                 <div>
                                     <label className="block font-bold text-gray-700 mb-1">Payment Method</label>
                                     <select
@@ -1989,19 +2104,19 @@ export default function SuppliersPage() {
                             </div>
                         )}
 
-                        <div className="flex gap-3 pt-2">
+                        <div className="flex flex-col-reverse sm:flex-row gap-2 sm:gap-3 pt-2">
                             <button
                                 type="button"
                                 onClick={() => setPayFifoModalOpen(false)}
                                 style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                className="btn-black !bg-black !text-white flex-1 py-2.5 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center hover:opacity-90"
+                                className="btn-black !bg-black !text-white w-full sm:flex-1 py-2.5 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center hover:opacity-90"
                             >
                                 <span style={{ color: '#ffffff' }}>Cancel</span>
                             </button>
                             <button
                                 type="submit"
                                 style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                className="btn-black !bg-black !text-white flex-1 py-2.5 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5 hover:opacity-90"
+                                className="btn-black !bg-black !text-white w-full sm:flex-1 py-2.5 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5 hover:opacity-90"
                             >
                                 <IconCheck className="w-4 h-4" style={{ color: '#ffffff', stroke: '#ffffff' }} />
                                 <span style={{ color: '#ffffff' }}>Confirm & Record Payment</span>
@@ -2021,26 +2136,26 @@ export default function SuppliersPage() {
 
                 return (
                     <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-[100] p-2 sm:p-4 overflow-y-auto" style={{ zIndex: 100 }}>
-                        <form onSubmit={handleSubmitMultiBill} className="bg-white rounded-2xl max-w-4xl w-full p-4 sm:p-5 space-y-3 shadow-2xl border border-[#F3E5AB] max-h-[94vh] flex flex-col">
+                        <form onSubmit={handleSubmitMultiBill} className="bg-white rounded-2xl max-w-4xl w-full p-3.5 sm:p-5 space-y-3 shadow-2xl border border-[#F3E5AB] max-h-[96vh] sm:max-h-[94vh] flex flex-col">
                             {/* Modal Header */}
                             <div className="flex justify-between items-center border-b border-gray-100 pb-2.5 shrink-0">
-                                <div className="flex items-center gap-2.5 flex-wrap">
+                                <div className="flex items-center gap-2.5 flex-wrap min-w-0">
                                     <div className="w-8 h-8 rounded-lg bg-[#FEF9E7] border border-[#F3E5AB] flex items-center justify-center text-[#B8860B] shrink-0">
                                         <IconBill className="w-4 h-4" />
                                     </div>
-                                    <div>
+                                    <div className="min-w-0">
                                         <div className="flex items-center gap-2 flex-wrap">
-                                            <h3 className="font-semibold text-gray-800 text-sm">
+                                            <h3 className="font-semibold text-gray-800 text-sm truncate">
                                                 Add Purchase Bill (Stock Inward)
                                             </h3>
-                                            <span className="px-2 py-0.5 rounded-md bg-[#FEF9E7] border border-[#F3E5AB] text-[10.5px] font-medium text-[#B8860B]">
+                                            <span className="px-2 py-0.5 rounded-md bg-[#FEF9E7] border border-[#F3E5AB] text-[10.5px] font-medium text-[#B8860B] truncate">
                                                 {activeSupplier.name} ({activeSupplier.company_name || 'Vendor'})
                                             </span>
                                         </div>
                                         <p className="text-[10.5px] text-gray-400 font-normal">Record incoming multi-item stock shipment and adjust supplier payable dues</p>
                                     </div>
                                 </div>
-                                <button type="button" onClick={() => setAddBillModalOpen(false)} className="text-gray-400 hover:text-gray-600 p-1 cursor-pointer rounded-lg hover:bg-gray-100 transition-colors">
+                                <button type="button" onClick={() => setAddBillModalOpen(false)} className="text-gray-400 hover:text-gray-600 p-1 cursor-pointer rounded-lg hover:bg-gray-100 transition-colors shrink-0">
                                     <IconClose className="w-4 h-4" />
                                 </button>
                             </div>
@@ -2099,7 +2214,7 @@ export default function SuppliersPage() {
                                     </div>
 
                                     <div className="overflow-x-auto max-h-[300px]">
-                                        <table className="w-full text-left text-xs border-collapse">
+                                        <table className="w-full text-left text-xs border-collapse min-w-[620px]">
                                             <thead>
                                                 <tr className="bg-gray-50 border-b border-gray-200 text-gray-500 font-medium uppercase text-[10px]">
                                                     <th className="py-1.5 px-2 min-w-[230px]">Product Variant & Stock</th>
@@ -2273,19 +2388,19 @@ export default function SuppliersPage() {
                             </div>
 
                             {/* Modal Bottom Actions */}
-                            <div className="flex gap-2.5 pt-2 border-t border-gray-100 shrink-0">
+                            <div className="flex flex-col-reverse sm:flex-row gap-2 sm:gap-2.5 pt-2 border-t border-gray-100 shrink-0">
                                 <button
                                     type="button"
                                     onClick={() => setAddBillModalOpen(false)}
                                     style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                    className="btn-black !bg-black !text-white flex-1 py-2 rounded-xl font-medium text-xs shadow-md transition-all cursor-pointer flex items-center justify-center hover:opacity-90 active:scale-95"
+                                    className="btn-black !bg-black !text-white w-full sm:flex-1 py-2 rounded-xl font-medium text-xs shadow-md transition-all cursor-pointer flex items-center justify-center hover:opacity-90 active:scale-95"
                                 >
                                     <span style={{ color: '#ffffff' }}>Cancel</span>
                                 </button>
                                 <button
                                     type="submit"
                                     style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                    className="btn-black !bg-black !text-white flex-1 py-2 rounded-xl font-medium text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5 hover:opacity-90 active:scale-95"
+                                    className="btn-black !bg-black !text-white w-full sm:flex-1 py-2 rounded-xl font-medium text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5 hover:opacity-90 active:scale-95"
                                 >
                                     <IconCheck className="w-4 h-4" style={{ color: '#ffffff', stroke: '#ffffff' }} />
                                     <span style={{ color: '#ffffff' }}>Save Inward Bill ({billItems.length} items)</span>
@@ -2326,33 +2441,33 @@ export default function SuppliersPage() {
                 const currentPendingDue = Number(activeSupplier.balance || 0);
 
                 return (
-                    <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[60] p-3 sm:p-4 overflow-y-auto">
-                        <div className="bg-white rounded-3xl max-w-5xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden border border-[#F3E5AB]">
+                    <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[60] p-2 sm:p-4 overflow-y-auto">
+                        <div className="bg-white rounded-2xl sm:rounded-3xl max-w-5xl w-full max-h-[96vh] sm:max-h-[92vh] flex flex-col shadow-2xl overflow-hidden border border-[#F3E5AB]">
                             {/* Modal Header & Quick Actions Bar */}
-                            <div className="p-4 sm:p-5 border-b border-gray-200 bg-gray-50/60 flex flex-col md:flex-row md:items-center justify-between gap-3 shrink-0">
+                            <div className="p-3 sm:p-5 border-b border-gray-200 bg-gray-50/60 flex flex-col md:flex-row md:items-center justify-between gap-2.5 sm:gap-3 shrink-0">
                                 <div>
-                                    <div className="flex items-center gap-2">
-                                        <h3 className="font-black text-gray-900 text-lg flex items-center gap-2">
-                                            <IconSuppliers className="w-5 h-5 text-[#B8860B]" />
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <h3 className="font-black text-gray-900 text-base sm:text-lg flex items-center gap-2">
+                                            <IconSuppliers className="w-4 sm:w-5 h-4 sm:h-5 text-[#B8860B] shrink-0" />
                                             <span>Supplier Ledger: {activeSupplier.name}</span>
                                         </h3>
                                         <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#FEF9E7] border border-[#F3E5AB] text-[#B8860B]">
                                             {activeSupplier.company_name || 'Vendor'}
                                         </span>
                                     </div>
-                                    <div className="text-xs text-gray-500 mt-0.5">
+                                    <div className="text-[11px] sm:text-xs text-gray-500 mt-0.5">
                                         Phone: <span className="font-semibold text-gray-700">{activeSupplier.phone || 'N/A'}</span> •
                                         Address: <span className="font-semibold text-gray-700">{activeSupplier.address || 'Timergara'}</span>
                                     </div>
                                 </div>
 
                                 {/* Quick Action Buttons in Header: Black bg with white text */}
-                                <div className="flex flex-wrap items-center gap-2">
+                                <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                                     <button
                                         type="button"
                                         onClick={() => handleOpenAddBill(activeSupplier)}
                                         style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                        className="btn-black !bg-black !text-white px-3.5 py-2 rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-1.5 cursor-pointer hover:opacity-90"
+                                        className="btn-black !bg-black !text-white px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-1.5 cursor-pointer hover:opacity-90"
                                         title="Inward stock / record purchase invoice with multiple items"
                                     >
                                         <IconBill className="w-3.5 h-3.5" style={{ color: '#ffffff', stroke: '#ffffff' }} />
@@ -2363,7 +2478,7 @@ export default function SuppliersPage() {
                                         type="button"
                                         onClick={() => handleOpenPayFifo(activeSupplier)}
                                         style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                        className="btn-black !bg-black !text-white px-3.5 py-2 rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-1.5 cursor-pointer hover:opacity-90"
+                                        className="btn-black !bg-black !text-white px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-1.5 cursor-pointer hover:opacity-90"
                                         title="Record supplier payment"
                                     >
                                         <IconPayments className="w-3.5 h-3.5" style={{ color: '#ffffff', stroke: '#ffffff' }} />
@@ -2374,7 +2489,7 @@ export default function SuppliersPage() {
                                         type="button"
                                         onClick={() => window.print()}
                                         style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                        className="btn-black !bg-black !text-white p-2 rounded-xl transition-all cursor-pointer flex items-center justify-center shadow-md hover:opacity-90"
+                                        className="btn-black !bg-black !text-white p-1.5 sm:p-2 rounded-xl transition-all cursor-pointer flex items-center justify-center shadow-md hover:opacity-90"
                                         title="Print Ledger Statement"
                                     >
                                         <IconPrinter className="w-4 h-4" style={{ color: '#ffffff', stroke: '#ffffff' }} />
@@ -2383,7 +2498,7 @@ export default function SuppliersPage() {
                                     <button
                                         type="button"
                                         onClick={() => setLedgerModalOpen(false)}
-                                        className="p-2 text-gray-400 hover:text-black hover:bg-gray-100 rounded-xl cursor-pointer transition-colors"
+                                        className="p-1.5 text-gray-400 hover:text-black hover:bg-gray-100 rounded-xl cursor-pointer transition-colors"
                                     >
                                         <IconClose className="w-5 h-5" />
                                     </button>
@@ -2391,66 +2506,66 @@ export default function SuppliersPage() {
                             </div>
 
                             {/* 4 PROPER KPI CARDS INSIDE LEDGER MODAL */}
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 bg-white border-b border-gray-100 shrink-0">
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 p-2.5 sm:p-4 bg-white border-b border-gray-100 shrink-0">
                                 {/* Card 1: Outstanding Balance Due */}
-                                <div className="p-3.5 rounded-2xl bg-[#FEF9E7] border border-[#F3E5AB] space-y-1">
-                                    <div className="text-[10px] font-bold text-[#B8860B] uppercase tracking-wider">
+                                <div className="p-2.5 sm:p-3.5 rounded-xl sm:rounded-2xl bg-[#FEF9E7] border border-[#F3E5AB] space-y-0.5 sm:space-y-1">
+                                    <div className="text-[10px] font-bold text-[#B8860B] uppercase tracking-wider truncate">
                                         Current Due Payable
                                     </div>
-                                    <div className={`text-xl font-black font-mono ${currentPendingDue > 0 ? 'text-rose-600' : 'text-emerald-700'
+                                    <div className={`text-base sm:text-xl font-black font-mono truncate ${currentPendingDue > 0 ? 'text-rose-600' : 'text-emerald-700'
                                         }`}>
                                         Rs. {Math.round(currentPendingDue).toLocaleString()}
                                     </div>
-                                    <div className="text-[10px] text-gray-500 font-medium">
+                                    <div className="text-[10px] text-gray-500 font-medium truncate">
                                         {currentPendingDue > 0 ? 'We owe to supplier' : 'Fully cleared (Rs. 0)'}
                                     </div>
                                 </div>
 
                                 {/* Card 2: Total Inward Bills */}
-                                <div className="p-3.5 rounded-2xl bg-gray-50 border border-gray-200 space-y-1">
-                                    <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                                <div className="p-2.5 sm:p-3.5 rounded-xl sm:rounded-2xl bg-gray-50 border border-gray-200 space-y-0.5 sm:space-y-1">
+                                    <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider truncate">
                                         Total Inward Bills
                                     </div>
-                                    <div className="text-xl font-black text-gray-900 font-mono">
+                                    <div className="text-base sm:text-xl font-black text-gray-900 font-mono truncate">
                                         Rs. {Math.round(totalPurchasesDebit).toLocaleString()}
                                     </div>
-                                    <div className="text-[10px] text-gray-400 font-medium">
+                                    <div className="text-[10px] text-gray-400 font-medium truncate">
                                         Debit Purchases (+)
                                     </div>
                                 </div>
 
                                 {/* Card 3: Total Payments Paid */}
-                                <div className="p-3.5 rounded-2xl bg-emerald-50/70 border border-emerald-200 space-y-1">
-                                    <div className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider">
+                                <div className="p-2.5 sm:p-3.5 rounded-xl sm:rounded-2xl bg-emerald-50/70 border border-emerald-200 space-y-0.5 sm:space-y-1">
+                                    <div className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider truncate">
                                         Total Paid
                                     </div>
-                                    <div className="text-xl font-black text-emerald-700 font-mono">
+                                    <div className="text-base sm:text-xl font-black text-emerald-700 font-mono truncate">
                                         Rs. {Math.round(totalPaymentsCredit).toLocaleString()}
                                     </div>
-                                    <div className="text-[10px] text-emerald-700 font-medium">
+                                    <div className="text-[10px] text-emerald-700 font-medium truncate">
                                         Credit Payments (-)
                                     </div>
                                 </div>
 
                                 {/* Card 4: Inward Bills Count */}
-                                <div className="p-3.5 rounded-2xl bg-gray-50 border border-gray-200 space-y-1">
-                                    <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                                <div className="p-2.5 sm:p-3.5 rounded-xl sm:rounded-2xl bg-gray-50 border border-gray-200 space-y-0.5 sm:space-y-1">
+                                    <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider truncate">
                                         Inward Bills Count
                                     </div>
-                                    <div className="text-xl font-black text-[#B8860B]">
+                                    <div className="text-base sm:text-xl font-black text-[#B8860B] truncate">
                                         {supplierPurchases.length} Inward Bills
                                     </div>
-                                    <div className="text-[10px] text-gray-400 font-medium">
+                                    <div className="text-[10px] text-gray-400 font-medium truncate">
                                         {activeLedger.length} ledger movements
                                     </div>
                                 </div>
                             </div>
 
                             {/* MODAL NAVIGATION TABS */}
-                            <div className="px-5 border-b border-gray-200 flex items-center gap-4 bg-gray-50/40 text-xs font-bold shrink-0">
+                            <div className="px-3 sm:px-5 border-b border-gray-200 flex items-center gap-2 sm:gap-4 bg-gray-50/40 text-xs font-bold shrink-0 overflow-x-auto no-scrollbar">
                                 <button
                                     onClick={() => setActiveLedgerTab('statement')}
-                                    className={`py-3 border-b-2 transition-all cursor-pointer flex items-center gap-1.5 ${activeLedgerTab === 'statement'
+                                    className={`py-2.5 sm:py-3 border-b-2 transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${activeLedgerTab === 'statement'
                                             ? 'border-[#B8860B] text-[#B8860B]'
                                             : 'border-transparent text-gray-500 hover:text-gray-900'
                                         }`}
@@ -2461,7 +2576,7 @@ export default function SuppliersPage() {
 
                                 <button
                                     onClick={() => setActiveLedgerTab('bills')}
-                                    className={`py-3 border-b-2 transition-all cursor-pointer flex items-center gap-1.5 ${activeLedgerTab === 'bills'
+                                    className={`py-2.5 sm:py-3 border-b-2 transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${activeLedgerTab === 'bills'
                                             ? 'border-[#B8860B] text-[#B8860B]'
                                             : 'border-transparent text-gray-500 hover:text-gray-900'
                                         }`}
@@ -2473,7 +2588,7 @@ export default function SuppliersPage() {
                                 <button
                                     onClick={() => handleOpenAddBill(activeSupplier)}
                                     style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                    className="btn-black !bg-black !text-white px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer flex items-center gap-1.5 ml-auto shadow-md transition-all hover:opacity-90"
+                                    className="btn-black !bg-black !text-white px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer flex items-center gap-1.5 ml-auto shadow-md transition-all hover:opacity-90 whitespace-nowrap shrink-0"
                                 >
                                     <IconPlus className="w-3.5 h-3.5" style={{ color: '#ffffff', stroke: '#ffffff' }} />
                                     <span style={{ color: '#ffffff' }}>+ Add Inward Bill</span>
@@ -2482,67 +2597,69 @@ export default function SuppliersPage() {
 
                             {/* TAB 1: STATEMENT TABLE */}
                             {activeLedgerTab === 'statement' ? (
-                                <div className="flex-1 overflow-y-auto p-4 min-h-0">
+                                <div className="flex-1 overflow-y-auto p-3 sm:p-4 min-h-0">
                                     {activeLedger.length === 0 ? (
                                         <div className="text-center py-12 text-gray-400 text-xs">
                                             No ledger entries recorded yet.
                                         </div>
                                     ) : (
-                                        <table className="w-full text-left text-xs border-collapse">
-                                            <thead>
-                                                <tr className="bg-gray-50 border-b border-gray-200 text-gray-600 font-bold uppercase text-[10px]">
-                                                    <th className="p-2.5">Date</th>
-                                                    <th className="p-2.5">Description / Ref</th>
-                                                    <th className="p-2.5 text-center">Type</th>
-                                                    <th className="p-2.5 text-right">Inward / Debit (+)</th>
-                                                    <th className="p-2.5 text-right">Payment Paid (-)</th>
-                                                    <th className="p-2.5 text-right">Running Due Balance</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-gray-100">
-                                                {activeLedger.map((row) => (
-                                                    <tr key={row.id} className="hover:bg-amber-50/20">
-                                                        <td className="p-2.5 text-gray-600 font-mono text-[11px]">
-                                                            {row.payment_date || (row.created_at ? row.created_at.split(' ')[0] : '-')}
-                                                        </td>
-                                                        <td className="p-2.5 font-semibold text-gray-800">
-                                                            {row.description}
-                                                        </td>
-                                                        <td className="p-2.5 text-center">
-                                                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${row.type === 'purchase'
-                                                                    ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                                                                    : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                                                }`}>
-                                                                {row.type === 'purchase' ? 'Inward Bill' : 'Payment'}
-                                                            </span>
-                                                        </td>
-                                                        <td className="p-2.5 text-right font-bold text-rose-600 font-mono">
-                                                            {row.type === 'purchase' ? `Rs. ${Number(row.amount).toLocaleString()}` : '-'}
-                                                        </td>
-                                                        <td className="p-2.5 text-right font-bold text-emerald-700 font-mono">
-                                                            {row.type === 'payment' || row.type === 'return' ? `Rs. ${Number(row.amount).toLocaleString()}` : '-'}
-                                                        </td>
-                                                        <td className="p-2.5 text-right font-black font-mono text-gray-900">
-                                                            Rs. {Number(row.running_balance).toLocaleString()}
-                                                        </td>
+                                        <div className="overflow-x-auto w-full border border-gray-200 rounded-xl">
+                                            <table className="w-full text-left text-xs border-collapse min-w-[650px]">
+                                                <thead>
+                                                    <tr className="bg-gray-50 border-b border-gray-200 text-gray-600 font-bold uppercase text-[10px]">
+                                                        <th className="p-2.5">Date</th>
+                                                        <th className="p-2.5">Description / Ref</th>
+                                                        <th className="p-2.5 text-center">Type</th>
+                                                        <th className="p-2.5 text-right">Inward / Debit (+)</th>
+                                                        <th className="p-2.5 text-right">Payment Paid (-)</th>
+                                                        <th className="p-2.5 text-right">Running Due Balance</th>
                                                     </tr>
-                                                ))}
-                                            </tbody>
-                                            <tfoot>
-                                                <tr className="bg-gray-50/90 border-t-2 border-gray-300 font-bold text-xs">
-                                                    <td colSpan={3} className="p-2.5 text-gray-800">Account Summary Total</td>
-                                                    <td className="p-2.5 text-right text-rose-600 font-mono">Rs. {Math.round(totalPurchasesDebit).toLocaleString()}</td>
-                                                    <td className="p-2.5 text-right text-emerald-700 font-mono">Rs. {Math.round(totalPaymentsCredit).toLocaleString()}</td>
-                                                    <td className="p-2.5 text-right text-gray-900 font-black font-mono">Rs. {Math.round(currentPendingDue).toLocaleString()}</td>
-                                                </tr>
-                                            </tfoot>
-                                        </table>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-100">
+                                                    {activeLedger.map((row) => (
+                                                        <tr key={row.id} className="hover:bg-amber-50/20">
+                                                            <td className="p-2.5 text-gray-600 font-mono text-[11px]">
+                                                                {row.payment_date || (row.created_at ? row.created_at.split(' ')[0] : '-')}
+                                                            </td>
+                                                            <td className="p-2.5 font-semibold text-gray-800">
+                                                                {row.description}
+                                                            </td>
+                                                            <td className="p-2.5 text-center">
+                                                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${row.type === 'purchase'
+                                                                        ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                                                        : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                                                    }`}>
+                                                                    {row.type === 'purchase' ? 'Inward Bill' : 'Payment'}
+                                                                </span>
+                                                            </td>
+                                                            <td className="p-2.5 text-right font-bold text-rose-600 font-mono">
+                                                                {row.type === 'purchase' ? `Rs. ${Number(row.amount).toLocaleString()}` : '-'}
+                                                            </td>
+                                                            <td className="p-2.5 text-right font-bold text-emerald-700 font-mono">
+                                                                {row.type === 'payment' || row.type === 'return' ? `Rs. ${Number(row.amount).toLocaleString()}` : '-'}
+                                                            </td>
+                                                            <td className="p-2.5 text-right font-black font-mono text-gray-900">
+                                                                Rs. {Number(row.running_balance).toLocaleString()}
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                                <tfoot>
+                                                    <tr className="bg-gray-50/90 border-t-2 border-gray-300 font-bold text-xs">
+                                                        <td colSpan={3} className="p-2.5 text-gray-800">Account Summary Total</td>
+                                                        <td className="p-2.5 text-right text-rose-600 font-mono">Rs. {Math.round(totalPurchasesDebit).toLocaleString()}</td>
+                                                        <td className="p-2.5 text-right text-emerald-700 font-mono">Rs. {Math.round(totalPaymentsCredit).toLocaleString()}</td>
+                                                        <td className="p-2.5 text-right text-gray-900 font-black font-mono">Rs. {Math.round(currentPendingDue).toLocaleString()}</td>
+                                                    </tr>
+                                                </tfoot>
+                                            </table>
+                                        </div>
                                     )}
                                 </div>
                             ) : (
                                 /* TAB 2: INWARD PURCHASE BILLS TABLE */
-                                <div className="flex-1 overflow-y-auto p-4 min-h-0 space-y-3">
-                                    <div className="flex justify-between items-center text-xs">
+                                <div className="flex-1 overflow-y-auto p-3 sm:p-4 min-h-0 space-y-3">
+                                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 text-xs">
                                         <div className="text-gray-500 font-medium">
                                             All purchase bills received from {activeSupplier.name}
                                         </div>
@@ -2550,7 +2667,7 @@ export default function SuppliersPage() {
                                             type="button"
                                             onClick={() => handleOpenAddBill(activeSupplier)}
                                             style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                            className="btn-black !bg-black !text-white px-3.5 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-md transition-all hover:opacity-90"
+                                            className="btn-black !bg-black !text-white px-3.5 py-1.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-md transition-all hover:opacity-90 w-full sm:w-auto"
                                         >
                                             <IconBill className="w-3.5 h-3.5" style={{ color: '#ffffff', stroke: '#ffffff' }} />
                                             <span style={{ color: '#ffffff' }}>+ Record New Bill</span>
@@ -2562,82 +2679,84 @@ export default function SuppliersPage() {
                                             No purchase bills found for this vendor. Click "+ Add Bill" to inward physical stock.
                                         </div>
                                     ) : (
-                                        <table className="w-full text-left text-xs border-collapse">
-                                            <thead>
-                                                <tr className="bg-gray-50 border-b border-gray-200 text-gray-600 font-bold uppercase text-[10px]">
-                                                    <th className="p-2.5">Supplier Invoice #</th>
-                                                    <th className="p-2.5">Date</th>
-                                                    <th className="p-2.5 text-center">Items</th>
-                                                    <th className="p-2.5 text-right">Net Bill Amount</th>
-                                                    <th className="p-2.5 text-right">Amount Paid</th>
-                                                    <th className="p-2.5 text-right">Remaining Due</th>
-                                                    <th className="p-2.5 text-center">Status</th>
-                                                    <th className="p-2.5 text-center">Action</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-gray-100">
-                                                {supplierPurchases.map((bill) => (
-                                                    <tr key={bill.id} className="hover:bg-amber-50/20">
-                                                        <td className="p-2.5 font-bold text-[#B8860B] font-mono">
-                                                            {bill.supplier_invoice_no || `PUR-#${bill.id}`}
-                                                        </td>
-                                                        <td className="p-2.5 text-gray-500 font-mono text-[11px]">
-                                                            {bill.invoice_date || (bill.created_at ? bill.created_at.split(' ')[0] : '-')}
-                                                        </td>
-                                                        <td className="p-2.5 text-center">
-                                                            <span className="px-2 py-0.5 rounded-full bg-gray-100 font-bold text-[10px]">
-                                                                {bill.item_count || 1} item(s)
-                                                            </span>
-                                                        </td>
-                                                        <td className="p-2.5 text-right font-black font-mono text-gray-900">
-                                                            Rs. {Number(bill.net_amount || 0).toLocaleString()}
-                                                        </td>
-                                                        <td className="p-2.5 text-right font-bold text-emerald-700 font-mono">
-                                                            Rs. {Number(bill.amount_paid || 0).toLocaleString()}
-                                                        </td>
-                                                        <td className="p-2.5 text-right font-bold text-rose-600 font-mono">
-                                                            Rs. {Number(bill.remaining_balance || 0).toLocaleString()}
-                                                        </td>
-                                                        <td className="p-2.5 text-center">
-                                                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${bill.remaining_balance <= 0
-                                                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                                                    : 'bg-rose-50 text-rose-700 border border-rose-200'
-                                                                }`}>
-                                                                {bill.remaining_balance <= 0 ? 'Fully Paid' : 'Unpaid / Partial'}
-                                                            </span>
-                                                        </td>
-                                                        <td className="p-2.5 text-center">
-                                                            <button
-                                                                onClick={() => handleViewPurchaseBill(bill.id)}
-                                                                style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                                                className="btn-black !bg-black !text-white px-3 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 mx-auto cursor-pointer shadow-sm transition-all hover:opacity-90"
-                                                            >
-                                                                <IconEye className="w-3.5 h-3.5" style={{ color: '#ffffff', stroke: '#ffffff' }} />
-                                                                <span style={{ color: '#ffffff' }}>View Bill</span>
-                                                            </button>
-                                                        </td>
+                                        <div className="overflow-x-auto w-full border border-gray-200 rounded-xl">
+                                            <table className="w-full text-left text-xs border-collapse min-w-[700px]">
+                                                <thead>
+                                                    <tr className="bg-gray-50 border-b border-gray-200 text-gray-600 font-bold uppercase text-[10px]">
+                                                        <th className="p-2.5">Supplier Invoice #</th>
+                                                        <th className="p-2.5">Date</th>
+                                                        <th className="p-2.5 text-center">Items</th>
+                                                        <th className="p-2.5 text-right">Net Bill Amount</th>
+                                                        <th className="p-2.5 text-right">Amount Paid</th>
+                                                        <th className="p-2.5 text-right">Remaining Due</th>
+                                                        <th className="p-2.5 text-center">Status</th>
+                                                        <th className="p-2.5 text-center">Action</th>
                                                     </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-100">
+                                                    {supplierPurchases.map((bill) => (
+                                                        <tr key={bill.id} className="hover:bg-amber-50/20">
+                                                            <td className="p-2.5 font-bold text-[#B8860B] font-mono">
+                                                                {bill.supplier_invoice_no || `PUR-#${bill.id}`}
+                                                            </td>
+                                                            <td className="p-2.5 text-gray-500 font-mono text-[11px]">
+                                                                {bill.invoice_date || (bill.created_at ? bill.created_at.split(' ')[0] : '-')}
+                                                            </td>
+                                                            <td className="p-2.5 text-center">
+                                                                <span className="px-2 py-0.5 rounded-full bg-gray-100 font-bold text-[10px]">
+                                                                    {bill.item_count || 1} item(s)
+                                                                </span>
+                                                            </td>
+                                                            <td className="p-2.5 text-right font-black font-mono text-gray-900">
+                                                                Rs. {Number(bill.net_amount || 0).toLocaleString()}
+                                                            </td>
+                                                            <td className="p-2.5 text-right font-bold text-emerald-700 font-mono">
+                                                                Rs. {Number(bill.amount_paid || 0).toLocaleString()}
+                                                            </td>
+                                                            <td className="p-2.5 text-right font-bold text-rose-600 font-mono">
+                                                                Rs. {Number(bill.remaining_balance || 0).toLocaleString()}
+                                                            </td>
+                                                            <td className="p-2.5 text-center">
+                                                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${bill.remaining_balance <= 0
+                                                                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                                                        : 'bg-rose-50 text-rose-700 border border-rose-200'
+                                                                    }`}>
+                                                                    {bill.remaining_balance <= 0 ? 'Fully Paid' : 'Unpaid / Partial'}
+                                                                </span>
+                                                            </td>
+                                                            <td className="p-2.5 text-center">
+                                                                <button
+                                                                    onClick={() => handleViewPurchaseBill(bill.id)}
+                                                                    style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
+                                                                    className="btn-black !bg-black !text-white px-3 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 mx-auto cursor-pointer shadow-sm transition-all hover:opacity-90"
+                                                                >
+                                                                    <IconEye className="w-3.5 h-3.5" style={{ color: '#ffffff', stroke: '#ffffff' }} />
+                                                                    <span style={{ color: '#ffffff' }}>View Bill</span>
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
                                     )}
                                 </div>
                             )}
 
                             {/* Footer Summary Bar */}
-                            <div className="p-3.5 border-t border-gray-100 bg-gray-50 flex flex-wrap items-center justify-between gap-3 text-xs shrink-0">
+                            <div className="p-3 sm:p-3.5 border-t border-gray-100 bg-gray-50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 text-xs shrink-0">
                                 <div className="flex items-center gap-2">
                                     <span className="font-semibold text-gray-500">Current Outstanding Payable:</span>
-                                    <span className="text-base font-black text-rose-600 font-mono">
+                                    <span className="text-sm sm:text-base font-black text-rose-600 font-mono">
                                         Rs. {currentPendingDue.toLocaleString()}
                                     </span>
                                 </div>
-                                <div className="flex items-center gap-2">
+                                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
                                     <button
                                         type="button"
                                         onClick={() => handleOpenAddBill(activeSupplier)}
                                         style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                        className="btn-black !bg-black !text-white px-4 py-2 rounded-xl font-bold text-xs shadow-md cursor-pointer flex items-center gap-1.5 transition-all hover:opacity-90"
+                                        className="btn-black !bg-black !text-white px-4 py-2 rounded-xl font-bold text-xs shadow-md cursor-pointer flex items-center justify-center gap-1.5 transition-all hover:opacity-90 text-center"
                                     >
                                         <IconBill className="w-3.5 h-3.5" style={{ color: '#ffffff', stroke: '#ffffff' }} />
                                         <span style={{ color: '#ffffff' }}>+ Add Inward Bill</span>
@@ -2646,7 +2765,7 @@ export default function SuppliersPage() {
                                         type="button"
                                         onClick={() => handleOpenPayFifo(activeSupplier)}
                                         style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                        className="btn-black !bg-black !text-white px-4 py-2 rounded-xl font-bold text-xs shadow-md cursor-pointer flex items-center gap-1.5 transition-all hover:opacity-90"
+                                        className="btn-black !bg-black !text-white px-4 py-2 rounded-xl font-bold text-xs shadow-md cursor-pointer flex items-center justify-center gap-1.5 transition-all hover:opacity-90 text-center"
                                     >
                                         <IconPayments className="w-3.5 h-3.5" style={{ color: '#ffffff', stroke: '#ffffff' }} />
                                         <span style={{ color: '#ffffff' }}>Pay Supplier (Rs. {currentPendingDue.toLocaleString()})</span>
@@ -2662,27 +2781,27 @@ export default function SuppliersPage() {
             {/* MODAL 7: VIEW PURCHASE BILL DETAILS (Items & Rates Breakdown) */}
             {/* ───────────────────────────────────────────────────────────── */}
             {purchaseDetailModalOpen && (
-                <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-[100] p-4">
-                    <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[88vh] flex flex-col shadow-2xl border border-gray-200 overflow-hidden">
-                        <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50 shrink-0">
-                            <div>
-                                <h3 className="font-extrabold text-sm text-gray-900 flex items-center gap-2">
-                                    <IconBill className="w-4 h-4 text-[#B8860B]" />
-                                    <span>Purchase Bill: {selectedPurchaseDetail?.supplier_invoice_no || `PUR-#${selectedPurchaseDetail?.id}`}</span>
+                <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-[100] p-2.5 sm:p-4 overflow-y-auto">
+                    <div className="bg-white rounded-2xl sm:rounded-3xl max-w-2xl w-full max-h-[96vh] sm:max-h-[88vh] flex flex-col shadow-2xl border border-gray-200 overflow-hidden">
+                        <div className="p-3.5 sm:p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50 shrink-0">
+                            <div className="min-w-0 pr-2">
+                                <h3 className="font-extrabold text-sm text-gray-900 flex items-center gap-2 truncate">
+                                    <IconBill className="w-4 h-4 text-[#B8860B] shrink-0" />
+                                    <span className="truncate">Purchase Bill: {selectedPurchaseDetail?.supplier_invoice_no || `PUR-#${selectedPurchaseDetail?.id}`}</span>
                                 </h3>
-                                <p className="text-[11px] text-gray-500">
+                                <p className="text-[11px] text-gray-500 truncate">
                                     Supplier: <span className="font-bold text-gray-800">{selectedPurchaseDetail?.supplier_name}</span> • Date: {selectedPurchaseDetail?.invoice_date || selectedPurchaseDetail?.created_at}
                                 </p>
                             </div>
                             <button
                                 onClick={() => setPurchaseDetailModalOpen(false)}
-                                className="p-1.5 text-gray-400 hover:text-gray-700 rounded-xl hover:bg-gray-200 transition-colors cursor-pointer"
+                                className="p-1.5 text-gray-400 hover:text-gray-700 rounded-xl hover:bg-gray-200 transition-colors cursor-pointer shrink-0"
                             >
                                 <IconClose className="w-4 h-4" />
                             </button>
                         </div>
 
-                        <div className="p-4 overflow-y-auto flex-1">
+                        <div className="p-3 sm:p-4 overflow-y-auto flex-1">
                             {purchaseDetailLoading || !selectedPurchaseDetail ? (
                                 <div className="py-8 text-center text-gray-400 text-xs flex items-center justify-center gap-2">
                                     <IconSpinner className="w-4 h-4 text-[#B8860B]" />
@@ -2690,43 +2809,45 @@ export default function SuppliersPage() {
                                 </div>
                             ) : (
                                 <div className="space-y-4 text-xs">
-                                    <table className="w-full text-left border-collapse">
-                                        <thead>
-                                            <tr className="bg-gray-50 border-b border-gray-200 text-gray-600 font-bold uppercase tracking-wider text-[10px]">
-                                                <th className="p-2">Product Name</th>
-                                                <th className="p-2 text-center">Packaging</th>
-                                                <th className="p-2 text-center">Inward Qty</th>
-                                                <th className="p-2 text-right">Cost Rate</th>
-                                                <th className="p-2 text-right">Total</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-gray-100">
-                                            {(selectedPurchaseDetail.items || []).map((it, idx) => (
-                                                <tr key={idx}>
-                                                    <td className="p-2 font-bold text-gray-800">
-                                                        {it.product_name}
-                                                        {it.variant_name && it.variant_name !== 'Standard' && (
-                                                            <span className="text-[10px] text-gray-500 ml-1">({it.variant_name})</span>
-                                                        )}
-                                                    </td>
-                                                    <td className="p-2 text-center">
-                                                        <span className="px-1.5 py-0.5 rounded bg-gray-100 font-semibold text-[10px]">
-                                                            {it.packaging_name || 'Piece'}
-                                                        </span>
-                                                    </td>
-                                                    <td className="p-2 text-center font-bold">
-                                                        {it.quantity}
-                                                    </td>
-                                                    <td className="p-2 text-right font-mono text-gray-600">
-                                                        Rs. {Number(it.purchase_price || 0).toLocaleString()}
-                                                    </td>
-                                                    <td className="p-2 text-right font-black font-mono text-gray-900">
-                                                        Rs. {Number(it.total || (it.quantity * it.purchase_price) || 0).toLocaleString()}
-                                                    </td>
+                                    <div className="overflow-x-auto w-full border border-gray-200 rounded-xl">
+                                        <table className="w-full text-left border-collapse min-w-[500px]">
+                                            <thead>
+                                                <tr className="bg-gray-50 border-b border-gray-200 text-gray-600 font-bold uppercase tracking-wider text-[10px]">
+                                                    <th className="p-2">Product Name</th>
+                                                    <th className="p-2 text-center">Packaging</th>
+                                                    <th className="p-2 text-center">Inward Qty</th>
+                                                    <th className="p-2 text-right">Cost Rate</th>
+                                                    <th className="p-2 text-right">Total</th>
                                                 </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-100">
+                                                {(selectedPurchaseDetail.items || []).map((it, idx) => (
+                                                    <tr key={idx}>
+                                                        <td className="p-2 font-bold text-gray-800">
+                                                            {it.product_name}
+                                                            {it.variant_name && it.variant_name !== 'Standard' && (
+                                                                <span className="text-[10px] text-gray-500 ml-1">({it.variant_name})</span>
+                                                            )}
+                                                        </td>
+                                                        <td className="p-2 text-center">
+                                                            <span className="px-1.5 py-0.5 rounded bg-gray-100 font-semibold text-[10px]">
+                                                                {it.packaging_name || 'Piece'}
+                                                            </span>
+                                                        </td>
+                                                        <td className="p-2 text-center font-bold">
+                                                            {it.quantity}
+                                                        </td>
+                                                        <td className="p-2 text-right font-mono text-gray-600">
+                                                            Rs. {Number(it.purchase_price || 0).toLocaleString()}
+                                                        </td>
+                                                        <td className="p-2 text-right font-black font-mono text-gray-900">
+                                                            Rs. {Number(it.total || (it.quantity * it.purchase_price) || 0).toLocaleString()}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
 
                                     {/* Bill Financial Summary */}
                                     <div className="bg-gray-50 p-3 rounded-xl space-y-1 font-mono text-xs">
@@ -2762,7 +2883,7 @@ export default function SuppliersPage() {
                                 type="button"
                                 onClick={() => setPurchaseDetailModalOpen(false)}
                                 style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                className="btn-black !bg-black !text-white px-4 py-2 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer hover:opacity-90"
+                                className="btn-black !bg-black !text-white w-full sm:w-auto px-4 py-2 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer hover:opacity-90"
                             >
                                 <span style={{ color: '#ffffff' }}>Close Details</span>
                             </button>
@@ -2775,10 +2896,10 @@ export default function SuppliersPage() {
             {/* MODAL 5: PAYMENT RECEIPT / VOUCHER (Printable)                */}
             {/* ───────────────────────────────────────────────────────────── */}
             {receiptModalOpen && activeReceipt && (
-                <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-[100] p-4">
-                    <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-[#F3E5AB]">
+                <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-[100] p-2.5 sm:p-4 overflow-y-auto">
+                    <div className="bg-white rounded-2xl max-w-md w-full p-4 sm:p-6 space-y-4 shadow-2xl border border-[#F3E5AB] max-h-[96vh] overflow-y-auto">
                         {/* Printable Voucher Section */}
-                        <div id="printable-receipt" className="border border-gray-200 rounded-xl p-4 bg-white space-y-3">
+                        <div id="printable-receipt" className="border border-gray-200 rounded-xl p-3.5 sm:p-4 bg-white space-y-3">
                             <div className="text-center border-b border-gray-100 pb-2">
                                 <h3 className="font-black text-base text-[#B8860B]">{(settings?.shop_name || 'HILAL WHOLESALER SHOP').toUpperCase()}</h3>
                                 <p className="text-[10px] text-gray-500">{settings?.shop_address || 'Main Bazar, Timergara, Dir Lower'} • Contact: {settings?.shop_phone || '0300-1234567'}</p>
@@ -2837,18 +2958,18 @@ export default function SuppliersPage() {
                             </div>
                         </div>
 
-                        <div className="flex gap-2">
+                        <div className="flex flex-col-reverse sm:flex-row gap-2">
                             <button
                                 type="button"
                                 onClick={() => setReceiptModalOpen(false)}
-                                className="flex-1 py-2 border border-gray-300 rounded-xl font-bold text-xs hover:bg-gray-50 cursor-pointer"
+                                className="w-full sm:flex-1 py-2 border border-gray-300 rounded-xl font-bold text-xs hover:bg-gray-50 cursor-pointer"
                             >
                                 Close
                             </button>
                             <button
                                 type="button"
                                 onClick={() => window.print()}
-                                className="flex-1 py-2 gold-gradient hover:opacity-90 text-white rounded-xl font-bold text-xs shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
+                                className="w-full sm:flex-1 py-2 gold-gradient hover:opacity-90 text-white rounded-xl font-bold text-xs shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
                             >
                                 <IconPrinter className="w-4 h-4" />
                                 <span>Print Voucher</span>
@@ -2862,8 +2983,8 @@ export default function SuppliersPage() {
             {/* MODAL 6: + ADD SUPPLIER (Top Right Header Button)            */}
             {/* ───────────────────────────────────────────────────────────── */}
             {addModalOpen && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-                    <form onSubmit={handleSaveAddSupplier} className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-[#F3E5AB]">
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-2.5 sm:p-4 overflow-y-auto">
+                    <form onSubmit={handleSaveAddSupplier} className="bg-white rounded-2xl max-w-md w-full p-4 sm:p-6 space-y-4 shadow-2xl border border-[#F3E5AB] max-h-[96vh] overflow-y-auto">
                         <div className="flex justify-between items-center border-b border-gray-100 pb-3">
                             <h3 className="font-black text-gray-900 text-base flex items-center gap-2">
                                 <IconSuppliers className="w-5 h-5 text-[#B8860B]" />
@@ -2934,19 +3055,19 @@ export default function SuppliersPage() {
                             </div>
                         </div>
 
-                        <div className="flex gap-3 pt-2">
+                        <div className="flex flex-col-reverse sm:flex-row gap-2 sm:gap-3 pt-2">
                             <button
                                 type="button"
                                 onClick={() => setAddModalOpen(false)}
                                 style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                className="btn-black !bg-black !text-white flex-1 py-2.5 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center hover:opacity-90"
+                                className="btn-black !bg-black !text-white w-full sm:flex-1 py-2.5 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center hover:opacity-90"
                             >
                                 <span style={{ color: '#ffffff' }}>Cancel</span>
                             </button>
                             <button
                                 type="submit"
                                 style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                className="btn-black !bg-black !text-white flex-1 py-2.5 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5 hover:opacity-90"
+                                className="btn-black !bg-black !text-white w-full sm:flex-1 py-2.5 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5 hover:opacity-90"
                             >
                                 <IconCheck className="w-4 h-4" style={{ color: '#ffffff', stroke: '#ffffff' }} />
                                 <span style={{ color: '#ffffff' }}>Save Supplier Profile</span>
@@ -2960,8 +3081,8 @@ export default function SuppliersPage() {
             {/* MODAL 7: EDIT SUPPLIER                                       */}
             {/* ───────────────────────────────────────────────────────────── */}
             {editModalOpen && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-                    <form onSubmit={handleSaveEdit} className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-[#F3E5AB]">
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-2.5 sm:p-4 overflow-y-auto">
+                    <form onSubmit={handleSaveEdit} className="bg-white rounded-2xl max-w-md w-full p-4 sm:p-6 space-y-4 shadow-2xl border border-[#F3E5AB] max-h-[96vh] overflow-y-auto">
                         <div className="flex justify-between items-center border-b border-gray-100 pb-3">
                             <h3 className="font-black text-gray-900 text-base flex items-center gap-2">
                                 <IconEdit className="w-5 h-5 text-[#B8860B]" />
@@ -3015,19 +3136,19 @@ export default function SuppliersPage() {
                             </div>
                         </div>
 
-                        <div className="flex gap-3 pt-2">
+                        <div className="flex flex-col-reverse sm:flex-row gap-2 sm:gap-3 pt-2">
                             <button
                                 type="button"
                                 onClick={() => setEditModalOpen(false)}
                                 style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                className="btn-black !bg-black !text-white flex-1 py-2.5 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center hover:opacity-90"
+                                className="btn-black !bg-black !text-white w-full sm:flex-1 py-2.5 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center hover:opacity-90"
                             >
                                 <span style={{ color: '#ffffff' }}>Cancel</span>
                             </button>
                             <button
                                 type="submit"
                                 style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                className="btn-black !bg-black !text-white flex-1 py-2.5 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5 hover:opacity-90"
+                                className="btn-black !bg-black !text-white w-full sm:flex-1 py-2.5 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5 hover:opacity-90"
                             >
                                 <IconCheck className="w-4 h-4" style={{ color: '#ffffff', stroke: '#ffffff' }} />
                                 <span style={{ color: '#ffffff' }}>Update Profile</span>
