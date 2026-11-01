@@ -42,6 +42,11 @@ export async function GET(request) {
     }
 }
 
+async function getNextId(tableName) {
+    const { data } = await supabase.from(tableName).select('id').order('id', { ascending: false }).limit(1);
+    return (data?.[0]?.id || 0) + 1;
+}
+
 export async function POST(request) {
     try {
         const body = await request.json();
@@ -51,8 +56,11 @@ export async function POST(request) {
             return NextResponse.json({ error: 'Supplier name required' }, { status: 400 });
         }
 
+        const nextId = await getNextId('suppliers');
         const openBal = parseFloat(opening_balance) || 0;
+        const nowIso = new Date().toISOString();
         const newSupplier = {
+            id: nextId,
             uuid: crypto.randomUUID(),
             name: name.trim(),
             company_name: company_name ? company_name.trim() : null,
@@ -60,7 +68,8 @@ export async function POST(request) {
             address: address || null,
             opening_balance: openBal,
             balance: openBal,
-            is_deleted: 0
+            is_deleted: 0,
+            created_at: nowIso
         };
 
         const { data, error } = await supabase
@@ -70,6 +79,20 @@ export async function POST(request) {
             .single();
 
         if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+
+        if (openBal > 0) {
+            const nextLedgerId = await getNextId('supplier_ledger');
+            await supabase.from('supplier_ledger').insert([{
+                id: nextLedgerId,
+                uuid: crypto.randomUUID(),
+                supplier_id: data.id,
+                amount: openBal,
+                type: 'purchase',
+                description: 'Opening Balance Recorded',
+                created_at: nowIso
+            }]);
+        }
+
         return NextResponse.json(data);
     } catch (err) {
         return NextResponse.json({ error: err.message }, { status: 500 });

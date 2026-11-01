@@ -463,6 +463,23 @@ async function processPullSync() {
             }
         }
 
+        // 7b. Suppliers: Metadata updates ONLY (Preserves balance!)
+        if (Array.isArray(data.suppliers)) {
+            for (const s of data.suppliers) {
+                await runQuery(
+                    `INSERT INTO suppliers (id, uuid, name, company_name, phone, address, opening_balance, balance, is_deleted)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     ON CONFLICT(id) DO UPDATE SET
+                         name = excluded.name,
+                         company_name = excluded.company_name,
+                         phone = excluded.phone,
+                         address = excluded.address,
+                         is_deleted = excluded.is_deleted`,
+                    [s.id, s.uuid || generateUUID(), s.name, s.company_name || '', s.phone || '', s.address || '', Number(s.opening_balance) || 0, Number(s.opening_balance) || 0, s.is_deleted ? 1 : 0]
+                );
+            }
+        }
+
         // 8. Reliable Stock Movements: Delta applied exactly once per UUID
         if (Array.isArray(data.stockMovements)) {
             for (const m of data.stockMovements) {

@@ -19,7 +19,8 @@ export async function GET(request) {
             prodsRes,
             varsRes,
             pkgsRes,
-            custsRes
+            custsRes,
+            suppsRes
         ] = await Promise.all([
             supabase.from('categories').select('*').order('id', { ascending: true }),
             supabase.from('units').select('*').order('id', { ascending: true }),
@@ -27,7 +28,8 @@ export async function GET(request) {
             supabase.from('products').select('*').order('id', { ascending: true }),
             supabase.from('product_variants').select('*').order('id', { ascending: true }),
             supabase.from('product_packagings').select('*').order('id', { ascending: true }),
-            supabase.from('customers').select('*').order('id', { ascending: true })
+            supabase.from('customers').select('*').order('id', { ascending: true }),
+            supabase.from('suppliers').select('*').order('id', { ascending: true })
         ]);
 
         // 2. Incremental or Full queries for Transactional Streams (movements, ledger, sales, payments)
@@ -86,6 +88,7 @@ export async function GET(request) {
             productVariants: varsRes.data || [],
             productPackagings: pkgsRes.data || [],
             customers: custsRes.data || [],
+            suppliers: suppsRes.data || [],
             stockMovements: movementsRes.data || [],
             customerLedger: ledgerRes.data || [],
             sales: downloadedSales,
