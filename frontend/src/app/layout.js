@@ -9,14 +9,27 @@ import { usePathname, useRouter } from 'next/navigation';
 
 if (typeof window !== 'undefined' && !window.__fetchPatched) {
     window.__fetchPatched = true;
+    const isElectron = 
+        window.location.protocol === 'app:' || 
+        window.location.protocol === 'file:' || 
+        (typeof navigator !== 'undefined' && navigator.userAgent.toLowerCase().includes('electron'));
+
     const originalFetch = window.fetch;
     window.fetch = function (input, init) {
         if (typeof input === 'string') {
-            const apiBase = process.env.NEXT_PUBLIC_API_URL || '';
-            if (input.startsWith('http://localhost:5000/api')) {
-                input = input.replace('http://localhost:5000', apiBase);
-            } else if (input.startsWith('http://localhost:5000')) {
-                input = input.replace('http://localhost:5000', apiBase);
+            if (isElectron) {
+                // In Electron desktop app: route to local Express backend on port 5000
+                if (input.startsWith('/api')) {
+                    input = 'http://localhost:5000' + input;
+                }
+            } else {
+                // In Cloud / Vercel browser: route to relative Next.js API routes or NEXT_PUBLIC_API_URL
+                const apiBase = process.env.NEXT_PUBLIC_API_URL || '';
+                if (input.startsWith('http://localhost:5000/api')) {
+                    input = input.replace('http://localhost:5000', apiBase);
+                } else if (input.startsWith('http://localhost:5000')) {
+                    input = input.replace('http://localhost:5000', apiBase);
+                }
             }
         }
         return originalFetch.call(this, input, init);
