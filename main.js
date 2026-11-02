@@ -214,27 +214,35 @@ ipcMain.handle('print-html', async (event, html, printerNameOrOptions) => {
 
       if (isA4) {
         printOptions.pageSize = 'A4';
-        printOptions.usePrinterDefaultPageSize = false;
       } else {
         printOptions.usePrinterDefaultPageSize = true;
       }
 
       console.log('[main.js print-html] Printing with options:', printOptions);
 
-      win.webContents.print(printOptions, (success, errorType) => {
+      try {
+        win.webContents.print(printOptions, (success, errorType) => {
+          clearTimeout(safetyTimer);
+          console.log('[main.js print-html] Print callback. Success:', success, 'Error:', errorType);
+
+          // Clear window by loading about:blank to keep it pre-warmed for next print
+          if (!win.isDestroyed()) {
+            win.loadURL('about:blank');
+          }
+
+          if (!resolved) {
+            resolved = true;
+            resolve(success);
+          }
+        });
+      } catch (printErr) {
         clearTimeout(safetyTimer);
-        console.log('[main.js print-html] Print callback. Success:', success, 'Error:', errorType);
-
-        // Clear window by loading about:blank to keep it pre-warmed for next print
-        if (!win.isDestroyed()) {
-          win.loadURL('about:blank');
-        }
-
+        console.error('[main.js print-html] print() invocation error:', printErr);
         if (!resolved) {
           resolved = true;
-          resolve(success);
+          resolve(false);
         }
-      });
+      }
     };
 
     win.webContents.once('did-finish-load', doPrint);

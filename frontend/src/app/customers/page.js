@@ -52,6 +52,18 @@ function toYMD(dateInput) {
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+function formatOnlyDate(dateInput) {
+    if (!dateInput) return '-';
+    const str = String(dateInput).trim();
+    if (!str) return '-';
+    const match = str.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (match) return match[1];
+    const d = parseDate(dateInput);
+    if (!d || isNaN(d.getTime())) return '-';
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 function numberToWords(num) {
     if (!num || isNaN(num) || num <= 0) return 'Zero Rupees Only';
     num = Math.floor(Math.abs(num));
@@ -158,6 +170,24 @@ export default function CustomersPage() {
     const [paymentSearch, setPaymentSearch] = useState('');
     const [paymentMethodFilter, setPaymentMethodFilter] = useState('ALL');
     const [activityTypeFilter, setActivityTypeFilter] = useState('ALL'); // 'ALL' | 'bill' | 'payment'
+
+    // Server-Side Pagination & Data State for Payment & Bill History
+    const [historyRecords, setHistoryRecords] = useState([]);
+    const [currentHistoryPage, setCurrentHistoryPage] = useState(1);
+    const [historyPageSize, setHistoryPageSize] = useState(25);
+    const [totalHistoryRecords, setTotalHistoryRecords] = useState(0);
+    const [totalHistoryPages, setTotalHistoryPages] = useState(1);
+    const [historyLoading, setHistoryLoading] = useState(false);
+    const [historySummary, setHistorySummary] = useState({
+        todayCount: 0,
+        totalFiltered: 0,
+        periodTotalBilled: 0,
+        periodPaidAmount: 0,
+        periodNewPendingDues: 0,
+        billsCount: 0,
+        paymentsCount: 0,
+        activeDebtorsCount: 0
+    });
 
     // Selected Payment Voucher for Receipt Modal
     const [selectedPaymentReceipt, setSelectedPaymentReceipt] = useState(null);
@@ -424,9 +454,12 @@ export default function CustomersPage() {
     const loadAllData = async () => {
         setLoading(true);
         try {
-            await Promise.all([fetchCustomers(), fetchPayments(), fetchSales()]);
+            await Promise.all([
+                fetchCustomers(currentPage, pageSize, searchQuery, filterStatus),
+                fetchHistory(1, historyPageSize, paymentDateFilter, paymentStartDate, paymentEndDate, activityTypeFilter, paymentMethodFilter, paymentSearch)
+            ]);
         } catch (err) {
-            console.error('Failed loading customers/payments:', err);
+            console.error('Failed loading customers/history:', err);
         } finally {
             setLoading(false);
         }
@@ -518,28 +551,229 @@ export default function CustomersPage() {
         return () => clearTimeout(handler);
     }, [searchQuery, filterStatus, currentPage, pageSize]);
 
-    const fetchPayments = async () => {
+    const fetchHistoryFallback = async (
+        page = currentHistoryPage,
+        limit = historyPageSize,
+        dateF = paymentDateFilter,
+        startD = paymentStartDate,
+        endD = paymentEndDate,
+        typeF = activityTypeFilter,
+        methodF = paymentMethodFilter,
+        searchQ = paymentSearch
+    ) => {
         try {
-            const res = await fetch(apiUrl('/api/payments'));
-            if (res.ok) {
-                const data = await res.json();
-                setPayments(Array.isArray(data) ? data : []);
-            }
+            const [paymentsRes, salesRes] = await Promise.all([
+                fetch(apiUrl('/api/payments')),
+                fetch(apiUrl('/api/sales'))
+            ]);
+
+            const rawPayments = paymentsRes.ok ? await paymentsRes.json() : [];
+            const rawSales = salesRes.ok ? await salesRes.json() : [];
+
+            const pList = Array.isArray(rawPayments) ? rawPayments : (rawPayments.data || []);
+            const sList = Array.isArray(rawSales) ? rawSales : (rawSales.data || []);
+
+            const billRecords = sList
+                .filter(s => s.customer_id)
+                .map(s => {
+                    const itemDate = s.created_at || '';
+                    const ymd = toYMD(itemDate);
+                    return {
+                        type: 'bill',
+                        id: `bill-${s.id}`,
+                        rawId: s.id,
+                        date: itemDate,
+                        ymd,
+                        ref_no: s.invoice_no || `INV-${s.id}`,
+                        customer_id: s.customer_id,
+                        party_name: s.customer_name || s.customers?.name || 'Wholesale Client',
+                        party_business: s.customer_business || s.customers?.business_name || '',
+                        party_phone: s.customer_phone || s.customers?.phone || '',
+                        payment_method: s.payment_method || 'credit',
+                        net_amount: parseFloat(s.net_amount) || 0,
+                        amount_paid: parseFloat(s.amount_paid) || 0,
+                        remaining_balance: parseFloat(s.remaining_balance) || 0,
+                        notes: s.remarks || (s.remaining_balance > 0 ? `Unpaid Due: Rs. ${Math.round(s.remaining_balance).toLocaleString()}` : 'Invoice Fully Cleared'),
+                        raw: s
+                    };
+                });
+
+            const paymentRecords = pList
+                .filter(p => p.party_type === 'customer' || !p.party_type)
+                .map(p => {
+                    const itemDate = p.payment_date || p.created_at || '';
+                    const ymd = toYMD(itemDate);
+                    return {
+                        type: 'payment',
+                        id: `pay-${p.id}`,
+                        rawId: p.id,
+                        date: itemDate,
+                        ymd,
+                        ref_no: p.reference_no || `RCP-${String(p.id).padStart(5, '0')}`,
+                        customer_id: p.party_id,
+                        party_name: p.party_name || p.customers?.name || 'Wholesale Client',
+                        party_business: p.party_business || p.customers?.business_name || '',
+                        party_phone: p.party_phone || p.customers?.phone || '',
+                        payment_method: p.payment_method || 'cash',
+                        net_amount: 0,
+                        amount_paid: parseFloat(p.amount) || 0,
+                        remaining_balance: 0,
+                        notes: p.notes || 'Customer ledger payment received',
+                        raw: p
+                    };
+                });
+
+            const allUnified = [...billRecords, ...paymentRecords].sort((a, b) => {
+                const da = parseDate(a.date)?.getTime() || 0;
+                const db = parseDate(b.date)?.getTime() || 0;
+                return db - da;
+            });
+
+            const todayYMD = toYMD(new Date());
+            const todayCount = allUnified.filter(r => r.ymd === todayYMD).length;
+
+            const filtered = allUnified.filter(item => {
+                if (dateF === 'today') {
+                    if (item.ymd !== todayYMD) return false;
+                } else if (dateF === 'yesterday') {
+                    const y = new Date();
+                    y.setDate(y.getDate() - 1);
+                    if (item.ymd !== toYMD(y)) return false;
+                } else if (dateF === 'this_week') {
+                    const w = new Date();
+                    w.setDate(w.getDate() - 7);
+                    const weekAgo = toYMD(w);
+                    if (!item.ymd || item.ymd < weekAgo || item.ymd > todayYMD) return false;
+                } else if (dateF === 'this_month') {
+                    const mStart = `${todayYMD.slice(0, 7)}-01`;
+                    if (!item.ymd || item.ymd < mStart || item.ymd > todayYMD) return false;
+                } else if (dateF === 'custom') {
+                    if (startD && item.ymd < startD) return false;
+                    if (endD && item.ymd > endD) return false;
+                }
+
+                if (typeF && typeF !== 'ALL' && item.type !== typeF.toLowerCase()) return false;
+                if (methodF && methodF !== 'ALL' && item.payment_method?.toLowerCase() !== methodF.toLowerCase()) return false;
+                if (searchQ && searchQ.trim()) {
+                    const q = searchQ.trim().toLowerCase();
+                    const pN = (item.party_name || '').toLowerCase();
+                    const pB = (item.party_business || '').toLowerCase();
+                    const ref = (item.ref_no || '').toLowerCase();
+                    const note = (item.notes || '').toLowerCase();
+                    if (!pN.includes(q) && !pB.includes(q) && !ref.includes(q) && !note.includes(q)) return false;
+                }
+                return true;
+            });
+
+            const periodBills = filtered.filter(r => r.type === 'bill');
+            const periodPayments = filtered.filter(r => r.type === 'payment');
+            const periodTotalBilled = periodBills.reduce((s, b) => s + b.net_amount, 0);
+            const periodPaidAmount = filtered.reduce((s, r) => s + r.amount_paid, 0);
+            const periodNewPendingDues = periodBills.reduce((s, b) => s + b.remaining_balance, 0);
+
+            const offset = (page - 1) * limit;
+            const paginated = filtered.slice(offset, offset + limit);
+
+            setHistoryRecords(paginated);
+            setTotalHistoryRecords(filtered.length);
+            setTotalHistoryPages(Math.max(1, Math.ceil(filtered.length / limit)));
+            setHistorySummary({
+                todayCount,
+                totalFiltered: filtered.length,
+                periodTotalBilled,
+                periodPaidAmount,
+                periodNewPendingDues,
+                billsCount: periodBills.length,
+                paymentsCount: periodPayments.length,
+                activeDebtorsCount: customers.filter(c => (c.balance || 0) > 0).length
+            });
         } catch (err) {
-            console.error('Failed to load payments:', err);
+            console.error('Fallback fetchHistory failed:', err);
         }
     };
 
-    const fetchSales = async () => {
+    const fetchHistory = async (
+        page = currentHistoryPage,
+        limit = historyPageSize,
+        dateF = paymentDateFilter,
+        startD = paymentStartDate,
+        endD = paymentEndDate,
+        typeF = activityTypeFilter,
+        methodF = paymentMethodFilter,
+        searchQ = paymentSearch
+    ) => {
+        setHistoryLoading(true);
         try {
-            const res = await fetch(apiUrl('/api/sales'));
+            const params = new URLSearchParams({
+                page: String(page),
+                limit: String(limit),
+                dateFilter: dateF,
+                type: typeF,
+                paymentMethod: methodF
+            });
+            if (dateF === 'custom') {
+                if (startD) params.append('startDate', startD);
+                if (endD) params.append('endDate', endD);
+            }
+            if (searchQ && searchQ.trim()) {
+                params.append('search', searchQ.trim());
+            }
+
+            const res = await fetch(apiUrl(`/api/customers/history?${params.toString()}`));
             if (res.ok) {
-                const data = await res.json();
-                setSales(Array.isArray(data) ? data : []);
+                const result = await res.json();
+                setHistoryRecords(result.data || []);
+                if (result.pagination) {
+                    setTotalHistoryRecords(result.pagination.total);
+                    setTotalHistoryPages(Math.max(1, result.pagination.totalPages));
+                }
+                if (result.summary) {
+                    setHistorySummary(result.summary);
+                }
+            } else {
+                console.warn('Server history endpoint returned non-ok, using fallback:', res.status);
+                await fetchHistoryFallback(page, limit, dateF, startD, endD, typeF, methodF, searchQ);
             }
         } catch (err) {
-            console.error('Failed to load sales:', err);
+            console.error('Failed to load customer payment & bill history, using fallback:', err);
+            await fetchHistoryFallback(page, limit, dateF, startD, endD, typeF, methodF, searchQ);
+        } finally {
+            setHistoryLoading(false);
         }
+    };
+
+    // Auto-fetch with 200ms debounce on customer payment/bill history filters, search, or page change
+    useEffect(() => {
+        const handler = setTimeout(() => {
+            fetchHistory(
+                currentHistoryPage,
+                historyPageSize,
+                paymentDateFilter,
+                paymentStartDate,
+                paymentEndDate,
+                activityTypeFilter,
+                paymentMethodFilter,
+                paymentSearch
+            );
+        }, 200);
+        return () => clearTimeout(handler);
+    }, [
+        currentHistoryPage,
+        historyPageSize,
+        paymentDateFilter,
+        paymentStartDate,
+        paymentEndDate,
+        activityTypeFilter,
+        paymentMethodFilter,
+        paymentSearch
+    ]);
+
+    const fetchPayments = async () => {
+        await fetchHistory();
+    };
+
+    const fetchSales = async () => {
+        await fetchHistory();
     };
 
     // Open Ledger Modal for a customer
@@ -1107,42 +1341,6 @@ export default function CustomersPage() {
         }
     };
 
-    // Date filter matcher for dynamic payment history
-    const matchesPaymentDate = (dateStr) => {
-        if (!dateStr) return false;
-        const ymd = toYMD(dateStr);
-        if (!ymd) return false;
-
-        const todayYmd = toYMD(new Date());
-        if (paymentDateFilter === 'today') {
-            return ymd === todayYmd;
-        }
-        if (paymentDateFilter === 'yesterday') {
-            const y = new Date();
-            y.setDate(y.getDate() - 1);
-            return ymd === toYMD(y);
-        }
-        if (paymentDateFilter === 'this_week') {
-            const now = new Date();
-            const day = now.getDay();
-            const diff = now.getDate() - day + (day === 0 ? -6 : 1);
-            const monday = new Date(now.setDate(diff));
-            return ymd >= toYMD(monday) && ymd <= todayYmd;
-        }
-        if (paymentDateFilter === 'this_month') {
-            const now = new Date();
-            const startOfMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
-            return ymd >= startOfMonth && ymd <= todayYmd;
-        }
-        if (paymentDateFilter === 'all') {
-            return true;
-        }
-        if (paymentDateFilter === 'custom') {
-            return (!paymentStartDate || ymd >= paymentStartDate) && (!paymentEndDate || ymd <= paymentEndDate);
-        }
-        return true;
-    };
-
     // Active Customer Directory slice (Server-Side Paginated)
     const filteredCustomers = customers;
     const paginatedCustomers = customers;
@@ -1151,9 +1349,6 @@ export default function CustomersPage() {
     const startCustomerIndex = totalServerCustomers === 0 ? 0 : (validCurrentPage - 1) * pageSize + 1;
     const endCustomerIndex = Math.min(validCurrentPage * pageSize, totalServerCustomers);
 
-    // Customer payments list
-    const customerPayments = payments.filter(p => p.party_type === 'customer');
-
     // Customer Directory KPIs (Warehouse-wide global metrics from serverSummary)
     const totalCustomersCount = serverSummary?.totalCustomers ?? (totalServerCustomers || customers.length);
     const totalReceivables = serverSummary?.totalReceivables ?? customers.reduce((sum, c) => sum + (c.balance > 0 ? c.balance : 0), 0);
@@ -1161,87 +1356,18 @@ export default function CustomersPage() {
     const clearedCustomersCount = serverSummary?.clearCustomersCount ?? customers.filter(c => c.balance <= 0).length;
     const totalDuesPaidAllTime = (serverSummary?.totalDuesPaidAllTime && serverSummary.totalDuesPaidAllTime > 0)
         ? serverSummary.totalDuesPaidAllTime
-        : customerPayments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+        : 0;
 
-    // Unified Bill & Payment Records for "Payment & Bill History"
-    const billRecords = sales.map(s => ({
-        type: 'bill',
-        id: `bill-${s.id}`,
-        rawId: s.id,
-        date: s.created_at,
-        ref_no: s.invoice_no,
-        customer_id: s.customer_id,
-        party_name: s.customer_name || 'Wholesale Client',
-        party_business: s.customer_business || 'Wholesale Shop',
-        party_phone: s.customer_phone || '',
-        payment_method: s.payment_method || 'credit',
-        net_amount: parseFloat(s.net_amount) || 0,
-        amount_paid: parseFloat(s.amount_paid) || 0,
-        remaining_balance: parseFloat(s.remaining_balance) || 0,
-        notes: s.remarks || (s.remaining_balance > 0 ? `Unpaid Due: Rs. ${Math.round(s.remaining_balance).toLocaleString()}` : 'Invoice Fully Cleared'),
-        raw: s
-    }));
+    // Server-Side Paginated Payment & Bill History references
+    const allHistoryRecords = historyRecords;
+    const filteredHistory = historyRecords;
 
-    const paymentRecords = customerPayments.map(p => ({
-        type: 'payment',
-        id: `pay-${p.id}`,
-        rawId: p.id,
-        date: p.payment_date || p.created_at,
-        ref_no: p.reference_no || `RCP-${String(p.id).padStart(5, '0')}`,
-        customer_id: p.party_id,
-        party_name: p.party_name || 'Wholesale Client',
-        party_business: p.party_business || 'Wholesale Shop',
-        party_phone: p.party_phone || '',
-        payment_method: p.payment_method || 'cash',
-        net_amount: 0,
-        amount_paid: parseFloat(p.amount) || 0,
-        remaining_balance: 0,
-        notes: p.notes || 'Customer ledger payment received',
-        raw: p
-    }));
-
-    // All combined activity sorted newest first
-    const allHistoryRecords = [...billRecords, ...paymentRecords].sort((a, b) => {
-        const da = new Date(a.date).getTime() || 0;
-        const db = new Date(b.date).getTime() || 0;
-        return db - da;
-    });
-
-    // Filtered Activity for Payment & Bill History Tab
-    const filteredHistory = allHistoryRecords.filter(item => {
-        if (!matchesPaymentDate(item.date)) return false;
-
-        if (activityTypeFilter !== 'ALL' && item.type !== activityTypeFilter) return false;
-
-        if (paymentMethodFilter !== 'ALL') {
-            const meth = (item.payment_method || '').toLowerCase();
-            if (meth !== paymentMethodFilter.toLowerCase()) return false;
-        }
-
-        if (paymentSearch) {
-            const q = paymentSearch.toLowerCase();
-            const party = (item.party_name || '').toLowerCase();
-            const biz = (item.party_business || '').toLowerCase();
-            const ref = (item.ref_no || '').toLowerCase();
-            const notes = (item.notes || '').toLowerCase();
-            if (!party.includes(q) && !biz.includes(q) && !ref.includes(q) && !notes.includes(q)) {
-                return false;
-            }
-        }
-        return true;
-    });
-
-    // Dynamic Period KPIs for Payment & Bill History Tab (matching date filter)
-    const periodDateMatchedRecords = allHistoryRecords.filter(r => matchesPaymentDate(r.date));
-    const periodBills = periodDateMatchedRecords.filter(r => r.type === 'bill');
-    const periodPayments = periodDateMatchedRecords.filter(r => r.type === 'payment');
-
-    const periodTotalBilled = periodBills.reduce((sum, b) => sum + b.net_amount, 0);
-    const periodPaidAmount = periodPayments.reduce((sum, p) => sum + p.amount_paid, 0) + periodBills.reduce((sum, b) => sum + b.amount_paid, 0);
-    const periodNewPendingDues = periodBills.reduce((sum, b) => sum + b.remaining_balance, 0);
+    const periodTotalBilled = historySummary?.periodTotalBilled || 0;
+    const periodPaidAmount = historySummary?.periodPaidAmount || 0;
+    const periodNewPendingDues = historySummary?.periodNewPendingDues || 0;
 
     const getPeriodLabel = () => {
-        if (paymentDateFilter === 'today') return 'Today';
+        if (paymentDateFilter === 'today') return 'Today (Daily)';
         if (paymentDateFilter === 'yesterday') return 'Yesterday';
         if (paymentDateFilter === 'this_week') return 'This Week';
         if (paymentDateFilter === 'this_month') return 'This Month';
@@ -1312,8 +1438,10 @@ export default function CustomersPage() {
                     <IconReceipt className="w-4 h-4" />
                     <span>Payment & Bill History</span>
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${activeMainTab === 'payment_history' ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-700'
-                        }`}>
-                        {allHistoryRecords.length}
+                        }`}
+                        title="Daily count of bills & payments recorded today"
+                    >
+                        {historySummary?.todayCount ?? 0}
                     </span>
                 </button>
             </div>
@@ -1804,32 +1932,28 @@ export default function CustomersPage() {
                     {/* DYNAMIC DATE & ACTIVITY FILTER BAR */}
                     <div className="bg-white p-4 rounded-2xl border border-[#F3E5AB] shadow-xs space-y-3">
                         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3">
-                            {/* Date Presets */}
-                            <div className="flex flex-wrap items-center gap-1.5 text-xs font-bold">
-                                <span className="text-gray-500 text-[11px] mr-1 flex items-center gap-1">
-                                    <IconCalendar className="w-3.5 h-3.5 text-[#B8860B]" />
-                                    <span>Date Filter:</span>
-                                </span>
-                                {[
-                                    { id: 'today', label: 'Today (Default)' },
-                                    { id: 'yesterday', label: 'Yesterday' },
-                                    { id: 'this_week', label: 'This Week' },
-                                    { id: 'this_month', label: 'This Month' },
-                                    { id: 'all', label: 'All Time' },
-                                    { id: 'custom', label: 'Custom Range' }
-                                ].map((tab) => (
-                                    <button
-                                        key={tab.id}
-                                        type="button"
-                                        onClick={() => setPaymentDateFilter(tab.id)}
-                                        className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${paymentDateFilter === tab.id
-                                            ? 'bg-black text-white shadow-xs'
-                                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                                            }`}
-                                    >
-                                        {tab.label}
-                                    </button>
-                                ))}
+                            {/* Date Presets Select Dropdown */}
+                            <div className="flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-xl border border-gray-200">
+                                <IconCalendar className="w-4 h-4 text-[#B8860B] shrink-0" />
+                                <label htmlFor="payment-date-select" className="text-xs font-bold text-gray-600 whitespace-nowrap">
+                                    Date Filter:
+                                </label>
+                                <select
+                                    id="payment-date-select"
+                                    value={paymentDateFilter}
+                                    onChange={(e) => {
+                                        setPaymentDateFilter(e.target.value);
+                                        setCurrentHistoryPage(1);
+                                    }}
+                                    className="bg-transparent text-xs font-bold text-gray-900 outline-none cursor-pointer pr-1"
+                                >
+                                    <option value="today">Today (Daily)</option>
+                                    <option value="yesterday">Yesterday</option>
+                                    <option value="this_week">This Week</option>
+                                    <option value="this_month">This Month</option>
+                                    <option value="custom">Custom Date Range</option>
+                                    <option value="all">All Time</option>
+                                </select>
                             </div>
 
                             {/* Payment Method Filter */}
@@ -1837,8 +1961,11 @@ export default function CustomersPage() {
                                 <span className="text-gray-500 text-[11px]">Method:</span>
                                 <select
                                     value={paymentMethodFilter}
-                                    onChange={(e) => setPaymentMethodFilter(e.target.value)}
-                                    className="px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold text-gray-800 focus:outline-none"
+                                    onChange={(e) => {
+                                        setPaymentMethodFilter(e.target.value);
+                                        setCurrentHistoryPage(1);
+                                    }}
+                                    className="px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold text-gray-800 focus:outline-none cursor-pointer"
                                 >
                                     <option value="ALL">All Methods</option>
                                     <option value="cash">Cash (Counter)</option>
@@ -1855,20 +1982,26 @@ export default function CustomersPage() {
                         {paymentDateFilter === 'custom' && (
                             <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-gray-100 text-xs">
                                 <div className="flex items-center gap-2">
-                                    <span className="font-semibold text-gray-600">From:</span>
+                                    <span className="font-semibold text-gray-600">From Date:</span>
                                     <input
                                         type="date"
                                         value={paymentStartDate}
-                                        onChange={(e) => setPaymentStartDate(e.target.value)}
+                                        onChange={(e) => {
+                                            setPaymentStartDate(e.target.value);
+                                            setCurrentHistoryPage(1);
+                                        }}
                                         className="px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-xl font-medium text-gray-800 focus:outline-none"
                                     />
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <span className="font-semibold text-gray-600">To:</span>
+                                    <span className="font-semibold text-gray-600">To Date:</span>
                                     <input
                                         type="date"
                                         value={paymentEndDate}
-                                        onChange={(e) => setPaymentEndDate(e.target.value)}
+                                        onChange={(e) => {
+                                            setPaymentEndDate(e.target.value);
+                                            setCurrentHistoryPage(1);
+                                        }}
                                         className="px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-xl font-medium text-gray-800 focus:outline-none"
                                     />
                                 </div>
@@ -1881,33 +2014,42 @@ export default function CustomersPage() {
                             <div className="flex flex-wrap items-center gap-2 text-xs font-bold">
                                 <button
                                     type="button"
-                                    onClick={() => setActivityTypeFilter('ALL')}
+                                    onClick={() => {
+                                        setActivityTypeFilter('ALL');
+                                        setCurrentHistoryPage(1);
+                                    }}
                                     className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${activityTypeFilter === 'ALL'
                                         ? 'bg-black text-white shadow-xs'
                                         : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                                         }`}
                                 >
-                                    All Activity ({periodDateMatchedRecords.length})
+                                    All Activity ({historySummary?.totalFiltered ?? 0})
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={() => setActivityTypeFilter('bill')}
+                                    onClick={() => {
+                                        setActivityTypeFilter('bill');
+                                        setCurrentHistoryPage(1);
+                                    }}
                                     className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${activityTypeFilter === 'bill'
                                         ? 'bg-blue-600 text-white shadow-xs'
                                         : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                                         }`}
                                 >
-                                    Sales Bills ({periodBills.length})
+                                    Sales Bills ({historySummary?.billsCount ?? 0})
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={() => setActivityTypeFilter('payment')}
+                                    onClick={() => {
+                                        setActivityTypeFilter('payment');
+                                        setCurrentHistoryPage(1);
+                                    }}
                                     className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${activityTypeFilter === 'payment'
                                         ? 'bg-emerald-600 text-white shadow-xs'
                                         : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                                         }`}
                                 >
-                                    Payment Recoveries ({periodPayments.length})
+                                    Payment Recoveries ({historySummary?.paymentsCount ?? 0})
                                 </button>
                             </div>
 
@@ -1918,7 +2060,10 @@ export default function CustomersPage() {
                                     type="text"
                                     placeholder="Search by customer, invoice #, voucher #, notes..."
                                     value={paymentSearch}
-                                    onChange={(e) => setPaymentSearch(e.target.value)}
+                                    onChange={(e) => {
+                                        setPaymentSearch(e.target.value);
+                                        setCurrentHistoryPage(1);
+                                    }}
                                     className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-medium text-gray-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/20"
                                 />
                             </div>
@@ -1939,7 +2084,7 @@ export default function CustomersPage() {
                                 Rs. {Math.round(periodTotalBilled).toLocaleString()}
                             </div>
                             <div className="text-[11px] text-blue-700 font-medium">
-                                {periodBills.length} Bill(s) added in {getPeriodLabel()}
+                                {historySummary?.billsCount ?? 0} Bill(s) added in {getPeriodLabel()}
                             </div>
                         </div>
 
@@ -1984,7 +2129,7 @@ export default function CustomersPage() {
                                 </div>
                             </div>
                             <div className="text-2xl font-black text-amber-700">
-                                {customersWithDueCount} Accounts
+                                {historySummary?.activeDebtorsCount ?? customersWithDueCount} Accounts
                             </div>
                             <div className="text-[11px] text-amber-800 font-medium">
                                 Accounts with pending balances
@@ -2004,11 +2149,19 @@ export default function CustomersPage() {
                                 </p>
                             </div>
                             <span className="text-xs font-bold text-gray-500 bg-gray-100 px-2.5 py-1 rounded-lg">
-                                {filteredHistory.length} Records Listed
+                                {totalHistoryRecords} Records Listed
                             </span>
                         </div>
 
-                        <div className="overflow-x-auto w-full">
+                        <div className="overflow-x-auto w-full relative">
+                            {historyLoading && (
+                                <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] z-10 flex items-center justify-center">
+                                    <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl shadow-md border border-[#F3E5AB] text-xs font-bold text-gray-800">
+                                        <IconSpinner className="w-4 h-4 animate-spin text-[#B8860B]" />
+                                        <span>Loading history records...</span>
+                                    </div>
+                                </div>
+                            )}
                             <table className="w-full text-left text-xs border-collapse">
                                 <thead>
                                     <tr className="bg-gray-50/90 border-b border-gray-200 text-gray-600 font-bold uppercase tracking-wider text-[11px]">
@@ -2024,7 +2177,7 @@ export default function CustomersPage() {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
-                                    {filteredHistory.length === 0 ? (
+                                    {historyRecords.length === 0 ? (
                                         <tr>
                                             <td colSpan={9} className="py-12 text-center text-gray-400">
                                                 <IconReceipt className="w-10 h-10 mx-auto text-gray-300 mb-2" />
@@ -2032,14 +2185,14 @@ export default function CustomersPage() {
                                             </td>
                                         </tr>
                                     ) : (
-                                        filteredHistory.map((item) => {
-                                            const itemDateStr = item.date ? item.date.split(' ')[0] : '-';
+                                        historyRecords.map((item) => {
+                                            const itemDateStr = formatOnlyDate(item.date);
                                             const isBill = item.type === 'bill';
 
                                             return (
                                                 <tr key={item.id} className="hover:bg-amber-50/20 transition-colors">
-                                                    {/* Date */}
-                                                    <td className="py-2.5 px-3 font-mono text-[11px] text-gray-600">
+                                                    {/* Date (Clean date with all time removed) */}
+                                                    <td className="py-2.5 px-3 font-mono text-[11px] text-gray-700 font-semibold">
                                                         {itemDateStr}
                                                     </td>
 
@@ -2175,11 +2328,11 @@ export default function CustomersPage() {
                                         })
                                     )}
                                 </tbody>
-                                {filteredHistory.length > 0 && (
+                                {totalHistoryRecords > 0 && (
                                     <tfoot>
                                         <tr className="bg-gray-50/90 border-t-2 border-gray-300 font-bold text-xs">
                                             <td colSpan={5} className="py-2.5 px-3 text-gray-800">
-                                                Period Totals in {getPeriodLabel()} ({filteredHistory.length} Activity Records)
+                                                Period Totals in {getPeriodLabel()} ({totalHistoryRecords} Activity Records)
                                             </td>
                                             <td className="py-2.5 px-3 text-right text-gray-900 font-black font-mono text-xs">
                                                 Rs. {Math.round(periodTotalBilled).toLocaleString()}
@@ -2195,6 +2348,123 @@ export default function CustomersPage() {
                                     </tfoot>
                                 )}
                             </table>
+                        </div>
+
+                        {/* SERVER-SIDE PAGINATION CONTROLS */}
+                        <div className="p-3 bg-gray-50/80 border-t border-gray-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+                            <div className="text-gray-500 font-semibold">
+                                {totalHistoryRecords === 0 ? (
+                                    <span>No activity records found</span>
+                                ) : (
+                                    <span>
+                                        Showing <strong className="text-gray-900 font-bold">{(currentHistoryPage - 1) * historyPageSize + 1}</strong> to{' '}
+                                        <strong className="text-gray-900 font-bold">{Math.min(currentHistoryPage * historyPageSize, totalHistoryRecords)}</strong> of{' '}
+                                        <strong className="text-gray-900 font-bold">{totalHistoryRecords}</strong> records
+                                    </span>
+                                )}
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-3">
+                                {/* Page size selector */}
+                                <div className="flex items-center gap-1.5 text-gray-500 font-medium">
+                                    <span>Per page:</span>
+                                    <select
+                                        value={historyPageSize}
+                                        onChange={(e) => {
+                                            setHistoryPageSize(Number(e.target.value));
+                                            setCurrentHistoryPage(1);
+                                        }}
+                                        className="px-2 py-1 bg-white border border-gray-200 rounded-lg text-xs font-bold text-gray-800 outline-none cursor-pointer"
+                                    >
+                                        <option value={25}>25</option>
+                                        <option value={50}>50</option>
+                                        <option value={100}>100</option>
+                                        <option value={200}>200</option>
+                                    </select>
+                                </div>
+
+                                {/* Page navigation buttons */}
+                                <div className="flex items-center gap-1">
+                                    <button
+                                        onClick={() => setCurrentHistoryPage(1)}
+                                        disabled={currentHistoryPage <= 1}
+                                        className={`p-1.5 rounded-lg border text-xs transition-all ${
+                                            currentHistoryPage <= 1
+                                                ? 'bg-gray-50 border-gray-200 text-gray-300 cursor-not-allowed'
+                                                : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-100 cursor-pointer shadow-2xs active:scale-95'
+                                        }`}
+                                        title="First Page"
+                                    >
+                                        <IconChevronDoubleLeft className="w-3.5 h-3.5" />
+                                    </button>
+
+                                    <button
+                                        onClick={() => setCurrentHistoryPage(prev => Math.max(1, prev - 1))}
+                                        disabled={currentHistoryPage <= 1}
+                                        className={`p-1.5 rounded-lg border text-xs transition-all ${
+                                            currentHistoryPage <= 1
+                                                ? 'bg-gray-50 border-gray-200 text-gray-300 cursor-not-allowed'
+                                                : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-100 cursor-pointer shadow-2xs active:scale-95'
+                                        }`}
+                                        title="Previous Page"
+                                    >
+                                        <IconChevronLeft className="w-3.5 h-3.5" />
+                                    </button>
+
+                                    {/* Page Numbers */}
+                                    <div className="flex items-center gap-1 px-1">
+                                        {getPageNumbers(currentHistoryPage, totalHistoryPages).map((p, idx) => {
+                                            if (p === '...') {
+                                                return (
+                                                    <span key={`history-ellipsis-${idx}`} className="px-1 text-gray-400 text-xs font-bold select-none">
+                                                        ...
+                                                    </span>
+                                                );
+                                            }
+                                            const isActive = p === currentHistoryPage;
+                                            return (
+                                                <button
+                                                    key={`history-page-${p}`}
+                                                    onClick={() => setCurrentHistoryPage(p)}
+                                                    className={`min-w-[28px] h-7 px-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                                                        isActive
+                                                            ? 'bg-black text-white shadow-2xs'
+                                                            : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-100'
+                                                    }`}
+                                                >
+                                                    {p}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+
+                                    <button
+                                        onClick={() => setCurrentHistoryPage(prev => Math.min(totalHistoryPages, prev + 1))}
+                                        disabled={currentHistoryPage >= totalHistoryPages}
+                                        className={`p-1.5 rounded-lg border text-xs transition-all ${
+                                            currentHistoryPage >= totalHistoryPages
+                                                ? 'bg-gray-50 border-gray-200 text-gray-300 cursor-not-allowed'
+                                                : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-100 cursor-pointer shadow-2xs active:scale-95'
+                                        }`}
+                                        title="Next Page"
+                                    >
+                                        <IconChevronRight className="w-3.5 h-3.5" />
+                                    </button>
+
+                                    <button
+                                        onClick={() => setCurrentHistoryPage(totalHistoryPages)}
+                                        disabled={currentHistoryPage >= totalHistoryPages}
+                                        className={`p-1.5 rounded-lg border text-xs transition-all ${
+                                            currentHistoryPage >= totalHistoryPages
+                                                ? 'bg-gray-50 border-gray-200 text-gray-300 cursor-not-allowed'
+                                                : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-100 cursor-pointer shadow-2xs active:scale-95'
+                                        }`}
+                                        title="Last Page"
+                                    >
+                                        <IconChevronDoubleRight className="w-3.5 h-3.5" />
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -2443,7 +2713,7 @@ export default function CustomersPage() {
                                                 ledger.map((row) => (
                                                     <tr key={row.id} className="hover:bg-amber-50/20">
                                                         <td className="p-2.5 text-gray-600 font-mono text-[11px]">
-                                                            {row.payment_date || (row.created_at ? row.created_at.split(' ')[0] : '-')}
+                                                            {formatOnlyDate(row.payment_date || row.created_at)}
                                                         </td>
                                                         <td className="p-2.5 font-semibold text-gray-800">
                                                             {row.description}
@@ -2566,7 +2836,7 @@ export default function CustomersPage() {
                                                                 {sale.invoice_no}
                                                             </td>
                                                             <td className="p-2.5 text-gray-500 font-mono text-[11px]">
-                                                                {sale.created_at ? sale.created_at.split(' ')[0] : '-'}
+                                                                {formatOnlyDate(sale.created_at)}
                                                             </td>
                                                             <td className="p-2.5 text-right font-bold text-gray-900 font-mono">
                                                                 Rs. {Number(sale.net_amount || 0).toLocaleString()}
@@ -2736,7 +3006,7 @@ export default function CustomersPage() {
                                                                     #CN-{String(ret.id).padStart(5, '0')}
                                                                 </td>
                                                                 <td className="p-2.5 text-gray-600 font-mono text-[11px]">
-                                                                    {ret.created_at ? ret.created_at.split(' ')[0] : '-'}
+                                                                    {formatOnlyDate(ret.created_at)}
                                                                 </td>
                                                                 <td className="p-2.5 font-mono text-gray-800 font-semibold">
                                                                     {ret.original_invoice_no || (ret.sale_id ? `INV-${ret.sale_id}` : 'Direct Return')}
@@ -2863,7 +3133,7 @@ export default function CustomersPage() {
                                                 <div key={bill.id} className="flex items-center justify-between text-[11px] bg-white p-2 rounded-lg border border-gray-200">
                                                     <div>
                                                         <span className="font-bold text-gray-900 font-mono">{bill.invoice_no}</span>
-                                                        <span className="text-gray-400 ml-2">{bill.created_at?.split(' ')[0]}</span>
+                                                        <span className="text-gray-400 ml-2">{formatOnlyDate(bill.created_at)}</span>
                                                     </div>
                                                     <div className="text-right">
                                                         <span className="font-bold text-gray-700">Due: Rs. {due.toLocaleString()}</span>
@@ -3384,7 +3654,7 @@ export default function CustomersPage() {
                                 <div className="flex justify-between">
                                     <span className="text-gray-400">Date:</span>
                                     <span className="font-semibold text-gray-800">
-                                        {selectedPaymentReceipt.payment_date || (selectedPaymentReceipt.created_at ? selectedPaymentReceipt.created_at.split(' ')[0] : '-')}
+                                        {formatOnlyDate(selectedPaymentReceipt.payment_date || selectedPaymentReceipt.created_at)}
                                     </span>
                                 </div>
                                 <div className="flex justify-between">

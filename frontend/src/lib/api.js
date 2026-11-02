@@ -11,7 +11,7 @@ export function getApiBase() {
             window.location.protocol === 'app:' || 
             window.location.protocol === 'file:' || 
             (typeof navigator !== 'undefined' && navigator.userAgent.toLowerCase().includes('electron'));
-        if (isElectron) {
+        if (isElectron || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
             return 'http://localhost:5000';
         }
     }

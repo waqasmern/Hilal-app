@@ -527,6 +527,8 @@ function initializeDatabase() {
 
         db.run(`CREATE INDEX IF NOT EXISTS idx_payments_party ON payments(party_type, party_id)`);
         db.run(`CREATE INDEX IF NOT EXISTS idx_payments_date ON payments(payment_date)`);
+        db.run(`CREATE INDEX IF NOT EXISTS idx_payments_created ON payments(created_at)`);
+        db.run(`CREATE INDEX IF NOT EXISTS idx_payments_method ON payments(payment_method)`);
         db.run(`CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(expense_date)`);
         db.run(`CREATE INDEX IF NOT EXISTS idx_stock_movements_var ON stock_movements(variant_id)`);
         db.run(`CREATE INDEX IF NOT EXISTS idx_stock_movements_created ON stock_movements(created_at)`);

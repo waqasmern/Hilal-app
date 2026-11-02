@@ -2,7 +2,7 @@ const db = require('./database');
 const crypto = require('crypto');
 
 const DEFAULT_CLOUD_URL = 'https://hilal-app-three.vercel.app';
-const SYNC_TIMEOUT_MS = 10000;
+const SYNC_TIMEOUT_MS = 25000;
 const STRANDED_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
 // In-process single-worker mutex lock
@@ -698,7 +698,12 @@ async function processTwoWaySync() {
         try {
             pushResult = await processPushSync();
         } catch (pushErr) {
-            console.error('[SyncEngine] Push sync failed:', pushErr.message);
+            const isNetwork = pushErr.name === 'TimeoutError' || pushErr.name === 'AbortError' || /timeout|abort|fetch failed|ENOTFOUND|ECONNREFUSED/i.test(pushErr.message);
+            if (isNetwork) {
+                console.warn('[SyncEngine] Cloud push skipped (offline or cloud server unreachable):', pushErr.message);
+            } else {
+                console.error('[SyncEngine] Push sync failed:', pushErr.message);
+            }
             pushResult = { status: 'failed', error: pushErr.message };
         }
 
@@ -706,7 +711,12 @@ async function processTwoWaySync() {
         try {
             pullResult = await processPullSync();
         } catch (pullErr) {
-            console.error('[SyncEngine] Pull sync failed:', pullErr.message);
+            const isNetwork = pullErr.name === 'TimeoutError' || pullErr.name === 'AbortError' || /timeout|abort|fetch failed|ENOTFOUND|ECONNREFUSED/i.test(pullErr.message);
+            if (isNetwork) {
+                console.warn('[SyncEngine] Cloud pull skipped (offline or cloud server unreachable):', pullErr.message);
+            } else {
+                console.error('[SyncEngine] Pull sync failed:', pullErr.message);
+            }
             pullResult = { status: 'failed', error: pullErr.message };
         }
 

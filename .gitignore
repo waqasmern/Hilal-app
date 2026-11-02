@@ -25,9 +25,10 @@ frontend/.env.local
 
 # Databases & Backups
 *.db
+*.db*
 *.sqlite
-*.sqlite3
-wholesale.db
+*.sqlite*
+wholesale.db*
 Backups/
 
 # WhatsApp Auth Tokens

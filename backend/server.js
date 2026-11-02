@@ -1772,6 +1772,214 @@ app.get('/api/customers', (req, res) => {
     });
 });
 
+// ─── CUSTOMER PAYMENT & BILL HISTORY (SERVER-SIDE PAGINATED) ────────────────
+app.get('/api/customers/history', (req, res) => {
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(500, Math.max(1, parseInt(req.query.limit) || 25));
+    const offset = (page - 1) * limit;
+
+    const {
+        dateFilter = 'today',
+        startDate,
+        endDate,
+        type = 'ALL',
+        paymentMethod = 'ALL',
+        search = ''
+    } = req.query;
+
+    const now = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const todayYMD = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+
+    const dateBounds = getSalesDateBoundaries(dateFilter, startDate, endDate);
+
+    const baseCte = `
+        WITH customer_activity AS (
+            SELECT 
+                'bill' AS type,
+                'bill-' || s.id AS id,
+                s.id AS raw_id,
+                s.created_at AS date,
+                s.invoice_no AS ref_no,
+                s.customer_id AS customer_id,
+                COALESCE(c.name, 'Wholesale Client') AS party_name,
+                COALESCE(c.business_name, '') AS party_business,
+                COALESCE(c.phone, c.mobile, '') AS party_phone,
+                COALESCE(s.payment_method, 'credit') AS payment_method,
+                CAST(COALESCE(s.net_amount, 0) AS REAL) AS net_amount,
+                CAST(COALESCE(s.amount_paid, 0) AS REAL) AS amount_paid,
+                CAST(COALESCE(s.remaining_balance, 0) AS REAL) AS remaining_balance,
+                COALESCE(s.remarks, '') AS notes,
+                s.gross_amount,
+                s.discount,
+                s.special_discount,
+                s.status,
+                s.payment_status
+            FROM sales s
+            LEFT JOIN customers c ON s.customer_id = c.id
+            WHERE s.customer_id IS NOT NULL
+
+            UNION ALL
+
+            SELECT 
+                'payment' AS type,
+                'pay-' || p.id AS id,
+                p.id AS raw_id,
+                COALESCE(NULLIF(p.payment_date, ''), p.created_at) AS date,
+                COALESCE(p.reference_no, 'RCP-' || substr('00000' || p.id, -5)) AS ref_no,
+                p.party_id AS customer_id,
+                COALESCE(c.name, 'Wholesale Client') AS party_name,
+                COALESCE(c.business_name, '') AS party_business,
+                COALESCE(c.phone, c.mobile, '') AS party_phone,
+                COALESCE(p.payment_method, 'cash') AS payment_method,
+                0.0 AS net_amount,
+                CAST(COALESCE(p.amount, 0) AS REAL) AS amount_paid,
+                0.0 AS remaining_balance,
+                COALESCE(p.notes, 'Customer ledger payment received') AS notes,
+                0.0 AS gross_amount,
+                0.0 AS discount,
+                0.0 AS special_discount,
+                'completed' AS status,
+                'paid' AS payment_status
+            FROM payments p
+            LEFT JOIN customers c ON p.party_id = c.id
+            WHERE p.party_type = 'customer'
+        )
+    `;
+
+    let whereClauses = [];
+    let params = [];
+
+    if (dateBounds) {
+        const startYMD = dateBounds.start.slice(0, 10);
+        const endYMD = dateBounds.end.slice(0, 10);
+        whereClauses.push('substr(date, 1, 10) >= ? AND substr(date, 1, 10) <= ?');
+        params.push(startYMD, endYMD);
+    }
+
+    if (type && type !== 'ALL') {
+        whereClauses.push('type = ?');
+        params.push(type.toLowerCase());
+    }
+
+    if (paymentMethod && paymentMethod !== 'ALL') {
+        whereClauses.push('LOWER(payment_method) = LOWER(?)');
+        params.push(paymentMethod);
+    }
+
+    if (search && search.trim()) {
+        const q = `%${search.trim().toLowerCase()}%`;
+        whereClauses.push(`(
+            LOWER(party_name) LIKE ? OR
+            LOWER(party_business) LIKE ? OR
+            LOWER(party_phone) LIKE ? OR
+            LOWER(ref_no) LIKE ? OR
+            LOWER(notes) LIKE ?
+        )`);
+        params.push(q, q, q, q, q);
+    }
+
+    const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+
+    // 1. Get filtered summary metrics
+    const summarySql = `
+        ${baseCte}
+        SELECT 
+            COUNT(*) as total_count,
+            COALESCE(SUM(CASE WHEN type = 'bill' THEN net_amount ELSE 0 END), 0) as period_total_billed,
+            COALESCE(SUM(amount_paid), 0) as period_paid_amount,
+            COALESCE(SUM(CASE WHEN type = 'bill' THEN remaining_balance ELSE 0 END), 0) as period_new_pending_dues,
+            COALESCE(SUM(CASE WHEN type = 'bill' THEN 1 ELSE 0 END), 0) as period_bills_count,
+            COALESCE(SUM(CASE WHEN type = 'payment' THEN 1 ELSE 0 END), 0) as period_payments_count
+        FROM customer_activity
+        ${whereSql}
+    `;
+
+    db.get(summarySql, params, (err, summaryRow) => {
+        if (err) return res.status(500).json({ error: err.message });
+
+        const total = summaryRow ? summaryRow.total_count : 0;
+        const totalPages = Math.max(1, Math.ceil(total / limit));
+
+        // 2. Fetch paginated records
+        const dataSql = `
+            ${baseCte}
+            SELECT * FROM customer_activity
+            ${whereSql}
+            ORDER BY date DESC, raw_id DESC
+            LIMIT ? OFFSET ?
+        `;
+        const dataParams = [...params, limit, offset];
+
+        db.all(dataSql, dataParams, (err, rows) => {
+            if (err) return res.status(500).json({ error: err.message });
+
+            // 3. Get today's daily count (always computed for today so tab badge accurately reflects today's daily activity!)
+            const todayCountSql = `
+                ${baseCte}
+                SELECT COUNT(*) as today_count FROM customer_activity
+                WHERE substr(date, 1, 10) = ?
+            `;
+            db.get(todayCountSql, [todayYMD], (err, todayRow) => {
+                const todayCount = todayRow ? todayRow.today_count : 0;
+
+                // 4. Get active debtors count
+                db.get("SELECT COUNT(*) as active_debtors FROM customers WHERE is_deleted = 0 AND balance > 0", [], (err, debtorRow) => {
+                    const activeDebtorsCount = debtorRow ? debtorRow.active_debtors : 0;
+
+                    const formattedRows = (rows || []).map(r => ({
+                        type: r.type,
+                        id: r.id,
+                        rawId: r.raw_id,
+                        date: r.date,
+                        ref_no: r.ref_no,
+                        customer_id: r.customer_id,
+                        party_name: r.party_name,
+                        party_business: r.party_business,
+                        party_phone: r.party_phone,
+                        payment_method: r.payment_method,
+                        net_amount: r.net_amount,
+                        amount_paid: r.amount_paid,
+                        remaining_balance: r.remaining_balance,
+                        notes: r.notes || (r.type === 'bill' ? (r.remaining_balance > 0 ? `Unpaid Due: Rs. ${Math.round(r.remaining_balance).toLocaleString()}` : 'Invoice Fully Cleared') : 'Customer ledger payment received'),
+                        raw: {
+                            ...r,
+                            id: r.raw_id,
+                            invoice_no: r.ref_no,
+                            reference_no: r.ref_no,
+                            amount: r.amount_paid,
+                            customer_name: r.party_name,
+                            customer_business: r.party_business,
+                            customer_phone: r.party_phone,
+                            payment_date: r.date
+                        }
+                    }));
+
+                    res.json({
+                        data: formattedRows,
+                        pagination: {
+                            total,
+                            page,
+                            limit,
+                            totalPages
+                        },
+                        summary: {
+                            todayCount,
+                            totalFiltered: total,
+                            periodTotalBilled: summaryRow ? summaryRow.period_total_billed : 0,
+                            periodPaidAmount: summaryRow ? summaryRow.period_paid_amount : 0,
+                            periodNewPendingDues: summaryRow ? summaryRow.period_new_pending_dues : 0,
+                            billsCount: summaryRow ? summaryRow.period_bills_count : 0,
+                            paymentsCount: summaryRow ? summaryRow.period_payments_count : 0,
+                            activeDebtorsCount
+                        }
+                    });
+                });
+            });
+        });
+    });
+});
+
 app.post('/api/customers', authenticateToken, (req, res) => {
     const { name, business_name, phone, mobile, address, cnic_ntn, credit_limit, opening_balance } = req.body;
     if (!name) return res.status(400).json({ error: 'Customer name required' });
@@ -2827,20 +3035,205 @@ app.post('/api/payments', authenticateToken, (req, res) => {
 });
 
 app.get('/api/payments', (req, res) => {
+    const isPaginated = req.query.page !== undefined || req.query.limit !== undefined || req.query.paginate === 'true';
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(500, Math.max(1, parseInt(req.query.limit) || 25));
+    const offset = (page - 1) * limit;
+
+    const { dateFilter = 'all', startDate, endDate, partyType = 'ALL', paymentMethod = 'ALL', search, partyId } = req.query;
+
+    const dateBounds = getSalesDateBoundaries(dateFilter, startDate, endDate);
+
+    let whereClauses = [];
+    let params = [];
+
+    // Date range filter
+    if (dateBounds) {
+        whereClauses.push("((p.payment_date IS NOT NULL AND p.payment_date >= DATE(?) AND p.payment_date <= DATE(?)) OR (p.payment_date IS NULL AND p.created_at >= ? AND p.created_at <= ?))");
+        params.push(dateBounds.start, dateBounds.end, dateBounds.start, dateBounds.end);
+    }
+
+    // Party Type (customer / supplier)
+    if (partyType && partyType !== 'ALL') {
+        whereClauses.push("p.party_type = ?");
+        params.push(partyType.toLowerCase());
+    }
+
+    // Specific Party ID
+    if (partyId && !isNaN(parseInt(partyId))) {
+        whereClauses.push("p.party_id = ?");
+        params.push(parseInt(partyId));
+    }
+
+    // Payment Method filter
+    if (paymentMethod && paymentMethod !== 'ALL') {
+        whereClauses.push("LOWER(p.payment_method) = ?");
+        params.push(paymentMethod.toLowerCase());
+    }
+
+    // Search query across reference_no, notes, party name, phone, cashier, and amount
+    if (search && search.trim()) {
+        const q = `%${search.trim().toLowerCase()}%`;
+        whereClauses.push(`(
+            LOWER(COALESCE(p.reference_no, '')) LIKE ? OR
+            LOWER(COALESCE(p.notes, '')) LIKE ? OR
+            LOWER(COALESCE(c.name, sup.name, '')) LIKE ? OR
+            LOWER(COALESCE(c.business_name, sup.company_name, '')) LIKE ? OR
+            LOWER(COALESCE(c.phone, sup.phone, '')) LIKE ? OR
+            LOWER(COALESCE(u.username, '')) LIKE ? OR
+            CAST(p.amount AS TEXT) LIKE ?
+        )`);
+        params.push(q, q, q, q, q, q, q);
+    }
+
+    const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+
+    if (!isPaginated) {
+        // Backward-compatible unpaginated query for other modules
+        const query = `
+            SELECT p.*,
+                   COALESCE(c.name, sup.name, '') as party_name,
+                   COALESCE(c.business_name, sup.company_name, '') as party_business,
+                   COALESCE(c.phone, sup.phone, '') as party_phone,
+                   COALESCE(c.address, sup.address, '') as party_address,
+                   COALESCE(c.balance, sup.balance, 0) as party_current_balance,
+                   u.username as cashier_name
+            FROM payments p
+            LEFT JOIN customers c ON p.party_type = 'customer' AND p.party_id = c.id
+            LEFT JOIN suppliers sup ON p.party_type = 'supplier' AND p.party_id = sup.id
+            LEFT JOIN users u ON p.user_id = u.id
+            ${whereSql}
+            ORDER BY p.created_at DESC, p.id DESC
+            LIMIT 1000
+        `;
+        return db.all(query, params, (err, rows) => {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json(rows);
+        });
+    }
+
+    // Paginated flow:
+    // 1. Single aggregate summary query for fast KPI cards and total count
+    const summaryQuery = `
+        SELECT 
+            COUNT(*) as total_count,
+            COALESCE(SUM(p.amount), 0) as total_amount,
+            COALESCE(SUM(CASE WHEN p.party_type = 'customer' THEN p.amount ELSE 0 END), 0) as customer_amount,
+            COALESCE(SUM(CASE WHEN p.party_type = 'supplier' THEN p.amount ELSE 0 END), 0) as supplier_amount,
+            COALESCE(SUM(CASE WHEN p.party_type = 'customer' THEN 1 ELSE 0 END), 0) as customer_count,
+            COALESCE(SUM(CASE WHEN p.party_type = 'supplier' THEN 1 ELSE 0 END), 0) as supplier_count,
+            COALESCE(SUM(CASE WHEN LOWER(p.payment_method) = 'cash' THEN p.amount ELSE 0 END), 0) as cash_amount,
+            COALESCE(SUM(CASE WHEN LOWER(p.payment_method) = 'bank' THEN p.amount ELSE 0 END), 0) as bank_amount,
+            COALESCE(SUM(CASE WHEN LOWER(p.payment_method) IN ('easypaisa', 'jazzcash') THEN p.amount ELSE 0 END), 0) as online_amount,
+            COALESCE(SUM(CASE WHEN LOWER(p.payment_method) = 'cheque' THEN p.amount ELSE 0 END), 0) as cheque_amount
+        FROM payments p
+        LEFT JOIN customers c ON p.party_type = 'customer' AND p.party_id = c.id
+        LEFT JOIN suppliers sup ON p.party_type = 'supplier' AND p.party_id = sup.id
+        LEFT JOIN users u ON p.user_id = u.id
+        ${whereSql}
+    `;
+
+    db.get(summaryQuery, params, (err, summaryRow) => {
+        if (err) return res.status(500).json({ error: err.message });
+
+        const total = summaryRow ? (summaryRow.total_count || 0) : 0;
+        const totalPages = Math.max(1, Math.ceil(total / limit));
+
+        if (total === 0) {
+            return res.json({
+                data: [],
+                pagination: {
+                    total: 0,
+                    page,
+                    limit,
+                    totalPages: 1
+                },
+                summary: {
+                    totalAmount: 0,
+                    customerAmount: 0,
+                    supplierAmount: 0,
+                    netCashFlow: 0,
+                    customerCount: 0,
+                    supplierCount: 0,
+                    cashAmount: 0,
+                    bankAmount: 0,
+                    onlineAmount: 0,
+                    chequeAmount: 0,
+                    totalCount: 0
+                }
+            });
+        }
+
+        // 2. Fetch only the current page of rows
+        const paginatedQuery = `
+            SELECT p.*,
+                   COALESCE(c.name, sup.name, '') as party_name,
+                   COALESCE(c.business_name, sup.company_name, '') as party_business,
+                   COALESCE(c.phone, sup.phone, '') as party_phone,
+                   COALESCE(c.address, sup.address, '') as party_address,
+                   COALESCE(c.balance, sup.balance, 0) as party_current_balance,
+                   u.username as cashier_name
+            FROM payments p
+            LEFT JOIN customers c ON p.party_type = 'customer' AND p.party_id = c.id
+            LEFT JOIN suppliers sup ON p.party_type = 'supplier' AND p.party_id = sup.id
+            LEFT JOIN users u ON p.user_id = u.id
+            ${whereSql}
+            ORDER BY p.created_at DESC, p.id DESC
+            LIMIT ? OFFSET ?
+        `;
+
+        db.all(paginatedQuery, [...params, limit, offset], (err, rows) => {
+            if (err) return res.status(500).json({ error: err.message });
+
+            const customerAmt = Number(summaryRow?.customer_amount || 0);
+            const supplierAmt = Number(summaryRow?.supplier_amount || 0);
+
+            res.json({
+                data: rows || [],
+                pagination: {
+                    total,
+                    page,
+                    limit,
+                    totalPages
+                },
+                summary: {
+                    totalAmount: Number(summaryRow?.total_amount || 0),
+                    customerAmount: customerAmt,
+                    supplierAmount: supplierAmt,
+                    netCashFlow: customerAmt - supplierAmt,
+                    customerCount: Number(summaryRow?.customer_count || 0),
+                    supplierCount: Number(summaryRow?.supplier_count || 0),
+                    cashAmount: Number(summaryRow?.cash_amount || 0),
+                    bankAmount: Number(summaryRow?.bank_amount || 0),
+                    onlineAmount: Number(summaryRow?.online_amount || 0),
+                    chequeAmount: Number(summaryRow?.cheque_amount || 0),
+                    totalCount: total
+                }
+            });
+        });
+    });
+});
+
+app.get('/api/payments/:id', (req, res) => {
     const query = `
         SELECT p.*,
                COALESCE(c.name, sup.name, '') as party_name,
                COALESCE(c.business_name, sup.company_name, '') as party_business,
-               COALESCE(c.phone, sup.phone, '') as party_phone
+               COALESCE(c.phone, sup.phone, '') as party_phone,
+               COALESCE(c.address, sup.address, '') as party_address,
+               COALESCE(c.balance, sup.balance, 0) as party_current_balance,
+               u.username as cashier_name
         FROM payments p
         LEFT JOIN customers c ON p.party_type = 'customer' AND p.party_id = c.id
         LEFT JOIN suppliers sup ON p.party_type = 'supplier' AND p.party_id = sup.id
-        ORDER BY p.created_at DESC
-        LIMIT 500
+        LEFT JOIN users u ON p.user_id = u.id
+        WHERE p.id = ? OR p.uuid = ?
+        LIMIT 1
     `;
-    db.all(query, [], (err, rows) => {
+    db.get(query, [req.params.id, req.params.id], (err, row) => {
         if (err) return res.status(500).json({ error: err.message });
-        res.json(rows);
+        if (!row) return res.status(404).json({ error: 'Payment voucher not found' });
+        res.json(row);
     });
 });
 

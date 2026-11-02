@@ -9,10 +9,48 @@ async function getNextId(tableName) {
 export async function GET(request) {
     try {
         const { searchParams } = new URL(request.url);
-        const limit = Math.min(500, Math.max(1, parseInt(searchParams.get('limit') || '500')));
+
+        // Fast-path: If local Express backend on port 5000 is available, query local SQLite directly (< 5ms)
+        try {
+            const localRes = await fetch(`http://localhost:5000/api/payments?${searchParams.toString()}`, {
+                signal: AbortSignal.timeout(2000)
+            });
+            if (localRes.ok) {
+                const data = await localRes.json();
+                return NextResponse.json(data);
+            }
+        } catch {
+            // Local backend not available, proceed to Supabase cloud
+        }
+
+        const isPaginated = searchParams.has('page') || searchParams.has('paginate') || (searchParams.has('limit') && searchParams.get('limit') !== '500');
+        const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
+        const limit = Math.min(500, Math.max(1, parseInt(searchParams.get('limit') || '25')));
+        const offset = (page - 1) * limit;
+
+        const partyType = searchParams.get('partyType') || 'ALL';
+        const paymentMethod = searchParams.get('paymentMethod') || 'ALL';
+        const search = (searchParams.get('search') || '').trim().toLowerCase();
+
+        let query = supabase.from('payments').select('*', { count: 'exact' });
+
+        if (partyType && partyType !== 'ALL') {
+            query = query.eq('party_type', partyType.toLowerCase());
+        }
+        if (paymentMethod && paymentMethod !== 'ALL') {
+            query = query.ilike('payment_method', paymentMethod.toLowerCase());
+        }
+
+        query = query.order('created_at', { ascending: false });
+
+        if (isPaginated) {
+            query = query.range(offset, offset + limit - 1);
+        } else {
+            query = query.limit(limit);
+        }
 
         const [paymentsRes, custsRes, suppsRes] = await Promise.all([
-            supabase.from('payments').select('*').order('created_at', { ascending: false }).limit(limit),
+            query,
             supabase.from('customers').select('id, name, business_name, phone'),
             supabase.from('suppliers').select('id, name, company_name, phone')
         ]);
@@ -24,7 +62,7 @@ export async function GET(request) {
         const custMap = Object.fromEntries((custsRes.data || []).map(c => [c.id, c]));
         const suppMap = Object.fromEntries((suppsRes.data || []).map(s => [s.id, s]));
 
-        const enriched = (paymentsRes.data || []).map(p => {
+        let enriched = (paymentsRes.data || []).map(p => {
             const isCust = p.party_type === 'customer';
             const party = isCust ? (custMap[p.party_id] || {}) : (suppMap[p.party_id] || {});
             return {
@@ -35,7 +73,72 @@ export async function GET(request) {
             };
         });
 
-        return NextResponse.json(enriched);
+        if (search) {
+            enriched = enriched.filter(p =>
+                (p.party_name && p.party_name.toLowerCase().includes(search)) ||
+                (p.party_business && p.party_business.toLowerCase().includes(search)) ||
+                (p.party_phone && p.party_phone.includes(search)) ||
+                (p.reference_no && p.reference_no.toLowerCase().includes(search)) ||
+                (p.notes && p.notes.toLowerCase().includes(search)) ||
+                String(p.amount).includes(search)
+            );
+        }
+
+        if (!isPaginated) {
+            return NextResponse.json(enriched);
+        }
+
+        const total = paymentsRes.count || enriched.length;
+        const totalPages = Math.max(1, Math.ceil(total / limit));
+
+        let customerAmount = 0;
+        let supplierAmount = 0;
+        let customerCount = 0;
+        let supplierCount = 0;
+        let cashAmount = 0;
+        let bankAmount = 0;
+        let onlineAmount = 0;
+        let chequeAmount = 0;
+
+        enriched.forEach(p => {
+            const amt = Number(p.amount) || 0;
+            const method = (p.payment_method || '').toLowerCase();
+            if (p.party_type === 'customer') {
+                customerAmount += amt;
+                customerCount += 1;
+            } else if (p.party_type === 'supplier') {
+                supplierAmount += amt;
+                supplierCount += 1;
+            }
+
+            if (method === 'cash') cashAmount += amt;
+            else if (method === 'bank') bankAmount += amt;
+            else if (method === 'easypaisa' || method === 'jazzcash') onlineAmount += amt;
+            else if (method === 'cheque') chequeAmount += amt;
+        });
+
+        return NextResponse.json({
+            data: enriched,
+            pagination: {
+                total,
+                page,
+                limit,
+                totalPages
+            },
+            summary: {
+                totalAmount: customerAmount + supplierAmount,
+                customerAmount,
+                supplierAmount,
+                netCashFlow: customerAmount - supplierAmount,
+                customerCount,
+                supplierCount,
+                cashAmount,
+                bankAmount,
+                onlineAmount,
+                chequeAmount,
+                totalCount: total
+            }
+        });
     } catch (err) {
         return NextResponse.json({ error: err.message }, { status: 500 });
     }
@@ -44,6 +147,27 @@ export async function GET(request) {
 export async function POST(request) {
     try {
         const body = await request.json();
+
+        // Fast-path: If local Express backend on port 5000 is available, proxy write to SQLite directly
+        try {
+            const authHeader = request.headers.get('authorization') || '';
+            const localRes = await fetch('http://localhost:5000/api/payments', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': authHeader
+                },
+                body: JSON.stringify(body),
+                signal: AbortSignal.timeout(3000)
+            });
+            if (localRes.ok) {
+                const data = await localRes.json();
+                return NextResponse.json(data);
+            }
+        } catch {
+            // Local backend not reachable, proceed to Supabase cloud
+        }
+
         const { party_type, party_id, amount, payment_method, reference_no, notes, payment_date } = body;
 
         const numAmount = parseFloat(amount);
