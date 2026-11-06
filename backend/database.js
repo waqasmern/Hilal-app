@@ -571,6 +571,8 @@ function initializeDatabase() {
         db.run("CREATE UNIQUE INDEX IF NOT EXISTS uq_sale_returns_uuid ON sale_returns(uuid)", () => {});
         db.run("CREATE UNIQUE INDEX IF NOT EXISTS uq_purchases_uuid ON purchases(uuid)", () => {});
         db.run("CREATE INDEX IF NOT EXISTS idx_sales_order_status ON sales(order_status)", () => {});
+        db.run("UPDATE customers SET phone = mobile WHERE (phone IS NULL OR phone = '') AND mobile IS NOT NULL AND mobile != ''", () => {});
+        db.run("UPDATE customers SET mobile = phone WHERE (mobile IS NULL OR mobile = '') AND phone IS NOT NULL AND phone != ''", () => {});
 
         console.log('Wholesale database schema created successfully.');
 
@@ -668,7 +670,7 @@ function seedInitialData() {
     db.get("SELECT COUNT(*) as count FROM customers", (err, row) => {
         if (row && row.count === 0) {
             const stmt = db.prepare("INSERT INTO customers (uuid, name, business_name, phone, mobile, address, credit_limit, opening_balance, balance) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-            stmt.run(generateUUID(), 'Hilal Foods Timergara', 'Hilal Traders', '0945123456', '03009876543', 'Main Market, Timergara', 500000, 0, 0);
+            stmt.run(generateUUID(), 'Hilal Foods Timergara', 'Hilal Traders', '03009876543', '03009876543', 'Main Market, Timergara', 500000, 0, 0);
             stmt.run(generateUUID(), 'Khan Cash & Carry', 'Khan Enterprise', '0945765432', '03123456789', 'Gimer, Dir Lower', 300000, 0, 0);
             stmt.finalize();
             console.log('Seeded initial wholesale customers.');

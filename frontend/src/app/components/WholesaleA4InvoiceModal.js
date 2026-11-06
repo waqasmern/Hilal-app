@@ -354,10 +354,10 @@ export default function WholesaleA4InvoiceModal({
                                     )}
                                     <div>
                                         <h2 className="text-sm sm:text-base font-black text-gray-900 tracking-tight leading-tight uppercase">
-                                            {settings?.shop_name || 'HILAL FOODS SOLUTIONS'}
+                                            {settings?.shop_name || 'Hilal Wholesaler Shop'}
                                         </h2>
-                                        <div className="text-[10px] font-bold text-[#B8860B] uppercase tracking-wider">
-                                            Distribution Network
+                                        <div className="text-[10px] font-bold text-[#0B3B7B] uppercase tracking-wider">
+                                            {settings?.shop_tagline || settings?.shop_subtitle || 'Wholesale & Retail Distribution'}
                                         </div>
                                     </div>
                                 </div>
@@ -413,11 +413,11 @@ export default function WholesaleA4InvoiceModal({
                                     </div>
                                     <div>
                                         <span className="font-semibold text-gray-700">Mobile / Phone: </span>
-                                        <span className="font-mono">{invoice.customer_phone || invoice.customer_mobile || invoice.phone || '0945123456'}</span>
+                                        <span className="font-mono">{invoice.customer_phone || invoice.customer_mobile || invoice.walkin_phone || invoice.phone || '—'}</span>
                                     </div>
                                     <div>
                                         <span className="font-semibold text-gray-700">Address: </span>
-                                        <span>{invoice.customer_address || invoice.address || 'Main Market, Timergara'}</span>
+                                        <span>{invoice.customer_address || invoice.walkin_address || invoice.address || '—'}</span>
                                     </div>
                                     {invoice.remarks && (
                                         <div>

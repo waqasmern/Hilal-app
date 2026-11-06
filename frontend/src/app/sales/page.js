@@ -170,7 +170,7 @@ export default function SalesHistoryPage() {
                 const data = await res.json();
                 dispatch(setSettings(data));
             }
-        } catch (err) {}
+        } catch (err) { }
     };
 
     const fetchSales = async (
@@ -271,14 +271,31 @@ export default function SalesHistoryPage() {
         }
     };
 
+    // Helper to safely extract any invoice tokens from a string (e.g. "INV-1234, INV-5678")
+    const extractInvoiceTokens = (refStr) => {
+        if (!refStr) return [];
+        const matches = String(refStr).match(/INV-[A-Za-z0-9_-]+/gi);
+        return matches ? Array.from(new Set(matches)) : [];
+    };
+
     const fetchSaleDetails = async (id, openModal = true) => {
         try {
-            const res = await fetch(apiUrl(`/api/sales/${id}`));
+            if (!id) {
+                showAlert('Notice', 'No invoice number is linked to this payment.', 'info');
+                return null;
+            }
+            const res = await fetch(apiUrl(`/api/sales/${encodeURIComponent(String(id).trim())}`));
             if (res.ok) {
                 const data = await res.json();
-                setSelectedSale(data);
-                if (openModal) setInvoiceModalOpen(true);
-                return data;
+                if (data && data.id) {
+                    setSelectedSale(data);
+                    if (openModal) setInvoiceModalOpen(true);
+                    return data;
+                } else {
+                    showAlert('Notice', `Invoice #${id} was not found.`, 'warning');
+                }
+            } else {
+                showAlert('Error', `Could not load invoice #${id}.`, 'error');
             }
         } catch (err) {
             showAlert('Fetch Error', 'Failed to retrieve invoice details.', 'error');
@@ -401,7 +418,9 @@ export default function SalesHistoryPage() {
 
         const checkoutDue = Math.max(0, net - checkoutPaid);
         const livePaid = Number(s.amount_paid) || 0;
-        const liveDue = Number(s.remaining_balance) || 0;
+        const liveDue = s.remaining_balance !== undefined && s.remaining_balance !== null
+            ? Number(s.remaining_balance)
+            : Math.max(0, net - livePaid);
         const isSettledLater = Boolean(s.is_settled_later) || (livePaid > checkoutPaid);
 
         let settledDate = s.settled_later_date || null;
@@ -412,6 +431,15 @@ export default function SalesHistoryPage() {
             if (laterPay.length > 0) {
                 settledDate = toYMD(laterPay[0].payment_date || laterPay[0].created_at);
             }
+        }
+
+        let currentStatus = 'PENDING';
+        if (liveDue <= 0.01 && (net > 0 || livePaid > 0)) {
+            currentStatus = 'PAID';
+        } else if (livePaid > 0 && liveDue > 0.01) {
+            currentStatus = 'PARTIAL';
+        } else {
+            currentStatus = 'PENDING';
         }
 
         let historicalStatus = 'PENDING';
@@ -430,7 +458,8 @@ export default function SalesHistoryPage() {
             liveDue,
             isSettledLater,
             settledDate,
-            historicalStatus
+            historicalStatus,
+            currentStatus
         };
     };
 
@@ -495,33 +524,33 @@ export default function SalesHistoryPage() {
 
     // ─── KPI METRICS COMPUTATION (Point-in-Time Accurate) ───
     const computedRecoveredDues = activeRecoveredDues.reduce((sum, p) => sum + (Number(p.recovered_amount || p.amount) || 0), 0);
-    const totalRecoveredDues = (serverSummary?.totalRecoveredDues !== undefined && serverSummary.totalRecoveredDues > 0) 
-        ? serverSummary.totalRecoveredDues 
+    const totalRecoveredDues = (serverSummary?.totalRecoveredDues !== undefined && serverSummary.totalRecoveredDues > 0)
+        ? serverSummary.totalRecoveredDues
         : computedRecoveredDues;
 
     const totalSale = serverSummary?.totalSale !== undefined ? serverSummary.totalSale : salesInDate.reduce((sum, s) => sum + (Number(s.net_amount) || 0), 0);
-    const checkoutCashInDate = serverSummary?.checkoutCollected !== undefined 
-        ? serverSummary.checkoutCollected 
+    const checkoutCashInDate = serverSummary?.checkoutCollected !== undefined
+        ? serverSummary.checkoutCollected
         : salesInDate.reduce((sum, s) => sum + getSaleHistoricalMetrics(s).checkoutPaid, 0);
 
     // Total Cash Inflow = Checkout Cash + Recovered Dues (Naqd Wasooli jo dukan me aya)
     const totalCollected = (serverSummary?.totalCollected !== undefined && (serverSummary?.totalRecoveredDues > 0 || computedRecoveredDues === 0))
-        ? serverSummary.totalCollected 
+        ? serverSummary.totalCollected
         : (checkoutCashInDate + totalRecoveredDues);
 
-    const totalPendingDues = serverSummary?.totalPendingDues !== undefined 
-        ? serverSummary.totalPendingDues 
-        : salesInDate.reduce((sum, s) => sum + getSaleHistoricalMetrics(s).checkoutDue, 0);
+    const totalPendingDues = serverSummary?.totalPendingDues !== undefined
+        ? serverSummary.totalPendingDues
+        : salesInDate.reduce((sum, s) => sum + getSaleHistoricalMetrics(s).liveDue, 0);
 
-    const totalDiscount = serverSummary?.totalDiscount !== undefined 
-        ? serverSummary.totalDiscount 
+    const totalDiscount = serverSummary?.totalDiscount !== undefined
+        ? serverSummary.totalDiscount
         : salesInDate.reduce((sum, s) => sum + (Number(s.discount) || 0) + (Number(s.special_discount) || 0), 0);
 
     const statusCounts = (serverSummary?.statusCounts && serverSummary?.totalRecoveredDues > 0) ? serverSummary.statusCounts : {
         ALL: salesInDate.length + activeRecoveredDues.length,
-        PAID: salesInDate.filter(s => getSaleHistoricalMetrics(s).historicalStatus === 'PAID').length + activeRecoveredDues.length,
-        PARTIAL: salesInDate.filter(s => getSaleHistoricalMetrics(s).historicalStatus === 'PARTIAL').length,
-        PENDING: salesInDate.filter(s => getSaleHistoricalMetrics(s).historicalStatus === 'PENDING').length
+        PAID: salesInDate.filter(s => getSaleHistoricalMetrics(s).currentStatus === 'PAID').length + activeRecoveredDues.length,
+        PARTIAL: salesInDate.filter(s => getSaleHistoricalMetrics(s).currentStatus === 'PARTIAL').length,
+        PENDING: salesInDate.filter(s => getSaleHistoricalMetrics(s).currentStatus === 'PENDING').length
     };
 
     // Active rows and pagination numbers (Server-Side Paginated)
@@ -540,7 +569,7 @@ export default function SalesHistoryPage() {
         if (feedType !== 'WASOOLI') {
             paginatedSales.forEach(s => {
                 const metrics = getSaleHistoricalMetrics(s);
-                if (statusFilter !== 'ALL' && statusFilter !== metrics.historicalStatus) return;
+                if (statusFilter !== 'ALL' && statusFilter !== metrics.currentStatus) return;
                 items.push({
                     type: 'invoice',
                     isRecovery: false,
@@ -693,7 +722,14 @@ export default function SalesHistoryPage() {
             return;
         }
 
-        // Admin allowed directly -> Load in POS and navigate
+        // Admin allowed directly -> Persist for Electron page reload, load in POS and navigate
+        if (typeof window !== 'undefined') {
+            try {
+                localStorage.setItem('hws_editing_sale', JSON.stringify(fullSale));
+            } catch (e) {
+                console.warn('Failed to save editing sale to localStorage:', e);
+            }
+        }
         dispatch(loadSaleForEdit(fullSale));
         router.push('/pos');
     };
@@ -703,7 +739,16 @@ export default function SalesHistoryPage() {
             setAdminAuthModalOpen(false);
             const saleToLoad = pendingEditSale;
             setPendingEditSale(null);
-            dispatch(loadSaleForEdit(saleToLoad));
+            if (typeof window !== 'undefined' && saleToLoad) {
+                try {
+                    localStorage.setItem('hws_editing_sale', JSON.stringify(saleToLoad));
+                } catch (e) {
+                    console.warn('Failed to save editing sale to localStorage:', e);
+                }
+            }
+            if (saleToLoad) {
+                dispatch(loadSaleForEdit(saleToLoad));
+            }
             router.push('/pos');
         } else {
             showAlert('Access Denied', 'Incorrect Admin PIN. Only administrators can edit completed sales.', 'error');
@@ -714,7 +759,7 @@ export default function SalesHistoryPage() {
         const isThermal = format === 'thermal';
         const a4Printer = (settings?.selected_a4_printer || '').trim();
         const thermalPrinter = (settings?.selected_printer || '').trim();
-        const isThermalTarget = isThermal || ((!a4Printer || a4Printer === 'same_as_thermal') && 
+        const isThermalTarget = isThermal || ((!a4Printer || a4Printer === 'same_as_thermal') &&
             /pos|80|receipt|thermal|blackcopper|xp-|xprinter|rpp/i.test(thermalPrinter));
 
         const targetPrinter = !isThermal && a4Printer && a4Printer !== 'same_as_thermal' ? a4Printer : thermalPrinter;
@@ -893,146 +938,132 @@ export default function SalesHistoryPage() {
             : selectedSale.remaining_balance
     ) : 0;
 
-    const renderThermalSlipContent = (inv, prevBal, newBal, elemId = "printable-invoice-thermal") => {
-        if (!inv) return null;
-        return (
-            <ThermalReceipt
-                invoice={inv}
-                settings={settings}
-                cashierName={inv.created_by_name || inv.cashier_name || user?.full_name || user?.username || 'Cashier'}
-                prevBalance={prevBal}
-                newBalance={newBal}
-                elemId={elemId}
-            />
-        );
-    };
-
     return (
-        <div className="space-y-2.5 sm:space-y-3 pb-8">
+        <div className="w-full max-w-[2200px] mx-auto space-y-3 sm:space-y-4 2xl:space-y-5 pb-10">
             {/* TOP HEADER */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-white p-3 rounded-2xl border border-[#F3E5AB] shadow-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-white p-3 2xl:p-4 rounded-2xl border border-gray-200 shadow-xs">
                 <div>
                     <div className="flex items-center gap-2">
-                        <span className="w-2.5 h-2.5 rounded-full bg-[#D4AF37] shadow-xs animate-pulse" />
-                        <h1 className="text-sm sm:text-base font-extrabold text-gray-900 tracking-tight leading-none">
+                        <span className="w-2.5 h-2.5 2xl:w-3 2xl:h-3 rounded-full bg-[#0B3B7B] shadow-xs animate-pulse" />
+                        <h1 className="text-sm sm:text-base 2xl:text-xl font-extrabold text-gray-900 tracking-tight leading-none">
                             Sales History &amp; Analytics
                         </h1>
                     </div>
-                    <p className="text-[11px] text-gray-500 mt-1">
+                    <p className="text-[11px] 2xl:text-xs text-gray-500 mt-1">
                         Review wholesale invoices, customer dues, wasooli recoveries, and returns
                     </p>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-2 2xl:gap-3 shrink-0">
                     <button
                         onClick={loadData}
                         disabled={loading}
-                        className="px-3 py-1.5 border border-gray-200 bg-white hover:bg-[#FEF9E7] hover:border-[#D4AF37] text-gray-700 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
+                        className="px-3 2xl:px-4 py-1.5 2xl:py-2 border border-gray-200 bg-white hover:bg-blue-50 hover:border-blue-300 text-gray-700 rounded-xl text-xs 2xl:text-sm font-semibold inline-flex items-center gap-1.5 2xl:gap-2 transition-all cursor-pointer shadow-2xs"
                         title="Refresh sales data"
                     >
-                        <IconRefresh className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-[#B8860B]' : 'text-gray-500'}`} />
+                        <IconRefresh className={`w-3.5 h-3.5 2xl:w-4 2xl:h-4 ${loading ? 'animate-spin text-[#0B3B7B]' : 'text-gray-500'}`} />
                         <span>Refresh</span>
                     </button>
                     <Link
                         href="/pos"
-                        className="px-3.5 py-1.5 gold-gradient hover:opacity-95 text-white rounded-xl text-xs font-extrabold inline-flex items-center gap-1.5 transition-all cursor-pointer shadow-xs border border-[#D4AF37]"
+                        className="px-3.5 2xl:px-4.5 py-1.5 2xl:py-2 bg-[#16A34A] hover:bg-[#15803D] text-white rounded-xl text-xs 2xl:text-sm font-extrabold inline-flex items-center gap-1.5 2xl:gap-2 transition-all cursor-pointer shadow-xs border border-[#16A34A]"
                     >
-                        <IconPOS className="w-3.5 h-3.5 text-white" />
+                        <IconPOS className="w-3.5 h-3.5 2xl:w-4 2xl:h-4 text-white" />
                         <span>+ New Sale</span>
                     </Link>
                 </div>
             </div>
 
-            {/* 5 KPIS CARDS (BRAND GOLD PALETTE + COMPACT TYPOGRAPHY) */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
+            {/* 5 KPIS CARDS (WHOLESALE NAVY & EMERALD PALETTE) */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 2xl:gap-3.5">
                 {/* 1. TOTAL SALE */}
-                <div className="bg-white p-3 rounded-2xl border border-[#F3E5AB] hover:border-[#D4AF37] shadow-xs transition-all flex flex-col justify-between">
+                <div className="bg-white p-3 2xl:p-4 rounded-2xl border border-blue-200 hover:border-blue-400 shadow-xs transition-all flex flex-col justify-between">
                     <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Total Sale</span>
-                        <div className="w-7 h-7 rounded-lg bg-[#FEF9E7] text-[#B8860B] border border-[#F3E5AB] flex items-center justify-center shrink-0">
-                            <IconSales className="w-3.5 h-3.5" />
+                        <span className="text-[10px] 2xl:text-xs font-bold uppercase tracking-wider text-gray-500">Total Sale</span>
+                        <div className="w-7 h-7 2xl:w-8 2xl:h-8 rounded-lg bg-blue-50 text-[#0B3B7B] border border-blue-200 flex items-center justify-center shrink-0">
+                            <IconSales className="w-3.5 h-3.5 2xl:w-4 2xl:h-4" />
                         </div>
                     </div>
                     <div className="mt-2">
-                        <div className="text-base sm:text-lg font-black text-gray-900 tracking-tight">
+                        <div className="text-base sm:text-lg 2xl:text-xl font-black text-gray-900 tracking-tight">
                             Rs. {totalSale.toLocaleString()}
                         </div>
-                        <div className="text-[9.5px] text-gray-400 font-medium mt-0.5">
+                        <div className="text-[9.5px] 2xl:text-[11px] text-gray-400 font-medium mt-0.5">
                             {salesInDate.length} invoices
                         </div>
                     </div>
                 </div>
 
                 {/* 2. TOTAL COLLECTED */}
-                <div className="bg-white p-3 rounded-2xl border border-emerald-200 hover:border-emerald-400 shadow-xs transition-all flex flex-col justify-between">
+                <div className="bg-white p-3 2xl:p-4 rounded-2xl border border-emerald-200 hover:border-emerald-400 shadow-xs transition-all flex flex-col justify-between">
                     <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Total Collected</span>
-                        <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center justify-center shrink-0">
-                            <IconCashRegister className="w-3.5 h-3.5" />
+                        <span className="text-[10px] 2xl:text-xs font-bold uppercase tracking-wider text-gray-500">Total Collected</span>
+                        <div className="w-7 h-7 2xl:w-8 2xl:h-8 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center justify-center shrink-0">
+                            <IconCashRegister className="w-3.5 h-3.5 2xl:w-4 2xl:h-4" />
                         </div>
                     </div>
                     <div className="mt-2">
-                        <div className="text-base sm:text-lg font-black text-emerald-700 tracking-tight">
+                        <div className="text-base sm:text-lg 2xl:text-xl font-black text-emerald-700 tracking-tight">
                             Rs. {totalCollected.toLocaleString()}
                         </div>
-                        <div className="text-[9.5px] text-gray-400 font-medium mt-0.5 truncate" title={`Cash Inflow Formula: Total Sale (Rs. ${totalSale.toLocaleString()}) + Recovered Dues (Rs. ${totalRecoveredDues.toLocaleString()}) - New Dues (Rs. ${totalPendingDues.toLocaleString()}) - Discounts (Rs. ${totalDiscount.toLocaleString()}) = Rs. ${totalCollected.toLocaleString()} Total Cash Inflow`}>
+                        <div className="text-[9.5px] 2xl:text-[11px] text-gray-400 font-medium mt-0.5 truncate" title={`Cash Inflow Formula: Total Sale (Rs. ${totalSale.toLocaleString()}) + Recovered Dues (Rs. ${totalRecoveredDues.toLocaleString()}) - New Dues (Rs. ${totalPendingDues.toLocaleString()}) - Discounts (Rs. ${totalDiscount.toLocaleString()}) = Rs. ${totalCollected.toLocaleString()} Total Cash Inflow`}>
                             {checkoutCashInDate > 0 && totalRecoveredDues > 0
                                 ? `Rs. ${checkoutCashInDate.toLocaleString()} sale + Rs. ${totalRecoveredDues.toLocaleString()} wasooli`
                                 : totalRecoveredDues > 0
-                                ? `Rs. ${totalRecoveredDues.toLocaleString()} wasooli`
-                                : `Rs. ${checkoutCashInDate.toLocaleString()} checkout cash`}
+                                    ? `Rs. ${totalRecoveredDues.toLocaleString()} wasooli`
+                                    : `Rs. ${checkoutCashInDate.toLocaleString()} checkout cash`}
                         </div>
                     </div>
                 </div>
 
-                {/* 3. RECOVERED DUES */}
-                <div className="bg-white p-3 rounded-2xl border border-teal-200 hover:border-teal-400 shadow-xs transition-all flex flex-col justify-between">
+                {/* 4. RECOVERED DUES */}
+                <div className="bg-white p-3 2xl:p-4 rounded-2xl border border-teal-200 hover:border-teal-400 shadow-xs transition-all flex flex-col justify-between">
                     <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Recovered Dues</span>
-                        <div className="w-7 h-7 rounded-lg bg-teal-50 text-teal-700 border border-teal-200 flex items-center justify-center shrink-0">
-                            <IconPayments className="w-3.5 h-3.5" />
+                        <span className="text-[10px] 2xl:text-xs font-bold uppercase tracking-wider text-gray-500">Recovered Dues</span>
+                        <div className="w-7 h-7 2xl:w-8 2xl:h-8 rounded-lg bg-teal-50 text-teal-700 border border-teal-200 flex items-center justify-center shrink-0">
+                            <IconPayments className="w-3.5 h-3.5 2xl:w-4 2xl:h-4" />
                         </div>
                     </div>
                     <div className="mt-2">
-                        <div className="text-base sm:text-lg font-black text-teal-700 tracking-tight">
+                        <div className="text-base sm:text-lg 2xl:text-xl font-black text-teal-700 tracking-tight">
                             Rs. {totalRecoveredDues.toLocaleString()}
                         </div>
-                        <div className="text-[9.5px] text-gray-400 font-medium mt-0.5">
+                        <div className="text-[9.5px] 2xl:text-[11px] text-gray-400 font-medium mt-0.5">
                             {activeRecoveredDues.length} wasooli vouchers
                         </div>
                     </div>
                 </div>
 
-                {/* 4. PENDING DUES */}
-                <div className="bg-white p-3 rounded-2xl border border-rose-200 hover:border-rose-400 shadow-xs transition-all flex flex-col justify-between">
+                {/* 5. PENDING DUES */}
+                <div className="bg-white p-3 2xl:p-4 rounded-2xl border border-rose-200 hover:border-rose-400 shadow-xs transition-all flex flex-col justify-between">
                     <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Pending Dues</span>
-                        <div className="w-7 h-7 rounded-lg bg-rose-50 text-rose-600 border border-rose-200 flex items-center justify-center shrink-0">
-                            <IconWarning className="w-3.5 h-3.5" />
+                        <span className="text-[10px] 2xl:text-xs font-bold uppercase tracking-wider text-gray-500">Pending Dues</span>
+                        <div className="w-7 h-7 2xl:w-8 2xl:h-8 rounded-lg bg-rose-50 text-rose-600 border border-rose-200 flex items-center justify-center shrink-0">
+                            <IconWarning className="w-3.5 h-3.5 2xl:w-4 2xl:h-4" />
                         </div>
                     </div>
                     <div className="mt-2">
-                        <div className="text-base sm:text-lg font-black text-rose-600 tracking-tight">
+                        <div className="text-base sm:text-lg 2xl:text-xl font-black text-rose-600 tracking-tight">
                             Rs. {totalPendingDues.toLocaleString()}
                         </div>
-                        <div className="text-[9.5px] text-gray-400 font-medium mt-0.5">
+                        <div className="text-[9.5px] 2xl:text-[11px] text-gray-400 font-medium mt-0.5">
                             Period credit balance
                         </div>
                     </div>
                 </div>
 
-                {/* 5. TOTAL DISCOUNT */}
-                <div className="bg-white p-3 rounded-2xl border border-[#F3E5AB] hover:border-[#D4AF37] shadow-xs transition-all flex flex-col justify-between col-span-2 sm:col-span-1">
+                {/* 6. TOTAL DISCOUNT */}
+                <div className="bg-white p-3 2xl:p-4 rounded-2xl border border-amber-200 hover:border-amber-400 shadow-xs transition-all flex flex-col justify-between">
                     <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Discount</span>
-                        <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 flex items-center justify-center shrink-0">
-                            <IconReceipt className="w-3.5 h-3.5" />
+                        <span className="text-[10px] 2xl:text-xs font-bold uppercase tracking-wider text-gray-500">Discount</span>
+                        <div className="w-7 h-7 2xl:w-8 2xl:h-8 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 flex items-center justify-center shrink-0">
+                            <IconReceipt className="w-3.5 h-3.5 2xl:w-4 2xl:h-4" />
                         </div>
                     </div>
                     <div className="mt-2">
-                        <div className="text-base sm:text-lg font-black text-amber-700 tracking-tight">
+                        <div className="text-base sm:text-lg 2xl:text-xl font-black text-amber-700 tracking-tight">
                             Rs. {totalDiscount.toLocaleString()}
                         </div>
-                        <div className="text-[9.5px] text-gray-400 font-medium mt-0.5">
+                        <div className="text-[9.5px] 2xl:text-[11px] text-gray-400 font-medium mt-0.5">
                             Bill discounts
                         </div>
                     </div>
@@ -1040,11 +1071,11 @@ export default function SalesHistoryPage() {
             </div>
 
             {/* FILTER & SEARCH CONTROL BAR */}
-            <div className="bg-white p-3 rounded-2xl border border-[#F3E5AB] shadow-xs space-y-2.5">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-2.5 w-full">
-                    {/* LEFT: SEARCH INPUT */}
-                    <div className="relative w-full md:max-w-xs">
-                        <IconSearch className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <div className="bg-white p-3 2xl:p-4 rounded-2xl border border-gray-200 shadow-xs space-y-2.5 2xl:space-y-3">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-2.5 2xl:gap-3 w-full">
+                    {/* LEFT: SEARCH INPUT (Fluid width: expands up to max-w-xl on large screens) */}
+                    <div className="relative w-full md:max-w-xs lg:max-w-sm xl:max-w-md 2xl:max-w-xl">
+                        <IconSearch className="w-4 h-4 2xl:w-4.5 2xl:h-4.5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                         <input
                             type="text"
                             value={searchQuery}
@@ -1053,7 +1084,7 @@ export default function SalesHistoryPage() {
                                 setCurrentPage(1);
                             }}
                             placeholder="Search customer, phone, invoice #..."
-                            className="w-full pl-9 pr-8 py-1.5 bg-gray-50 border border-gray-200 rounded-xl text-xs text-gray-900 placeholder:text-gray-400 font-medium outline-none focus:bg-white focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] transition-all"
+                            className="w-full pl-9 2xl:pl-10 pr-8 py-1.5 2xl:py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs 2xl:text-sm text-gray-900 placeholder:text-gray-400 font-medium outline-none focus:bg-white focus:border-[#0B3B7B] focus:ring-1 focus:ring-[#0B3B7B] transition-all"
                         />
                         {searchQuery && (
                             <button
@@ -1063,17 +1094,17 @@ export default function SalesHistoryPage() {
                                 }}
                                 className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5 cursor-pointer"
                             >
-                                <IconClose className="w-3.5 h-3.5" />
+                                <IconClose className="w-3.5 h-3.5 2xl:w-4 2xl:h-4" />
                             </button>
                         )}
                     </div>
 
                     {/* RIGHT: DATE FILTER + STATUS FILTERS */}
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2 2xl:gap-2.5">
                         {/* DATE SELECT DROPDOWN */}
-                        <div className="flex items-center gap-1.5 bg-[#FEF9E7]/50 border border-[#F3E5AB] px-2.5 py-1 rounded-xl shrink-0">
-                            <IconCalendar className="w-3.5 h-3.5 text-[#B8860B] shrink-0" />
-                            <label htmlFor="sales-date-filter" className="text-[10px] font-bold text-gray-500 whitespace-nowrap">
+                        <div className="flex items-center gap-1.5 bg-slate-50 border border-gray-200 px-2.5 2xl:px-3 py-1 2xl:py-1.5 rounded-xl shrink-0">
+                            <IconCalendar className="w-3.5 h-3.5 2xl:w-4 2xl:h-4 text-[#0B3B7B] shrink-0" />
+                            <label htmlFor="sales-date-filter" className="text-[10px] 2xl:text-xs font-bold text-gray-500 whitespace-nowrap">
                                 Period:
                             </label>
                             <select
@@ -1083,7 +1114,7 @@ export default function SalesHistoryPage() {
                                     setDateFilter(e.target.value);
                                     setCurrentPage(1);
                                 }}
-                                className="bg-transparent text-[11px] font-bold text-gray-900 outline-none cursor-pointer pr-0.5"
+                                className="bg-transparent text-[11px] 2xl:text-xs font-bold text-gray-900 outline-none cursor-pointer pr-0.5"
                             >
                                 <option value="today">Today</option>
                                 <option value="yesterday">Yesterday</option>
@@ -1095,15 +1126,15 @@ export default function SalesHistoryPage() {
                         </div>
 
                         {/* STATUS FILTER BUTTONS */}
-                        <div className="flex items-center p-1 bg-[#FEF9E7]/40 rounded-xl border border-[#F3E5AB] shrink-0 text-[10.5px] font-bold overflow-x-auto max-w-full">
+                        <div className="flex items-center p-1 bg-slate-50 rounded-xl border border-gray-200 shrink-0 text-[10.5px] 2xl:text-xs font-bold overflow-x-auto max-w-full">
                             <button
                                 onClick={() => {
                                     setStatusFilter('ALL');
                                     setCurrentPage(1);
                                 }}
-                                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer whitespace-nowrap ${statusFilter === 'ALL'
-                                    ? 'gold-gradient text-white font-extrabold shadow-xs'
-                                    : 'text-gray-600 hover:text-[#B8860B]'
+                                className={`px-2.5 2xl:px-3.5 py-1 2xl:py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap ${statusFilter === 'ALL'
+                                    ? 'bg-[#0B3B7B] text-white font-extrabold shadow-xs'
+                                    : 'text-gray-600 hover:text-[#0B3B7B] hover:bg-blue-50/50'
                                     }`}
                             >
                                 All ({statusCounts.ALL})
@@ -1113,9 +1144,9 @@ export default function SalesHistoryPage() {
                                     setStatusFilter('PAID');
                                     setCurrentPage(1);
                                 }}
-                                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 whitespace-nowrap ${statusFilter === 'PAID'
+                                className={`px-2.5 2xl:px-3.5 py-1 2xl:py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1 whitespace-nowrap ${statusFilter === 'PAID'
                                     ? 'bg-emerald-700 text-white font-extrabold shadow-xs'
-                                    : 'text-gray-600 hover:text-emerald-700'
+                                    : 'text-gray-600 hover:text-emerald-700 hover:bg-emerald-50/50'
                                     }`}
                             >
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
@@ -1126,9 +1157,9 @@ export default function SalesHistoryPage() {
                                     setStatusFilter('PENDING');
                                     setCurrentPage(1);
                                 }}
-                                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 whitespace-nowrap ${statusFilter === 'PENDING'
+                                className={`px-2.5 2xl:px-3.5 py-1 2xl:py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1 whitespace-nowrap ${statusFilter === 'PENDING'
                                     ? 'bg-rose-700 text-white font-extrabold shadow-xs'
-                                    : 'text-gray-600 hover:text-rose-700'
+                                    : 'text-gray-600 hover:text-rose-700 hover:bg-rose-50/50'
                                     }`}
                             >
                                 <span className="w-1.5 h-1.5 rounded-full bg-rose-400"></span>
@@ -1139,9 +1170,9 @@ export default function SalesHistoryPage() {
                                     setStatusFilter('PARTIAL');
                                     setCurrentPage(1);
                                 }}
-                                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 whitespace-nowrap ${statusFilter === 'PARTIAL'
+                                className={`px-2.5 2xl:px-3.5 py-1 2xl:py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1 whitespace-nowrap ${statusFilter === 'PARTIAL'
                                     ? 'bg-amber-600 text-white font-extrabold shadow-xs'
-                                    : 'text-gray-600 hover:text-amber-700'
+                                    : 'text-gray-600 hover:text-amber-700 hover:bg-amber-50/50'
                                     }`}
                             >
                                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
@@ -1153,7 +1184,7 @@ export default function SalesHistoryPage() {
 
                 {/* CONDITIONAL CUSTOM DATE PICKERS */}
                 {dateFilter === 'custom' && (
-                    <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-[#F3E5AB]/60 text-[10px]">
+                    <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-gray-200 text-[10px] 2xl:text-xs">
                         <span className="font-bold text-gray-700">Custom Range:</span>
                         <div className="flex items-center gap-1.5">
                             <span className="text-gray-500">From:</span>
@@ -1161,7 +1192,7 @@ export default function SalesHistoryPage() {
                                 type="date"
                                 value={customStartDate}
                                 onChange={(e) => setCustomStartDate(e.target.value)}
-                                className="px-2.5 py-1 rounded-lg border border-gray-200 bg-gray-50 text-gray-900 font-semibold outline-none text-xs focus:border-[#D4AF37]"
+                                className="px-2.5 2xl:px-3 py-1 2xl:py-1.5 rounded-lg border border-gray-200 bg-gray-50 text-gray-900 font-semibold outline-none text-xs 2xl:text-sm focus:border-[#0B3B7B]"
                             />
                         </div>
                         <div className="flex items-center gap-1.5">
@@ -1170,7 +1201,7 @@ export default function SalesHistoryPage() {
                                 type="date"
                                 value={customEndDate}
                                 onChange={(e) => setCustomEndDate(e.target.value)}
-                                className="px-2.5 py-1 rounded-lg border border-gray-200 bg-gray-50 text-gray-900 font-semibold outline-none text-xs focus:border-[#D4AF37]"
+                                className="px-2.5 2xl:px-3 py-1 2xl:py-1.5 rounded-lg border border-gray-200 bg-gray-50 text-gray-900 font-semibold outline-none text-xs 2xl:text-sm focus:border-[#0B3B7B]"
                             />
                         </div>
                     </div>
@@ -1178,76 +1209,75 @@ export default function SalesHistoryPage() {
             </div>
 
             {/* SALES INVOICES DATA CONTAINER */}
-            <div className="bg-white rounded-2xl border border-[#F3E5AB] shadow-xs overflow-hidden">
-                <div className="p-3 border-b border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-2.5 text-xs">
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-xs overflow-hidden">
+                <div className="p-3 2xl:p-4 border-b border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-2.5 text-xs 2xl:text-sm">
                     <div className="flex items-center gap-2 flex-wrap">
                         {/* Feed Filter: All | Invoices | Wasooli */}
-                        <div className="flex items-center p-1 bg-[#FEF9E7]/50 rounded-xl border border-[#F3E5AB] text-[10.5px] font-bold">
+                        <div className="flex items-center p-1 bg-slate-50 rounded-xl border border-gray-200 text-[10.5px] 2xl:text-xs font-bold">
                             <button
                                 onClick={() => setFeedType('ALL')}
-                                className={`px-2.5 py-0.5 rounded-lg transition-all cursor-pointer ${
-                                    feedType === 'ALL'
-                                        ? 'gold-gradient text-white font-extrabold shadow-xs'
-                                        : 'text-gray-600 hover:text-[#B8860B]'
-                                }`}
+                                className={`px-2.5 2xl:px-3.5 py-0.5 2xl:py-1 rounded-lg transition-all cursor-pointer ${feedType === 'ALL'
+                                    ? 'bg-[#0B3B7B] text-white font-extrabold shadow-xs'
+                                    : 'text-gray-600 hover:text-[#0B3B7B] hover:bg-blue-50/50'
+                                    }`}
                             >
                                 All ({displayFeedItems.length})
                             </button>
                             <button
                                 onClick={() => setFeedType('INVOICES')}
-                                className={`px-2.5 py-0.5 rounded-lg transition-all cursor-pointer ${
-                                    feedType === 'INVOICES'
-                                        ? 'gold-gradient text-white font-extrabold shadow-xs'
-                                        : 'text-gray-600 hover:text-[#B8860B]'
-                                }`}
+                                className={`px-2.5 2xl:px-3.5 py-0.5 2xl:py-1 rounded-lg transition-all cursor-pointer ${feedType === 'INVOICES'
+                                    ? 'bg-[#0B3B7B] text-white font-extrabold shadow-xs'
+                                    : 'text-gray-600 hover:text-[#0B3B7B] hover:bg-blue-50/50'
+                                    }`}
                             >
                                 Invoices ({paginatedSales.length})
                             </button>
                             <button
                                 onClick={() => setFeedType('WASOOLI')}
-                                className={`px-2.5 py-0.5 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
-                                    feedType === 'WASOOLI'
-                                        ? 'bg-emerald-700 text-white font-extrabold shadow-xs'
-                                        : 'text-gray-600 hover:text-emerald-700'
-                                }`}
+                                className={`px-2.5 2xl:px-3.5 py-0.5 2xl:py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${feedType === 'WASOOLI'
+                                    ? 'bg-emerald-700 text-white font-extrabold shadow-xs'
+                                    : 'text-gray-600 hover:text-emerald-700 hover:bg-emerald-50/50'
+                                    }`}
                             >
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
                                 Dues Recovered ({activeRecoveredDues.length})
                             </button>
                         </div>
                         <span className="text-gray-300">|</span>
-                        <span className="text-gray-500 font-medium text-[11px]">
+                        <span className="text-gray-500 font-medium text-[11px] 2xl:text-xs">
                             Period: <strong className="text-gray-800 capitalize">{dateFilter.replace('_', ' ')}</strong>
                         </span>
                         {totalPages > 1 && feedType !== 'WASOOLI' && (
-                            <span className="text-[10px] font-bold text-[#B8860B] bg-[#FEF9E7] border border-[#F3E5AB] px-2.5 py-0.5 rounded-lg">
+                            <span className="text-[10px] 2xl:text-xs font-bold text-[#0B3B7B] bg-blue-50 border border-blue-200 px-2.5 2xl:px-3 py-0.5 2xl:py-1 rounded-lg">
                                 Page {validCurrentPage} of {totalPages}
                             </span>
                         )}
                         {tableLoading && (
-                            <span className="w-2 h-2 rounded-full bg-[#D4AF37] animate-ping" title="Loading..."></span>
+                            <span className="w-2 h-2 rounded-full bg-[#0B3B7B] animate-ping" title="Loading..."></span>
                         )}
                     </div>
                     {(searchQuery || statusFilter !== 'ALL' || dateFilter !== 'today' || feedType !== 'ALL') && (
-                        <button
-                            onClick={() => {
-                                setSearchQuery('');
-                                statusFilter !== 'ALL' && setStatusFilter('ALL');
-                                dateFilter !== 'today' && setDateFilter('today');
-                                feedType !== 'ALL' && setFeedType('ALL');
-                            }}
-                            className="font-bold text-[#B8860B] hover:text-[#AA7C11] hover:underline cursor-pointer text-right text-xs"
-                        >
-                            Reset Filters
-                        </button>
+                        <div className="flex items-center gap-2 2xl:gap-3">
+                            <button
+                                onClick={() => {
+                                    setSearchQuery('');
+                                    statusFilter !== 'ALL' && setStatusFilter('ALL');
+                                    dateFilter !== 'today' && setDateFilter('today');
+                                    feedType !== 'ALL' && setFeedType('ALL');
+                                }}
+                                className="font-bold text-[#0B3B7B] hover:text-[#072B5C] hover:underline cursor-pointer text-right text-xs"
+                            >
+                                Reset Filters
+                            </button>
+                        </div>
                     )}
                 </div>
 
                 {/* 1. MOBILE RESPONSIVE CARD VIEW (SHOWN ON MOBILE SCREENS < md) */}
-                <div className="block md:hidden p-3 space-y-2.5 bg-[#FEF9E7]/25">
+                <div className="block md:hidden p-3 space-y-2.5 bg-slate-50/50">
                     {displayFeedItems.length === 0 ? (
-                        <div className="p-8 text-center text-gray-400 bg-white rounded-2xl border border-[#F3E5AB]">
-                            <IconReceipt className="w-7 h-7 text-[#B8860B]/50 mx-auto mb-1.5" />
+                        <div className="p-8 text-center text-gray-400 bg-white rounded-2xl border border-gray-200">
+                            <IconReceipt className="w-7 h-7 text-[#0B3B7B]/50 mx-auto mb-1.5" />
                             <div className="font-bold text-xs text-gray-700">No transactions found</div>
                             <div className="text-[10px] text-gray-400 mt-0.5">
                                 No records match the selected date &quot;{dateFilter}&quot; and filter &quot;{statusFilter}&quot;.
@@ -1255,7 +1285,7 @@ export default function SalesHistoryPage() {
                             {dateFilter !== 'all' && (
                                 <button
                                     onClick={() => setDateFilter('all')}
-                                    className="px-3 py-1 rounded-xl text-xs font-bold gold-gradient text-white hover:opacity-95 mt-2 cursor-pointer shadow-xs border border-[#D4AF37]"
+                                    className="px-3 py-1 rounded-xl text-xs font-bold bg-[#0B3B7B] hover:bg-[#072B5C] text-white mt-2 cursor-pointer shadow-xs border border-[#0B3B7B]"
                                 >
                                     View All Time Transactions
                                 </button>
@@ -1265,24 +1295,40 @@ export default function SalesHistoryPage() {
                         displayFeedItems.map((item) => {
                             if (item.isRecovery) {
                                 const p = item.recovery;
+                                const invTokens = extractInvoiceTokens(p.reference_no);
+
                                 return (
                                     <div key={item.id} className="p-3.5 space-y-2.5 bg-emerald-50/80 rounded-2xl border border-emerald-300 shadow-xs border-l-4 border-l-emerald-600 hover:shadow-sm transition-all">
                                         {/* Top Row: Ref # + Dues Recovered Badge + Date */}
                                         <div className="flex items-center justify-between gap-2">
                                             <div className="flex items-center gap-1.5 flex-wrap">
-                                                <span className="font-mono font-bold text-emerald-900 text-xs">
-                                                    {p.original_sale_id ? (
+                                                {invTokens.length > 0 ? (
+                                                    invTokens.map((invNo) => (
                                                         <button
-                                                            onClick={() => fetchSaleDetails(p.original_sale_id, true)}
-                                                            className="hover:underline cursor-pointer text-emerald-900"
-                                                            title="Click to view bill"
+                                                            key={invNo}
+                                                            type="button"
+                                                            onClick={() => fetchSaleDetails(invNo, true)}
+                                                            className="font-mono font-bold text-emerald-900 hover:underline text-xs cursor-pointer px-1.5 py-0.5 rounded bg-emerald-100 border border-emerald-300 inline-flex items-center gap-1"
+                                                            title={`Click to view bill ${invNo}`}
                                                         >
-                                                            {p.reference_no || 'FIFO Wasooli'}
+                                                            <IconEye className="w-2.5 h-2.5 text-emerald-700" />
+                                                            <span>{invNo}</span>
                                                         </button>
-                                                    ) : (
-                                                        p.reference_no || 'FIFO Wasooli'
-                                                    )}
-                                                </span>
+                                                    ))
+                                                ) : p.original_sale_id ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => fetchSaleDetails(p.original_sale_id, true)}
+                                                        className="hover:underline cursor-pointer text-emerald-900 font-mono font-bold text-xs"
+                                                        title="Click to view bill"
+                                                    >
+                                                        {p.reference_no || 'FIFO Wasooli'}
+                                                    </button>
+                                                ) : (
+                                                    <span className="font-mono font-bold text-emerald-900 text-xs">
+                                                        {p.reference_no || 'FIFO Wasooli'}
+                                                    </span>
+                                                )}
                                                 <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
                                                     <IconPayments className="w-2.5 h-2.5 text-emerald-700" /> Wasooli
                                                 </span>
@@ -1299,7 +1345,7 @@ export default function SalesHistoryPage() {
                                                     {p.customer_name || 'Customer'}
                                                 </div>
                                                 {p.customer_business && (
-                                                    <div className="text-[9.5px] text-[#B8860B] font-semibold">
+                                                    <div className="text-[9.5px] text-[#0B3B7B] font-semibold">
                                                         {p.customer_business}
                                                     </div>
                                                 )}
@@ -1318,22 +1364,36 @@ export default function SalesHistoryPage() {
                                         </div>
 
                                         {/* Actions & Payment Method */}
-                                        <div className="flex items-center justify-between pt-1 border-t border-emerald-200/60 text-[9.5px]">
+                                        <div className="flex items-center justify-between pt-1 border-t border-emerald-200/60 text-[9.5px] flex-wrap gap-1.5">
                                             <div className="text-gray-500">
                                                 Via: <span className="font-semibold text-gray-800 uppercase">{p.payment_method}</span>
                                                 {p.cashier_name && <span className="text-gray-400 ml-1">({p.cashier_name})</span>}
                                             </div>
                                             <div className="flex items-center gap-1.5">
-                                                {p.original_sale_id && (
+                                                {invTokens.length > 0 ? (
+                                                    invTokens.map((invNo, idx) => (
+                                                        <button
+                                                            key={invNo}
+                                                            type="button"
+                                                            onClick={() => fetchSaleDetails(invNo, true)}
+                                                            className="px-2.5 py-1 text-[10px] font-bold rounded-lg bg-emerald-800 text-white hover:bg-emerald-900 transition-all cursor-pointer shadow-2xs flex items-center gap-1"
+                                                            title={`View bill ${invNo}`}
+                                                        >
+                                                            <IconEye className="w-3 h-3" />
+                                                            {invTokens.length === 1 ? 'Bill' : `Bill #${idx + 1}`}
+                                                        </button>
+                                                    ))
+                                                ) : p.original_sale_id ? (
                                                     <button
+                                                        type="button"
                                                         onClick={() => fetchSaleDetails(p.original_sale_id, true)}
                                                         className="px-2.5 py-1 text-[10px] font-bold rounded-lg bg-emerald-800 text-white hover:bg-emerald-900 transition-all cursor-pointer shadow-2xs flex items-center gap-1"
-                                                        title="View original settled bill / invoice"
+                                                        title="View bill"
                                                     >
                                                         <IconEye className="w-3 h-3" />
                                                         Bill
                                                     </button>
-                                                )}
+                                                ) : null}
                                                 <button
                                                     onClick={() => {
                                                         setSelectedWasooli(p);
@@ -1355,24 +1415,24 @@ export default function SalesHistoryPage() {
                             const saleDiscount = (Number(s.discount) || 0) + (Number(s.special_discount) || 0);
 
                             return (
-                                <div key={item.id} className="p-3.5 space-y-2.5 bg-white rounded-2xl border border-[#F3E5AB] shadow-xs hover:border-[#D4AF37] hover:shadow-sm transition-all">
+                                <div key={item.id} className="p-3.5 space-y-2.5 bg-white rounded-2xl border border-gray-200 shadow-xs hover:border-blue-300 hover:shadow-sm transition-all">
                                     {/* Top Row: Invoice # + Status + Date */}
                                     <div className="flex items-center justify-between gap-2">
                                         <div className="flex items-center gap-1.5 flex-wrap">
-                                            <span className="font-mono font-bold text-[#B8860B] bg-[#FEF9E7] border border-[#F3E5AB] px-2 py-0.5 rounded-md text-xs">
+                                            <span className="font-mono font-bold text-[#0B3B7B] bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-md text-xs">
                                                 {s.invoice_no}
                                             </span>
-                                            {m.historicalStatus === 'PAID' && (
+                                            {m.currentStatus === 'PAID' && (
                                                 <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
                                                     <IconCheck className="w-2.5 h-2.5 text-emerald-600" /> Paid
                                                 </span>
                                             )}
-                                            {m.historicalStatus === 'PARTIAL' && (
+                                            {m.currentStatus === 'PARTIAL' && (
                                                 <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
                                                     <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span> Partial
                                                 </span>
                                             )}
-                                            {m.historicalStatus === 'PENDING' && (
+                                            {m.currentStatus === 'PENDING' && (
                                                 <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[9px] font-bold bg-rose-50 text-rose-800 border border-rose-200">
                                                     <IconWarning className="w-2.5 h-2.5 text-rose-600" /> Pending
                                                 </span>
@@ -1395,7 +1455,7 @@ export default function SalesHistoryPage() {
                                                 {s.customer_name || 'Walk-in Customer'}
                                             </div>
                                             {s.customer_business && (
-                                                <div className="text-[9.5px] text-[#B8860B] font-semibold">
+                                                <div className="text-[9.5px] text-[#0B3B7B] font-semibold">
                                                     {s.customer_business}
                                                 </div>
                                             )}
@@ -1411,7 +1471,7 @@ export default function SalesHistoryPage() {
                                     </div>
 
                                     {/* 4-Stat Financial Strip */}
-                                    <div className="grid grid-cols-4 gap-1 bg-[#FEF9E7]/40 p-2 rounded-xl border border-[#F3E5AB]/60 text-[10px]">
+                                    <div className="grid grid-cols-4 gap-1 bg-slate-50 p-2 rounded-xl border border-gray-200 text-[10px]">
                                         <div>
                                             <div className="text-gray-400 uppercase text-[8px] font-bold">Net Total</div>
                                             <div className="font-black text-gray-900 text-xs leading-tight">
@@ -1436,22 +1496,14 @@ export default function SalesHistoryPage() {
                                         <div>
                                             <div className="text-gray-400 uppercase text-[8px] font-bold">Paid</div>
                                             <div className="font-bold text-emerald-700 text-xs leading-tight">
-                                                Rs. {Number(m.checkoutPaid).toLocaleString()}
+                                                Rs. {Number(m.livePaid).toLocaleString()}
                                             </div>
-                                            {m.isSettledLater && (
-                                                <div className="text-[8px] text-gray-400">Now: Rs. {Number(m.livePaid).toLocaleString()}</div>
-                                            )}
                                         </div>
                                         <div>
                                             <div className="text-gray-400 uppercase text-[8px] font-bold">Due</div>
-                                            {m.checkoutDue > 0 ? (
-                                                <div>
-                                                    <div className="font-black text-rose-600 text-xs leading-tight">
-                                                        Rs. {Number(m.checkoutDue).toLocaleString()}
-                                                    </div>
-                                                    {m.isSettledLater && (
-                                                        <div className="text-[8px] text-emerald-600 font-semibold">(Settled)</div>
-                                                    )}
+                                            {m.liveDue > 0 ? (
+                                                <div className="font-black text-rose-600 text-xs leading-tight">
+                                                    Rs. {Number(m.liveDue).toLocaleString()}
                                                 </div>
                                             ) : (
                                                 <div className="text-gray-400 font-medium">Rs. 0</div>
@@ -1463,7 +1515,7 @@ export default function SalesHistoryPage() {
                                     <div className="flex items-center justify-end gap-1.5 pt-0.5">
                                         <button
                                             onClick={() => fetchSaleDetails(s.id, true)}
-                                            className="px-2.5 py-1 text-[10px] font-bold rounded-lg gold-gradient text-white hover:opacity-95 transition-all cursor-pointer shadow-2xs border border-[#D4AF37] inline-flex items-center gap-1"
+                                            className="px-2.5 py-1 text-[10px] font-bold rounded-lg bg-[#0B3B7B] hover:bg-[#072B5C] text-white transition-all cursor-pointer shadow-2xs border border-[#0B3B7B] inline-flex items-center gap-1"
                                         >
                                             <IconEye className="w-3 h-3 text-white" />
                                             View
@@ -1476,7 +1528,7 @@ export default function SalesHistoryPage() {
                                                     setThermalModalOpen(true);
                                                 }
                                             }}
-                                            className="px-2.5 py-1 text-[10px] font-semibold rounded-lg border border-gray-300 bg-white hover:bg-[#FEF9E7] hover:border-[#D4AF37] text-gray-700 transition-all inline-flex items-center gap-1 cursor-pointer shadow-2xs"
+                                            className="px-2.5 py-1 text-[10px] font-semibold rounded-lg border border-gray-300 bg-white hover:bg-blue-50 hover:border-blue-300 text-gray-700 transition-all inline-flex items-center gap-1 cursor-pointer shadow-2xs"
                                         >
                                             <IconReceipt className="w-3 h-3 text-gray-500" />
                                             <span>Receipt</span>
@@ -1491,9 +1543,9 @@ export default function SalesHistoryPage() {
                                         <button
                                             type="button"
                                             onClick={() => handleInitiateEdit(s)}
-                                            className="px-2.5 py-1 text-[10px] font-semibold rounded-lg border border-amber-200 bg-amber-50 hover:bg-amber-100 text-amber-800 transition-all inline-flex items-center gap-1 cursor-pointer shadow-2xs"
+                                            className="px-2.5 py-1 text-[10px] font-semibold rounded-lg border border-blue-200 bg-blue-50 hover:bg-blue-100 text-[#0B3B7B] transition-all inline-flex items-center gap-1 cursor-pointer shadow-2xs"
                                         >
-                                            <IconEdit className="w-3 h-3 text-amber-700" />
+                                            <IconEdit className="w-3 h-3 text-[#0B3B7B]" />
                                             <span>Edit</span>
                                         </button>
                                     </div>
@@ -1503,33 +1555,33 @@ export default function SalesHistoryPage() {
                     )}
                 </div>
 
-                {/* 2. DESKTOP / TABLET DATA TABLE (RESPONSIVE 6 COLUMNS - ZERO HORIZONTAL SCROLL) */}
-                <div className="hidden md:block w-full p-3 sm:p-4 bg-[#FEF9E7]/25 rounded-2xl border border-[#F3E5AB]/70 overflow-hidden">
-                    <table className="w-full table-fixed text-left text-xs border-separate border-spacing-y-2.5">
+                {/* 2. DESKTOP / TABLET DATA TABLE (RESPONSIVE 6 COLUMNS WITH NATURAL PROPORTIONS) */}
+                <div className="hidden md:block w-full p-2.5 sm:p-4 2xl:p-5 bg-slate-50/50 rounded-2xl border border-gray-200 overflow-x-auto">
+                    <table className="w-full text-left text-xs 2xl:text-sm border-separate border-spacing-y-2 2xl:border-spacing-y-2.5 min-w-[920px]">
                         <thead>
-                            <tr className="text-gray-500 font-bold uppercase tracking-wider text-[10px]">
-                                <th className="py-2.5 px-3.5 w-[18%]">Invoice &amp; Date</th>
-                                <th className="py-2.5 px-3.5 w-[28%]">Customer &amp; Shop</th>
-                                <th className="py-2.5 px-2 text-center w-[11%]">Status</th>
-                                <th className="py-2.5 px-3.5 text-right w-[14%]">Net Total</th>
-                                <th className="py-2.5 px-3.5 text-right w-[15%]">Paid / Due</th>
-                                <th className="py-2.5 px-3 text-center w-[14%]">Actions</th>
+                            <tr className="text-gray-500 font-bold uppercase tracking-wider text-[10px] 2xl:text-xs">
+                                <th className="py-2.5 2xl:py-3.5 px-3.5 2xl:px-4 w-[16%] min-w-[130px] 2xl:min-w-[160px]">Invoice &amp; Date</th>
+                                <th className="py-2.5 2xl:py-3.5 px-3.5 2xl:px-4 w-[32%] min-w-[220px] 2xl:min-w-[320px]">Customer &amp; Shop</th>
+                                <th className="py-2.5 2xl:py-3.5 px-2 text-center w-[10%] min-w-[90px] 2xl:min-w-[110px]">Status</th>
+                                <th className="py-2.5 2xl:py-3.5 px-3 2xl:px-4 text-right w-[14%] min-w-[110px] 2xl:min-w-[130px]">Net Total</th>
+                                <th className="py-2.5 2xl:py-3.5 px-3 2xl:px-4 text-right w-[15%] min-w-[110px] 2xl:min-w-[130px]">Paid / Due</th>
+                                <th className="py-2.5 2xl:py-3.5 px-3 2xl:px-4 text-center w-[13%] min-w-[130px] 2xl:min-w-[160px]">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             {displayFeedItems.length === 0 ? (
                                 <tr>
-                                    <td colSpan="6" className="text-center py-12 text-gray-400 bg-white rounded-2xl border border-[#F3E5AB]">
+                                    <td colSpan="6" className="text-center py-12 text-gray-400 bg-white rounded-2xl border border-gray-200">
                                         <div className="flex flex-col items-center justify-center gap-1.5">
-                                            <IconReceipt className="w-8 h-8 text-[#B8860B]/40" />
-                                            <span className="font-bold text-xs text-gray-700">No transactions found</span>
-                                            <span className="text-[10.5px] text-gray-400">
+                                            <IconReceipt className="w-8 h-8 text-[#0B3B7B]/40" />
+                                            <span className="font-bold text-xs 2xl:text-sm text-gray-700">No transactions found</span>
+                                            <span className="text-[10.5px] 2xl:text-xs text-gray-400">
                                                 No records match the selected date &quot;{dateFilter}&quot; and status &quot;{statusFilter}&quot;.
                                             </span>
                                             {dateFilter !== 'all' && (
                                                 <button
                                                     onClick={() => setDateFilter('all')}
-                                                    className="px-3 py-1 rounded-xl text-xs font-bold gold-gradient text-white hover:opacity-95 mt-2 cursor-pointer shadow-xs border border-[#D4AF37]"
+                                                    className="px-3 2xl:px-4 py-1 2xl:py-1.5 rounded-xl text-xs 2xl:text-sm font-bold bg-[#0B3B7B] hover:bg-[#072B5C] text-white mt-2 cursor-pointer shadow-xs border border-[#0B3B7B]"
                                                 >
                                                     View All Time Transactions
                                                 </button>
@@ -1541,29 +1593,45 @@ export default function SalesHistoryPage() {
                                 displayFeedItems.map((item) => {
                                     if (item.isRecovery) {
                                         const p = item.recovery;
+                                        const invTokens = extractInvoiceTokens(p.reference_no);
+
                                         return (
                                             <tr key={item.id} className="group transition-all duration-150 [filter:drop-shadow(0_1px_3px_rgba(16,185,129,0.1))] hover:[filter:drop-shadow(0_3px_6px_rgba(16,185,129,0.18))]">
                                                 {/* 1. Reference & Date */}
-                                                <td className="py-3 px-3.5 whitespace-nowrap rounded-l-2xl border-y border-l-4 border-y-emerald-300/90 border-l-emerald-600 bg-emerald-50/80 group-hover:bg-emerald-100/80 transition-colors">
-                                                    <div className="flex items-center gap-1.5">
-                                                        {p.original_sale_id ? (
+                                                <td className="py-3 2xl:py-3.5 px-3.5 2xl:px-4 whitespace-nowrap rounded-l-2xl border-y border-l-4 border-y-emerald-300/90 border-l-emerald-600 bg-emerald-50/80 group-hover:bg-emerald-100/80 transition-colors">
+                                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                                        {invTokens.length > 0 ? (
+                                                            invTokens.map((invNo) => (
+                                                                <button
+                                                                    key={invNo}
+                                                                    type="button"
+                                                                    onClick={() => fetchSaleDetails(invNo, true)}
+                                                                    className="font-mono font-bold text-emerald-900 hover:text-emerald-700 hover:underline text-xs 2xl:text-sm cursor-pointer px-2 2xl:px-2.5 py-0.5 2xl:py-1 rounded-md bg-emerald-100 border border-emerald-300 inline-flex items-center gap-1 shadow-2xs transition-transform active:scale-95"
+                                                                    title={`Click to view bill ${invNo}`}
+                                                                >
+                                                                    <IconEye className="w-2.5 h-2.5 2xl:w-3 2xl:h-3 text-emerald-700" />
+                                                                    <span>{invNo}</span>
+                                                                </button>
+                                                            ))
+                                                        ) : p.original_sale_id ? (
                                                             <button
+                                                                type="button"
                                                                 onClick={() => fetchSaleDetails(p.original_sale_id, true)}
-                                                                className="font-mono font-bold text-emerald-900 hover:underline text-xs cursor-pointer block"
+                                                                className="font-mono font-bold text-emerald-900 hover:underline text-xs 2xl:text-sm cursor-pointer block"
                                                                 title="Click to view full original bill"
                                                             >
-                                                                <span className="px-2 py-0.5 rounded-md bg-emerald-100 border border-emerald-300 inline-block shadow-2xs">
+                                                                <span className="px-2 2xl:px-2.5 py-0.5 2xl:py-1 rounded-md bg-emerald-100 border border-emerald-300 inline-block shadow-2xs">
                                                                     {p.reference_no || 'FIFO Wasooli'}
                                                                 </span>
                                                             </button>
                                                         ) : (
-                                                            <span className="font-mono font-bold text-emerald-900 text-xs px-2 py-0.5 rounded-md bg-emerald-100 border border-emerald-300 inline-block shadow-2xs">
+                                                            <span className="font-mono font-bold text-emerald-900 text-xs 2xl:text-sm px-2 2xl:px-2.5 py-0.5 2xl:py-1 rounded-md bg-emerald-100 border border-emerald-300 inline-block shadow-2xs">
                                                                 {p.reference_no || 'FIFO Wasooli'}
                                                             </span>
                                                         )}
                                                     </div>
-                                                    <div className="text-[10px] text-emerald-700 font-semibold mt-1 flex items-center gap-1">
-                                                        <IconCalendar className="w-2.5 h-2.5 text-emerald-600 shrink-0" />
+                                                    <div className="text-[10px] 2xl:text-xs text-emerald-700 font-semibold mt-1 flex items-center gap-1">
+                                                        <IconCalendar className="w-2.5 h-2.5 2xl:w-3 2xl:h-3 text-emerald-600 shrink-0" />
                                                         <span>{parseDate(item.timestamp)?.toLocaleDateString() || p.recovery_date || 'N/A'}</span>
                                                         <span className="text-emerald-400">•</span>
                                                         <span>{parseDate(item.timestamp)?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) || 'Wasooli'}</span>
@@ -1571,21 +1639,21 @@ export default function SalesHistoryPage() {
                                                 </td>
 
                                                 {/* 2. Customer & Settling Bill */}
-                                                <td className="py-3 px-3.5 border-y border-emerald-300/90 bg-emerald-50/80 group-hover:bg-emerald-100/80 transition-colors">
-                                                    <div className="font-extrabold text-gray-900 text-xs truncate max-w-full" title={p.customer_name || 'Customer'}>
+                                                <td className="py-3 2xl:py-3.5 px-3.5 2xl:px-4 border-y border-emerald-300/90 bg-emerald-50/80 group-hover:bg-emerald-100/80 transition-colors">
+                                                    <div className="font-extrabold text-gray-900 text-xs 2xl:text-sm break-words line-clamp-1 2xl:line-clamp-none" title={p.customer_name || 'Customer'}>
                                                         {p.customer_name || 'Customer'}
                                                     </div>
                                                     {p.customer_business && (
-                                                        <div className="text-[10px] text-indigo-700 font-semibold truncate max-w-full mt-0.5" title={p.customer_business}>
+                                                        <div className="text-[10px] 2xl:text-xs text-indigo-700 font-semibold break-words line-clamp-1 2xl:line-clamp-none mt-0.5" title={p.customer_business}>
                                                             {p.customer_business}
                                                         </div>
                                                     )}
                                                     {p.original_sale_date ? (
-                                                        <div className="text-[9.5px] text-emerald-800 font-semibold mt-0.5">
+                                                        <div className="text-[9.5px] 2xl:text-[11px] text-emerald-800 font-semibold mt-0.5">
                                                             Settling Bill: <strong className="font-bold">{toYMD(p.original_sale_date)}</strong>
                                                         </div>
                                                     ) : (
-                                                        <div className="text-[9.5px] text-gray-400 mt-0.5">
+                                                        <div className="text-[9.5px] 2xl:text-[11px] text-gray-400 mt-0.5">
                                                             {p.customer_phone && <span className="font-mono">{p.customer_phone} • </span>}
                                                             <span>by {p.cashier_name || 'Cashier'}</span>
                                                         </div>
@@ -1593,54 +1661,83 @@ export default function SalesHistoryPage() {
                                                 </td>
 
                                                 {/* 3. Status Badge */}
-                                                <td className="py-3 px-2 text-center whitespace-nowrap border-y border-emerald-300/90 bg-emerald-50/80 group-hover:bg-emerald-100/80 transition-colors">
-                                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9.5px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-2xs">
-                                                        <IconPayments className="w-2.5 h-2.5 text-emerald-700" />
+                                                <td className="py-3 2xl:py-3.5 px-2 text-center whitespace-nowrap border-y border-emerald-300/90 bg-emerald-50/80 group-hover:bg-emerald-100/80 transition-colors">
+                                                    <span className="inline-flex items-center gap-1 px-2.5 2xl:px-3 py-0.5 2xl:py-1 rounded-full text-[9.5px] 2xl:text-xs font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-2xs">
+                                                        <IconPayments className="w-2.5 h-2.5 2xl:w-3 2xl:h-3 text-emerald-700" />
                                                         Wasooli
                                                     </span>
                                                 </td>
 
                                                 {/* 4. Recovered Amount */}
-                                                <td className="py-3 px-3.5 text-right whitespace-nowrap border-y border-emerald-300/90 bg-emerald-50/80 group-hover:bg-emerald-100/80 transition-colors">
-                                                    <div className="font-black text-emerald-700 text-xs sm:text-[13px] font-mono leading-none">
+                                                <td className="py-3 2xl:py-3.5 px-3.5 2xl:px-4 text-right whitespace-nowrap border-y border-emerald-300/90 bg-emerald-50/80 group-hover:bg-emerald-100/80 transition-colors">
+                                                    <div className="font-black text-emerald-700 text-xs sm:text-[13px] 2xl:text-sm font-mono leading-none">
                                                         +Rs. {Number(p.recovered_amount).toLocaleString()}
                                                     </div>
-                                                    <div className="text-[9.5px] text-emerald-700 font-semibold uppercase mt-1">
+                                                    <div className="text-[9.5px] 2xl:text-[11px] text-emerald-700 font-semibold uppercase mt-1">
                                                         Via {p.payment_method || 'cash'}
                                                     </div>
                                                 </td>
 
-                                                {/* 5. Settlement Status */}
-                                                <td className="py-3 px-3.5 text-right whitespace-nowrap text-xs border-y border-emerald-300/90 bg-emerald-50/80 group-hover:bg-emerald-100/80 transition-colors">
-                                                    <span className="inline-flex items-center gap-0.5 text-[9.5px] font-extrabold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-full">
+                                                {/* 6. Settlement Status */}
+                                                <td className="py-3 2xl:py-3.5 px-3.5 2xl:px-4 text-right whitespace-nowrap text-xs 2xl:text-sm border-y border-emerald-300/90 bg-emerald-50/80 group-hover:bg-emerald-100/80 transition-colors">
+                                                    <span className="inline-flex items-center gap-0.5 text-[9.5px] 2xl:text-xs font-extrabold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2 2xl:px-2.5 py-0.5 2xl:py-1 rounded-full">
                                                         Settled
                                                     </span>
                                                     {p.original_sale_net && (
-                                                        <div className="text-[9.5px] text-gray-400 mt-1 font-mono">
+                                                        <div className="text-[9.5px] 2xl:text-[11px] text-gray-400 mt-1 font-mono">
                                                             Bill Net: Rs. {Number(p.original_sale_net).toLocaleString()}
                                                         </div>
                                                     )}
                                                 </td>
 
-                                                {/* 6. Quick Actions */}
-                                                <td className="py-3 px-3 text-center whitespace-nowrap rounded-r-2xl border-y border-r border-emerald-300/90 bg-emerald-50/80 group-hover:bg-emerald-100/80 transition-colors">
+                                                {/* 7. Quick Actions */}
+                                                <td className="py-3 2xl:py-3.5 px-3 2xl:px-4 text-center whitespace-nowrap rounded-r-2xl border-y border-r border-emerald-300/90 bg-emerald-50/80 group-hover:bg-emerald-100/80 transition-colors">
                                                     <div className="inline-flex items-center justify-center gap-1">
-                                                        {p.original_sale_id && (
+                                                        {invTokens.length > 0 ? (
+                                                            invTokens.length === 1 ? (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => fetchSaleDetails(invTokens[0], true)}
+                                                                    className="px-2 2xl:px-3 py-1 2xl:py-1.5 text-[10.5px] 2xl:text-xs font-bold rounded-lg bg-emerald-800 text-white hover:bg-emerald-900 transition-all cursor-pointer shadow-2xs inline-flex items-center gap-1"
+                                                                    title={`View bill ${invTokens[0]}`}
+                                                                >
+                                                                    <IconEye className="w-3 h-3 2xl:w-3.5 2xl:h-3.5" />
+                                                                    <span>Bill</span>
+                                                                </button>
+                                                            ) : (
+                                                                <div className="flex items-center gap-1">
+                                                                    {invTokens.slice(0, 2).map((invNo, idx) => (
+                                                                        <button
+                                                                            key={invNo}
+                                                                            type="button"
+                                                                            onClick={() => fetchSaleDetails(invNo, true)}
+                                                                            className="px-1.5 2xl:px-2 py-1 2xl:py-1.5 text-[9.5px] 2xl:text-xs font-bold rounded-lg bg-emerald-800 text-white hover:bg-emerald-900 transition-all cursor-pointer shadow-2xs inline-flex items-center gap-0.5"
+                                                                            title={`View bill ${invNo}`}
+                                                                        >
+                                                                            <IconEye className="w-2.5 h-2.5 2xl:w-3 2xl:h-3" />
+                                                                            <span>Bill #{idx + 1}</span>
+                                                                        </button>
+                                                                    ))}
+                                                                </div>
+                                                            )
+                                                        ) : p.original_sale_id ? (
                                                             <button
+                                                                type="button"
                                                                 onClick={() => fetchSaleDetails(p.original_sale_id, true)}
-                                                                className="px-2 py-1 text-[10.5px] font-bold rounded-lg bg-emerald-800 text-white hover:bg-emerald-900 transition-all cursor-pointer shadow-2xs inline-flex items-center gap-1"
+                                                                className="px-2 2xl:px-3 py-1 2xl:py-1.5 text-[10.5px] 2xl:text-xs font-bold rounded-lg bg-emerald-800 text-white hover:bg-emerald-900 transition-all cursor-pointer shadow-2xs inline-flex items-center gap-1"
                                                                 title="View original settled bill / invoice"
                                                             >
-                                                                <IconEye className="w-3 h-3" />
+                                                                <IconEye className="w-3 h-3 2xl:w-3.5 2xl:h-3.5" />
                                                                 <span>Bill</span>
                                                             </button>
-                                                        )}
+                                                        ) : null}
                                                         <button
+                                                            type="button"
                                                             onClick={() => {
                                                                 setSelectedWasooli(p);
                                                                 setWasooliModalOpen(true);
                                                             }}
-                                                            className="px-2 py-1 text-[10.5px] font-bold rounded-lg bg-white text-emerald-800 hover:bg-emerald-50 border border-emerald-300 transition-all cursor-pointer shadow-2xs"
+                                                            className="px-2 2xl:px-2.5 py-1 2xl:py-1.5 text-[10.5px] 2xl:text-xs font-bold rounded-lg bg-white text-emerald-800 hover:bg-emerald-50 border border-emerald-300 transition-all cursor-pointer shadow-2xs"
                                                             title="View wasooli payment receipt voucher"
                                                         >
                                                             Voucher
@@ -1657,16 +1754,16 @@ export default function SalesHistoryPage() {
                                     const saleDiscount = (Number(s.discount) || 0) + (Number(s.special_discount) || 0);
 
                                     return (
-                                        <tr key={s.id} className="group transition-all duration-150 [filter:drop-shadow(0_1px_3px_rgba(184,134,11,0.06))] hover:[filter:drop-shadow(0_4px_8px_rgba(184,134,11,0.14))]">
+                                        <tr key={s.id} className="group transition-all duration-150 [filter:drop-shadow(0_1px_3px_rgba(11,59,123,0.06))] hover:[filter:drop-shadow(0_4px_8px_rgba(11,59,123,0.12))]">
                                             {/* 1. Invoice # & Date */}
-                                            <td className="py-3 px-3.5 whitespace-nowrap rounded-l-2xl border-y border-l border-gray-200/90 group-hover:border-[#D4AF37]/60 bg-white group-hover:bg-[#FEF9E7]/40 transition-colors">
+                                            <td className="py-3 2xl:py-3.5 px-3.5 2xl:px-4 whitespace-nowrap rounded-l-2xl border-y border-l border-gray-200/90 group-hover:border-blue-200 bg-white group-hover:bg-blue-50/40 transition-colors">
                                                 <div className="flex items-center gap-1.5">
-                                                    <span className="font-mono font-bold text-[#B8860B] text-xs px-2 py-0.5 rounded-md bg-[#FEF9E7] border border-[#F3E5AB] inline-block shadow-2xs">
+                                                    <span className="font-mono font-bold text-[#0B3B7B] text-xs 2xl:text-sm px-2 2xl:px-2.5 py-0.5 2xl:py-1 rounded-md bg-blue-50 border border-blue-200 inline-block shadow-2xs">
                                                         {s.invoice_no}
                                                     </span>
                                                 </div>
-                                                <div className="text-[10px] text-gray-500 font-medium mt-1 flex items-center gap-1">
-                                                    <IconCalendar className="w-2.5 h-2.5 text-gray-400 shrink-0" />
+                                                <div className="text-[10px] 2xl:text-xs text-gray-500 font-medium mt-1 flex items-center gap-1">
+                                                    <IconCalendar className="w-2.5 h-2.5 2xl:w-3 2xl:h-3 text-gray-400 shrink-0" />
                                                     <span>{parseDate(s.created_at)?.toLocaleDateString() || 'N/A'}</span>
                                                     <span className="text-gray-300">•</span>
                                                     <span className="text-gray-400">{parseDate(s.created_at)?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) || ''}</span>
@@ -1674,44 +1771,44 @@ export default function SalesHistoryPage() {
                                             </td>
 
                                             {/* 2. Customer & Shop */}
-                                            <td className="py-3 px-3.5 border-y border-gray-200/90 group-hover:border-[#D4AF37]/60 bg-white group-hover:bg-[#FEF9E7]/40 transition-colors">
-                                                <div className="font-extrabold text-gray-900 text-xs truncate max-w-full" title={s.customer_name || 'Walk-in Customer'}>
+                                            <td className="py-3 2xl:py-3.5 px-3.5 2xl:px-4 border-y border-gray-200/90 group-hover:border-blue-200 bg-white group-hover:bg-blue-50/40 transition-colors">
+                                                <div className="font-extrabold text-gray-900 text-xs 2xl:text-sm break-words line-clamp-1 2xl:line-clamp-none" title={s.customer_name || 'Walk-in Customer'}>
                                                     {s.customer_name || 'Walk-in Customer'}
                                                 </div>
                                                 {s.customer_business && (
-                                                    <div className="text-[10px] text-[#B8860B] font-semibold truncate max-w-full mt-0.5" title={s.customer_business}>
+                                                    <div className="text-[10px] 2xl:text-xs text-[#0B3B7B] font-semibold break-words line-clamp-1 2xl:line-clamp-none mt-0.5" title={s.customer_business}>
                                                         {s.customer_business}
                                                     </div>
                                                 )}
-                                                <div className="text-[9.5px] text-gray-400 font-medium mt-0.5 flex items-center gap-1">
+                                                <div className="text-[9.5px] 2xl:text-[11px] text-gray-400 font-medium mt-0.5 flex items-center gap-1">
                                                     {s.customer_phone && <span className="font-mono text-gray-500">{s.customer_phone} •</span>}
                                                     <span>by <strong className="text-gray-600 font-semibold">{s.cashier_name || 'Admin'}</strong></span>
                                                 </div>
                                             </td>
 
                                             {/* 3. Status Badge */}
-                                            <td className="py-3 px-2 text-center whitespace-nowrap border-y border-gray-200/90 group-hover:border-[#D4AF37]/60 bg-white group-hover:bg-[#FEF9E7]/40 transition-colors">
+                                            <td className="py-3 2xl:py-3.5 px-2 text-center whitespace-nowrap border-y border-gray-200/90 group-hover:border-blue-200 bg-white group-hover:bg-blue-50/40 transition-colors">
                                                 <div className="flex flex-col items-center gap-1">
-                                                    {m.historicalStatus === 'PAID' && (
-                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9.5px] font-extrabold bg-emerald-50 text-emerald-800 border border-emerald-200 shadow-2xs">
-                                                            <IconCheck className="w-2.5 h-2.5 text-emerald-600" />
+                                                    {m.currentStatus === 'PAID' && (
+                                                        <span className="inline-flex items-center gap-1 px-2.5 2xl:px-3 py-0.5 2xl:py-1 rounded-full text-[9.5px] 2xl:text-xs font-extrabold bg-emerald-50 text-emerald-800 border border-emerald-200 shadow-2xs">
+                                                            <IconCheck className="w-2.5 h-2.5 2xl:w-3 2xl:h-3 text-emerald-600" />
                                                             Paid
                                                         </span>
                                                     )}
-                                                    {m.historicalStatus === 'PARTIAL' && (
-                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9.5px] font-extrabold bg-amber-50 text-amber-800 border border-amber-200 shadow-2xs">
+                                                    {m.currentStatus === 'PARTIAL' && (
+                                                        <span className="inline-flex items-center gap-1 px-2.5 2xl:px-3 py-0.5 2xl:py-1 rounded-full text-[9.5px] 2xl:text-xs font-extrabold bg-amber-50 text-amber-800 border border-amber-200 shadow-2xs">
                                                             <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
                                                             Partial
                                                         </span>
                                                     )}
-                                                    {m.historicalStatus === 'PENDING' && (
-                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9.5px] font-extrabold bg-rose-50 text-rose-800 border border-rose-200 shadow-2xs">
-                                                            <IconWarning className="w-2.5 h-2.5 text-rose-600" />
+                                                    {m.currentStatus === 'PENDING' && (
+                                                        <span className="inline-flex items-center gap-1 px-2.5 2xl:px-3 py-0.5 2xl:py-1 rounded-full text-[9.5px] 2xl:text-xs font-extrabold bg-rose-50 text-rose-800 border border-rose-200 shadow-2xs">
+                                                            <IconWarning className="w-2.5 h-2.5 2xl:w-3 2xl:h-3 text-rose-600" />
                                                             Pending
                                                         </span>
                                                     )}
                                                     {m.isSettledLater && (
-                                                        <span className="text-[8.5px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded-full" title={`Settled later on ${m.settledDate || 'subsequent date'}`}>
+                                                        <span className="text-[8.5px] 2xl:text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded-full" title={`Settled later on ${m.settledDate || 'subsequent date'}`}>
                                                             Paid later
                                                         </span>
                                                     )}
@@ -1719,47 +1816,46 @@ export default function SalesHistoryPage() {
                                             </td>
 
                                             {/* 4. Net Total & Discount */}
-                                            <td className="py-3 px-3.5 text-right whitespace-nowrap border-y border-gray-200/90 group-hover:border-[#D4AF37]/60 bg-white group-hover:bg-[#FEF9E7]/40 transition-colors">
-                                                <div className="font-black text-gray-900 text-xs sm:text-[13px] font-mono leading-none">
+                                            <td className="py-3 2xl:py-3.5 px-3.5 2xl:px-4 text-right whitespace-nowrap border-y border-gray-200/90 group-hover:border-blue-200 bg-white group-hover:bg-blue-50/40 transition-colors">
+                                                <div className="font-black text-gray-900 text-xs sm:text-[13px] 2xl:text-sm font-mono leading-none">
                                                     Rs. {Number(s.net_amount).toLocaleString()}
                                                 </div>
                                                 {saleDiscount > 0 ? (
-                                                    <div className="text-[9.5px] text-amber-700 font-bold mt-1">
+                                                    <div className="text-[9.5px] 2xl:text-[11px] text-amber-700 font-bold mt-1">
                                                         <span className="bg-amber-50 border border-amber-200 px-1.5 py-0.2 rounded inline-block">
                                                             -Rs. {saleDiscount.toLocaleString()}
                                                         </span>
                                                     </div>
                                                 ) : (
-                                                    <div className="text-[9.5px] text-gray-300 font-medium mt-0.5">No disc</div>
+                                                    <div className="text-[9.5px] 2xl:text-[11px] text-gray-300 font-medium mt-0.5">No disc</div>
                                                 )}
                                             </td>
 
-                                            {/* 5. Paid / Due */}
-                                            <td className="py-3 px-3.5 text-right whitespace-nowrap text-xs border-y border-gray-200/90 group-hover:border-[#D4AF37]/60 bg-white group-hover:bg-[#FEF9E7]/40 transition-colors">
-                                                <div className="font-bold text-emerald-700 font-mono text-xs">
-                                                    Paid: Rs. {Number(m.checkoutPaid).toLocaleString()}
+                                            {/* 6. Paid / Due */}
+                                            <td className="py-3 2xl:py-3.5 px-3.5 2xl:px-4 text-right whitespace-nowrap text-xs 2xl:text-sm border-y border-gray-200/90 group-hover:border-blue-200 bg-white group-hover:bg-blue-50/40 transition-colors">
+                                                <div className="font-bold text-emerald-700 font-mono text-xs 2xl:text-sm">
+                                                    Paid: Rs. {Number(m.livePaid).toLocaleString()}
                                                 </div>
-                                                {m.checkoutDue > 0 ? (
-                                                    <div className="text-[11px] font-black text-rose-600 font-mono mt-0.5">
-                                                        Due: Rs. {Number(m.checkoutDue).toLocaleString()}
-                                                        {m.isSettledLater && <span className="text-[8.5px] text-emerald-600 font-bold ml-1">(Settled)</span>}
+                                                {m.liveDue > 0 ? (
+                                                    <div className="text-[11px] 2xl:text-xs font-black text-rose-600 font-mono mt-0.5">
+                                                        Due: Rs. {Number(m.liveDue).toLocaleString()}
                                                     </div>
                                                 ) : (
-                                                    <div className="text-[10px] text-gray-400 font-semibold mt-0.5">
+                                                    <div className="text-[10px] 2xl:text-xs text-gray-400 font-semibold mt-0.5">
                                                         Due: Rs. 0
                                                     </div>
                                                 )}
                                             </td>
 
-                                            {/* 6. Quick Actions */}
-                                            <td className="py-3 px-3 text-center whitespace-nowrap rounded-r-2xl border-y border-r border-gray-200/90 group-hover:border-[#D4AF37]/60 bg-white group-hover:bg-[#FEF9E7]/40 transition-colors">
+                                            {/* 7. Quick Actions */}
+                                            <td className="py-3 2xl:py-3.5 px-3 2xl:px-4 text-center whitespace-nowrap rounded-r-2xl border-y border-r border-gray-200/90 group-hover:border-blue-200 bg-white group-hover:bg-blue-50/40 transition-colors">
                                                 <div className="inline-flex items-center justify-center gap-1">
                                                     <button
                                                         onClick={() => fetchSaleDetails(s.id, true)}
-                                                        className="px-2 py-1 text-[10.5px] font-bold rounded-lg gold-gradient text-white hover:opacity-95 border border-[#D4AF37] transition-all cursor-pointer shadow-2xs inline-flex items-center gap-1"
+                                                        className="px-2 2xl:px-3 py-1 2xl:py-1.5 text-[10.5px] 2xl:text-xs font-bold rounded-lg bg-[#0B3B7B] hover:bg-[#072B5C] text-white border border-[#0B3B7B] transition-all cursor-pointer shadow-2xs inline-flex items-center gap-1"
                                                         title="View full invoice"
                                                     >
-                                                        <IconEye className="w-3 h-3 text-white" />
+                                                        <IconEye className="w-3 h-3 2xl:w-3.5 2xl:h-3.5 text-white" />
                                                         <span>View</span>
                                                     </button>
                                                     <button
@@ -1770,17 +1866,17 @@ export default function SalesHistoryPage() {
                                                                 setThermalModalOpen(true);
                                                             }
                                                         }}
-                                                        className="p-1 text-[10.5px] font-semibold rounded-lg border border-gray-200 bg-white hover:bg-[#FEF9E7] hover:border-amber-300 text-gray-700 transition-all inline-flex items-center justify-center cursor-pointer shadow-2xs"
+                                                        className="p-1 2xl:p-1.5 text-[10.5px] 2xl:text-xs font-semibold rounded-lg border border-gray-200 bg-white hover:bg-blue-50 hover:border-blue-300 text-gray-700 transition-all inline-flex items-center justify-center cursor-pointer shadow-2xs"
                                                         title="Thermal receipt"
                                                     >
-                                                        <IconReceipt className="w-3.5 h-3.5 text-gray-600" />
+                                                        <IconReceipt className="w-3.5 h-3.5 2xl:w-4 2xl:h-4 text-gray-600" />
                                                     </button>
                                                     <button
                                                         onClick={() => openReturnModal(s)}
-                                                        className="p-1 text-[10.5px] font-semibold rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 transition-all inline-flex items-center justify-center cursor-pointer shadow-2xs"
+                                                        className="p-1 2xl:p-1.5 text-[10.5px] 2xl:text-xs font-semibold rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 transition-all inline-flex items-center justify-center cursor-pointer shadow-2xs"
                                                         title="Customer return"
                                                     >
-                                                        <IconReturn className="w-3.5 h-3.5 text-rose-600" />
+                                                        <IconReturn className="w-3.5 h-3.5 2xl:w-4 2xl:h-4 text-rose-600" />
                                                     </button>
 
                                                     {/* 3-DOTS MENU BUTTON */}
@@ -1788,27 +1884,27 @@ export default function SalesHistoryPage() {
                                                         <button
                                                             type="button"
                                                             onClick={(e) => handleMoreClick(e, s.id)}
-                                                            className="p-1 rounded-lg border border-gray-200 hover:bg-gray-100 transition-all text-gray-600 hover:text-black cursor-pointer flex items-center justify-center shadow-2xs"
+                                                            className="p-1 2xl:p-1.5 rounded-lg border border-gray-200 hover:bg-gray-100 transition-all text-gray-600 hover:text-black cursor-pointer flex items-center justify-center shadow-2xs"
                                                             title="More options (Admin Edit)"
                                                         >
-                                                            <IconDotsVertical className="w-3.5 h-3.5" />
+                                                            <IconDotsVertical className="w-3.5 h-3.5 2xl:w-4 2xl:h-4" />
                                                         </button>
 
                                                         {activeMenuId === s.id && (
                                                             <div
                                                                 onClick={(e) => e.stopPropagation()}
-                                                                className="absolute right-0 mt-1 w-36 bg-white rounded-xl shadow-xl border border-[#F3E5AB] z-50 py-1 text-left"
+                                                                className="absolute right-0 mt-1 w-36 2xl:w-40 bg-white rounded-xl shadow-xl border border-gray-200 z-50 py-1 text-left"
                                                             >
                                                                 <button
                                                                     type="button"
                                                                     onClick={() => handleInitiateEdit(s)}
-                                                                    className="w-full text-left px-3 py-2 text-[11px] font-bold text-gray-800 hover:bg-[#FEF9E7] hover:text-[#B8860B] flex items-center justify-between gap-1.5 cursor-pointer transition-colors"
+                                                                    className="w-full text-left px-3 py-2 text-[11px] 2xl:text-xs font-bold text-gray-800 hover:bg-blue-50 hover:text-[#0B3B7B] flex items-center justify-between gap-1.5 cursor-pointer transition-colors"
                                                                 >
                                                                     <div className="flex items-center gap-1.5">
-                                                                        <IconEdit className="w-3.5 h-3.5 text-gray-500" />
+                                                                        <IconEdit className="w-3.5 h-3.5 2xl:w-4 2xl:h-4 text-gray-500" />
                                                                         <span>Edit Sale</span>
                                                                     </div>
-                                                                    <span className="text-[9px] text-amber-800 font-bold bg-[#FEF9E7] border border-amber-200 px-1.5 py-0.2 rounded">
+                                                                    <span className="text-[9px] 2xl:text-[10px] text-[#0B3B7B] font-bold bg-blue-50 border border-blue-200 px-1.5 py-0.2 rounded">
                                                                         PIN
                                                                     </span>
                                                                 </button>
@@ -1827,9 +1923,9 @@ export default function SalesHistoryPage() {
 
 
                 {/* PAGINATION CONTROLS BAR */}
-                <div className="p-2.5 sm:p-3 bg-white border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-2.5 text-xs">
+                <div className="p-2.5 sm:p-3 2xl:p-4 bg-white border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-2.5 text-xs 2xl:text-sm">
                     {/* Left: Range and total count info */}
-                    <div className="flex items-center gap-2 text-gray-600 text-[11px] font-medium">
+                    <div className="flex items-center gap-2 text-gray-600 text-[11px] 2xl:text-xs font-medium">
                         {feedType === 'WASOOLI' ? (
                             <span>
                                 Showing <strong className="text-gray-900 font-bold">{activeRecoveredDues.length}</strong> dues recovery records
@@ -1844,7 +1940,7 @@ export default function SalesHistoryPage() {
                             </span>
                         )}
                         {(statusFilter !== 'ALL' || searchQuery || dateFilter !== 'all') && (
-                            <span className="text-[10px] text-gray-500 bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded">
+                            <span className="text-[10px] 2xl:text-xs text-gray-500 bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded">
                                 (period: {dateFilter.replace('_', ' ')})
                             </span>
                         )}
@@ -1853,7 +1949,7 @@ export default function SalesHistoryPage() {
                     {/* Right: Rows per page selector + Page Jump Buttons */}
                     <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                         {/* Rows per page dropdown */}
-                        <div className="flex items-center gap-1.5 text-[11px] text-gray-600">
+                        <div className="flex items-center gap-1.5 text-[11px] 2xl:text-xs text-gray-600">
                             <span className="text-gray-400 font-medium">Per page:</span>
                             <select
                                 value={pageSize}
@@ -1861,7 +1957,7 @@ export default function SalesHistoryPage() {
                                     setPageSize(Number(e.target.value));
                                     setCurrentPage(1);
                                 }}
-                                className="px-2 py-1 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg text-xs font-bold text-gray-800 outline-none cursor-pointer transition-colors"
+                                className="px-2 2xl:px-2.5 py-1 2xl:py-1.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg text-xs 2xl:text-sm font-bold text-gray-800 outline-none cursor-pointer transition-colors"
                             >
                                 <option value={25}>25</option>
                                 <option value={50}>50</option>
@@ -1876,28 +1972,26 @@ export default function SalesHistoryPage() {
                             <button
                                 onClick={() => setCurrentPage(1)}
                                 disabled={validCurrentPage <= 1}
-                                className={`p-1.5 rounded-lg border text-xs transition-all ${
-                                    validCurrentPage <= 1
-                                        ? 'bg-gray-50 border-gray-200 text-gray-300 cursor-not-allowed'
-                                        : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-100 hover:text-gray-900 cursor-pointer shadow-2xs active:scale-95'
-                                }`}
+                                className={`p-1.5 2xl:p-2 rounded-lg border text-xs 2xl:text-sm transition-all ${validCurrentPage <= 1
+                                    ? 'bg-gray-50 border-gray-200 text-gray-300 cursor-not-allowed'
+                                    : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-100 hover:text-gray-900 cursor-pointer shadow-2xs active:scale-95'
+                                    }`}
                                 title="First Page"
                             >
-                                <IconChevronDoubleLeft className="w-3.5 h-3.5" />
+                                <IconChevronDoubleLeft className="w-3.5 h-3.5 2xl:w-4 2xl:h-4" />
                             </button>
 
                             {/* Previous Page */}
                             <button
                                 onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                                 disabled={validCurrentPage <= 1}
-                                className={`p-1.5 rounded-lg border text-xs transition-all ${
-                                    validCurrentPage <= 1
-                                        ? 'bg-gray-50 border-gray-200 text-gray-300 cursor-not-allowed'
-                                        : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-100 hover:text-gray-900 cursor-pointer shadow-2xs active:scale-95'
-                                }`}
+                                className={`p-1.5 2xl:p-2 rounded-lg border text-xs 2xl:text-sm transition-all ${validCurrentPage <= 1
+                                    ? 'bg-gray-50 border-gray-200 text-gray-300 cursor-not-allowed'
+                                    : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-100 hover:text-gray-900 cursor-pointer shadow-2xs active:scale-95'
+                                    }`}
                                 title="Previous Page"
                             >
-                                <IconChevronLeft className="w-3.5 h-3.5" />
+                                <IconChevronLeft className="w-3.5 h-3.5 2xl:w-4 2xl:h-4" />
                             </button>
 
                             {/* Page Numbers */}
@@ -1905,7 +1999,7 @@ export default function SalesHistoryPage() {
                                 {getPageNumbers(validCurrentPage, totalPages).map((p, idx) => {
                                     if (p === '...') {
                                         return (
-                                            <span key={`ellipsis-${idx}`} className="px-1 text-gray-400 text-xs font-bold select-none">
+                                            <span key={`ellipsis-${idx}`} className="px-1 text-gray-400 text-xs 2xl:text-sm font-bold select-none">
                                                 ...
                                             </span>
                                         );
@@ -1915,11 +2009,10 @@ export default function SalesHistoryPage() {
                                         <button
                                             key={`page-${p}`}
                                             onClick={() => setCurrentPage(p)}
-                                            className={`min-w-[28px] h-7 px-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                                                isActive
-                                                    ? 'gold-gradient text-white font-extrabold shadow-2xs border border-[#D4AF37]'
-                                                    : 'bg-white border border-gray-200 text-gray-700 hover:bg-[#FEF9E7] hover:text-[#B8860B]'
-                                            }`}
+                                            className={`min-w-[28px] 2xl:min-w-[34px] h-7 2xl:h-8.5 px-1.5 2xl:px-2 rounded-lg text-xs 2xl:text-sm font-bold transition-all cursor-pointer ${isActive
+                                                ? 'bg-[#0B3B7B] text-white font-extrabold shadow-2xs border border-[#0B3B7B]'
+                                                : 'bg-white border border-gray-200 text-gray-700 hover:bg-blue-50 hover:text-[#0B3B7B]'
+                                                }`}
                                         >
                                             {p}
                                         </button>
@@ -1931,28 +2024,26 @@ export default function SalesHistoryPage() {
                             <button
                                 onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
                                 disabled={validCurrentPage >= totalPages}
-                                className={`p-1.5 rounded-lg border text-xs transition-all ${
-                                    validCurrentPage >= totalPages
-                                        ? 'bg-gray-50 border-gray-200 text-gray-300 cursor-not-allowed'
-                                        : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-100 hover:text-gray-900 cursor-pointer shadow-2xs active:scale-95'
-                                }`}
+                                className={`p-1.5 2xl:p-2 rounded-lg border text-xs 2xl:text-sm transition-all ${validCurrentPage >= totalPages
+                                    ? 'bg-gray-50 border-gray-200 text-gray-300 cursor-not-allowed'
+                                    : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-100 hover:text-gray-900 cursor-pointer shadow-2xs active:scale-95'
+                                    }`}
                                 title="Next Page"
                             >
-                                <IconChevronRight className="w-3.5 h-3.5" />
+                                <IconChevronRight className="w-3.5 h-3.5 2xl:w-4 2xl:h-4" />
                             </button>
 
                             {/* Last Page */}
                             <button
                                 onClick={() => setCurrentPage(totalPages)}
                                 disabled={validCurrentPage >= totalPages}
-                                className={`p-1.5 rounded-lg border text-xs transition-all ${
-                                    validCurrentPage >= totalPages
-                                        ? 'bg-gray-50 border-gray-200 text-gray-300 cursor-not-allowed'
-                                        : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-100 hover:text-gray-900 cursor-pointer shadow-2xs active:scale-95'
-                                }`}
+                                className={`p-1.5 2xl:p-2 rounded-lg border text-xs 2xl:text-sm transition-all ${validCurrentPage >= totalPages
+                                    ? 'bg-gray-50 border-gray-200 text-gray-300 cursor-not-allowed'
+                                    : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-100 hover:text-gray-900 cursor-pointer shadow-2xs active:scale-95'
+                                    }`}
                                 title="Last Page"
                             >
-                                <IconChevronDoubleRight className="w-3.5 h-3.5" />
+                                <IconChevronDoubleRight className="w-3.5 h-3.5 2xl:w-4 2xl:h-4" />
                             </button>
                         </div>
                     </div>
@@ -1976,67 +2067,22 @@ export default function SalesHistoryPage() {
                 elemId="printable-invoice-a4"
             />
 
-            {/* 2. DEDICATED 80mm THERMAL RECEIPT MODAL (COMPACT, NARROW RECEIPT SIZE, FULLY RESPONSIVE) */}
-            {thermalModalOpen && selectedSale && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-2 sm:p-4 overflow-hidden animate-in fade-in duration-150">
-                    <div className="bg-white rounded-2xl sm:rounded-3xl max-w-sm w-full shadow-2xl border border-gray-200 flex flex-col max-h-[85vh] sm:max-h-[88vh] overflow-hidden">
-                        {/* Header (Pinned) */}
-                        <div className="shrink-0 flex justify-between items-center px-4 py-3 border-b border-gray-100 bg-white">
-                            <div className="flex items-center gap-1.5">
-                                <IconReceipt className="w-4 h-4 text-black" />
-                                <h3 className="font-extrabold text-gray-900 text-sm">Thermal Receipt Preview</h3>
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                                <button
-                                    type="button"
-                                    onClick={() => handlePrintInvoice('thermal')}
-                                    style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                    className="btn-black !bg-black !text-white px-3 py-1 rounded-xl font-bold text-xs shadow-xs flex items-center gap-1 hover:opacity-90 active:scale-95 transition-all cursor-pointer"
-                                >
-                                    <IconPrinter className="w-3.5 h-3.5 text-white" />
-                                    <span>Print</span>
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setThermalModalOpen(false)}
-                                    className="p-1 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-all cursor-pointer"
-                                >
-                                    <IconClose className="w-4 h-4" />
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Scrollable Thermal Slip Container */}
-                        <div className="flex-1 min-h-0 overflow-y-auto p-3 bg-gray-100/70 flex justify-center">
-                            {renderThermalSlipContent(selectedSale, prevBalance, newBalance, "printable-invoice-thermal")}
-                        </div>
-
-                        {/* Bottom Actions (Pinned) */}
-                        <div className="shrink-0 flex gap-2 p-3 sm:px-4 sm:py-3 border-t border-gray-100 bg-white">
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setThermalModalOpen(false);
-                                    setInvoiceModalOpen(true);
-                                }}
-                                style={{ backgroundColor: '#ffffff', color: '#000000', border: '1px solid #d1d5db' }}
-                                className="flex-1 py-2 rounded-xl font-bold text-xs hover:bg-gray-100 transition-all cursor-pointer text-center"
-                            >
-                                View Full A4 Bill
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => handlePrintInvoice('thermal')}
-                                style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                className="btn-black !bg-black !text-white flex-1 py-2 rounded-xl font-bold text-xs shadow-xs hover:opacity-90 active:scale-95 transition-all cursor-pointer text-center flex items-center justify-center gap-1.5"
-                            >
-                                <IconPrinter className="w-3.5 h-3.5 text-white" />
-                                <span>Print Receipt</span>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {/* 2. REUSABLE 80mm THERMAL RECEIPT MODAL */}
+            <ThermalReceipt
+                isOpen={thermalModalOpen}
+                onClose={() => setThermalModalOpen(false)}
+                invoice={selectedSale}
+                settings={settings}
+                cashierName={selectedSale?.created_by_name || selectedSale?.cashier_name || user?.full_name || user?.username || 'Cashier'}
+                prevBalance={prevBalance}
+                newBalance={newBalance}
+                onOpenA4={() => {
+                    setThermalModalOpen(false);
+                    setInvoiceModalOpen(true);
+                }}
+                onPrint={() => handlePrintInvoice('thermal')}
+                elemId="printable-invoice-thermal"
+            />
 
             {/* SALES RETURN MODAL */}
             {returnModalOpen && selectedSale && (
@@ -2045,7 +2091,7 @@ export default function SalesHistoryPage() {
                         <div className="flex justify-between items-center border-b pb-3">
                             <div>
                                 <h3 className="font-extrabold text-gray-900 text-base">Process Customer Sales Return</h3>
-                                <div className="text-xs text-[#B8860B] font-bold">
+                                <div className="text-xs text-[#0B3B7B] font-bold">
                                     Invoice: {selectedSale.invoice_no} • {selectedSale.customer_name || 'Walk-in'}
                                 </div>
                             </div>
@@ -2124,11 +2170,10 @@ export default function SalesHistoryPage() {
                                 <div className="grid grid-cols-2 gap-2.5">
                                     <div
                                         onClick={() => setRefundMethod('credit')}
-                                        className={`p-3 rounded-2xl border flex flex-col gap-1 cursor-pointer transition-all ${
-                                            refundMethod === 'credit'
-                                                ? 'bg-amber-50/80 border-[#D4AF37] text-gray-900 shadow-xs ring-1 ring-[#D4AF37]'
-                                                : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
-                                        }`}
+                                        className={`p-3 rounded-2xl border flex flex-col gap-1 cursor-pointer transition-all ${refundMethod === 'credit'
+                                            ? 'bg-blue-50/80 border-blue-400 text-gray-900 shadow-xs ring-1 ring-blue-400'
+                                            : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
+                                            }`}
                                     >
                                         <div className="flex items-center gap-2">
                                             <input
@@ -2137,7 +2182,7 @@ export default function SalesHistoryPage() {
                                                 value="credit"
                                                 checked={refundMethod === 'credit'}
                                                 onChange={() => setRefundMethod('credit')}
-                                                className="accent-[#B8860B] cursor-pointer"
+                                                className="accent-[#0B3B7B] cursor-pointer"
                                             />
                                             <span className="font-extrabold text-xs text-gray-900">
                                                 Adjust Khata / Store Credit
@@ -2150,11 +2195,10 @@ export default function SalesHistoryPage() {
 
                                     <div
                                         onClick={() => setRefundMethod('cash')}
-                                        className={`p-3 rounded-2xl border flex flex-col gap-1 cursor-pointer transition-all ${
-                                            refundMethod === 'cash'
-                                                ? 'bg-emerald-50 border-emerald-500 text-gray-900 shadow-xs ring-1 ring-emerald-500'
-                                                : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
-                                        }`}
+                                        className={`p-3 rounded-2xl border flex flex-col gap-1 cursor-pointer transition-all ${refundMethod === 'cash'
+                                            ? 'bg-emerald-50 border-emerald-500 text-gray-900 shadow-xs ring-1 ring-emerald-500'
+                                            : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
+                                            }`}
                                     >
                                         <div className="flex items-center gap-2">
                                             <input
@@ -2206,13 +2250,12 @@ export default function SalesHistoryPage() {
                                                     <span className="line-through text-gray-400 mr-1.5">
                                                         Rs. {Number(selectedSale.current_customer_balance || 0).toLocaleString()}
                                                     </span>
-                                                    <span className={`font-mono ${
-                                                        (Number(selectedSale.current_customer_balance || 0) - refundAmount) < 0 
-                                                            ? 'text-emerald-700 font-extrabold' 
-                                                            : 'text-gray-900'
-                                                    }`}>
-                                                        {(Number(selectedSale.current_customer_balance || 0) - refundAmount) < 0 
-                                                            ? `Rs. -${Math.abs(Number(selectedSale.current_customer_balance || 0) - refundAmount).toLocaleString()} (Advance)` 
+                                                    <span className={`font-mono ${(Number(selectedSale.current_customer_balance || 0) - refundAmount) < 0
+                                                        ? 'text-emerald-700 font-extrabold'
+                                                        : 'text-gray-900'
+                                                        }`}>
+                                                        {(Number(selectedSale.current_customer_balance || 0) - refundAmount) < 0
+                                                            ? `Rs. -${Math.abs(Number(selectedSale.current_customer_balance || 0) - refundAmount).toLocaleString()} (Advance)`
                                                             : `Rs. ${(Number(selectedSale.current_customer_balance || 0) - refundAmount).toLocaleString()}`}
                                                     </span>
                                                 </div>
@@ -2243,15 +2286,13 @@ export default function SalesHistoryPage() {
                             <button
                                 type="button"
                                 onClick={() => setReturnModalOpen(false)}
-                                style={{ backgroundColor: '#ffffff', color: '#000000', border: '1px solid #d1d5db' }}
-                                className="flex-1 py-2.5 rounded-xl font-bold text-xs hover:bg-gray-100 transition-all cursor-pointer"
+                                className="flex-1 py-2.5 rounded-xl font-bold text-xs bg-white text-gray-700 border border-gray-300 hover:bg-gray-100 transition-all cursor-pointer"
                             >
                                 Cancel
                             </button>
                             <button
                                 type="submit"
-                                style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                className="btn-black !bg-black !text-white flex-1 py-2.5 rounded-xl font-extrabold text-xs shadow-md hover:opacity-90 active:scale-95 transition-all cursor-pointer"
+                                className="flex-1 py-2.5 rounded-xl font-extrabold text-xs bg-[#0B3B7B] hover:bg-[#072B5C] text-white shadow-md hover:opacity-95 active:scale-95 transition-all cursor-pointer"
                             >
                                 Confirm Sales Return
                             </button>
@@ -2265,8 +2306,8 @@ export default function SalesHistoryPage() {
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl border border-gray-200">
                         <div className="text-center space-y-2">
-                            <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200 text-[#B8860B] flex items-center justify-center mx-auto text-xl font-bold shadow-xs">
-                                <IconShield className="w-6 h-6 text-[#B8860B]" />
+                            <div className="w-12 h-12 rounded-2xl bg-blue-50 border border-blue-200 text-[#0B3B7B] flex items-center justify-center mx-auto text-xl font-bold shadow-xs">
+                                <IconShield className="w-6 h-6 text-[#0B3B7B]" />
                             </div>
                             <h3 className="font-extrabold text-base text-gray-900">Admin Authorization</h3>
                             <p className="text-xs text-gray-500 leading-relaxed">
@@ -2281,7 +2322,7 @@ export default function SalesHistoryPage() {
                                 value={adminAuthPin}
                                 onChange={(e) => setAdminAuthPin(e.target.value)}
                                 onKeyDown={(e) => e.key === 'Enter' && handleVerifyAdminPin()}
-                                className="w-full p-2.5 rounded-xl border border-gray-300 font-bold text-center tracking-widest text-base focus:ring-2 focus:ring-black outline-none"
+                                className="w-full p-2.5 rounded-xl border border-gray-300 font-bold text-center tracking-widest text-base focus:ring-2 focus:ring-[#0B3B7B] outline-none"
                                 placeholder="••••••••"
                                 autoFocus
                             />
@@ -2298,10 +2339,9 @@ export default function SalesHistoryPage() {
                             <button
                                 type="button"
                                 onClick={handleVerifyAdminPin}
-                                style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                className="btn-black !bg-black !text-white flex-1 py-2.5 rounded-xl font-bold text-xs shadow-md hover:opacity-90 active:scale-95 transition-all cursor-pointer"
+                                className="flex-1 py-2.5 rounded-xl bg-[#0B3B7B] hover:bg-[#072B5C] text-white font-bold text-xs shadow-md hover:opacity-95 active:scale-95 transition-all cursor-pointer"
                             >
-                                Authorize & Edit
+                                Authorize &amp; Edit
                             </button>
                         </div>
                     </div>
@@ -2405,8 +2445,23 @@ export default function SalesHistoryPage() {
                         </div>
 
                         {/* Action Buttons */}
-                        <div className="flex flex-col sm:flex-row items-center gap-2 pt-1">
-                            {selectedWasooli.original_sale_id && (
+                        <div className="flex flex-col sm:flex-row items-center gap-2 pt-1 w-full">
+                            {extractInvoiceTokens(selectedWasooli.reference_no).length > 0 ? (
+                                extractInvoiceTokens(selectedWasooli.reference_no).map((invNo) => (
+                                    <button
+                                        key={invNo}
+                                        type="button"
+                                        onClick={() => {
+                                            setWasooliModalOpen(false);
+                                            fetchSaleDetails(invNo, true);
+                                        }}
+                                        className="w-full sm:flex-1 py-2.5 rounded-xl font-bold text-xs bg-emerald-800 text-white hover:bg-emerald-900 transition-all cursor-pointer shadow-md flex items-center justify-center gap-1.5"
+                                    >
+                                        <IconEye className="w-3.5 h-3.5" />
+                                        <span>View Bill ({invNo})</span>
+                                    </button>
+                                ))
+                            ) : selectedWasooli.original_sale_id ? (
                                 <button
                                     type="button"
                                     onClick={() => {
@@ -2416,9 +2471,9 @@ export default function SalesHistoryPage() {
                                     className="w-full sm:flex-1 py-2.5 rounded-xl font-bold text-xs bg-emerald-800 text-white hover:bg-emerald-900 transition-all cursor-pointer shadow-md flex items-center justify-center gap-1.5"
                                 >
                                     <IconEye className="w-3.5 h-3.5" />
-                                    <span>View Original Bill ({selectedWasooli.reference_no})</span>
+                                    <span>View Original Bill</span>
                                 </button>
-                            )}
+                            ) : null}
                             <button
                                 type="button"
                                 onClick={() => setWasooliModalOpen(false)}

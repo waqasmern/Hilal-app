@@ -36,25 +36,25 @@ export default function CustomModalAlert({
             icon: <IconClose className="w-6 h-6 text-rose-600" />
         },
         warning: {
-            bgIcon: 'bg-amber-50 border-[#F3E5AB] text-[#B8860B]',
-            borderColor: 'border-[#F3E5AB]',
-            buttonClass: 'bg-gradient-to-r from-[#D4AF37] to-[#B8860B] text-white',
+            bgIcon: 'bg-amber-50 border-amber-200 text-amber-600',
+            borderColor: 'border-amber-200',
+            buttonClass: 'bg-amber-600 hover:bg-amber-700 text-white',
             defaultTitle: 'Attention',
-            icon: <IconWarning className="w-6 h-6 text-[#B8860B]" />
+            icon: <IconWarning className="w-6 h-6 text-amber-600" />
         },
         confirm: {
-            bgIcon: 'bg-amber-50 border-[#F3E5AB] text-[#B8860B]',
-            borderColor: 'border-[#F3E5AB]',
-            buttonClass: 'bg-gradient-to-r from-[#D4AF37] to-[#B8860B] text-white',
+            bgIcon: 'bg-blue-50 border-blue-200 text-[#0B3B7B]',
+            borderColor: 'border-blue-200',
+            buttonClass: 'bg-[#0B3B7B] hover:bg-[#072B5C] text-white',
             defaultTitle: 'Please Confirm',
-            icon: <IconWarning className="w-6 h-6 text-[#B8860B]" />
+            icon: <IconWarning className="w-6 h-6 text-[#0B3B7B]" />
         },
         info: {
-            bgIcon: 'bg-yellow-50 border-yellow-200 text-[#B8860B]',
-            borderColor: 'border-yellow-200',
-            buttonClass: 'bg-gradient-to-r from-[#D4AF37] to-[#B8860B] text-white',
+            bgIcon: 'bg-blue-50 border-blue-200 text-[#0B3B7B]',
+            borderColor: 'border-blue-200',
+            buttonClass: 'bg-[#0B3B7B] hover:bg-[#072B5C] text-white',
             defaultTitle: 'Notification',
-            icon: <IconWarning className="w-6 h-6 text-[#B8860B]" />
+            icon: <IconWarning className="w-6 h-6 text-[#0B3B7B]" />
         }
     };
 
@@ -97,8 +97,7 @@ export default function CustomModalAlert({
                         <button
                             type="button"
                             onClick={onClose}
-                            style={{ backgroundColor: '#ffffff', color: '#000000', border: '1px solid #e5e7eb' }}
-                            className="px-4 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer hover:bg-gray-100"
+                            className="px-4 py-2 text-xs font-bold rounded-xl border border-gray-200 text-gray-700 bg-white hover:bg-gray-50 transition-all cursor-pointer"
                         >
                             {cancelText}
                         </button>
@@ -106,10 +105,14 @@ export default function CustomModalAlert({
                     <button
                         type="button"
                         onClick={handleConfirm}
-                        style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                        className="btn-black !bg-black !text-white px-5 py-2.5 text-xs font-bold rounded-xl shadow-md transition-all hover:opacity-90 active:scale-95 cursor-pointer"
+                        className={`px-5 py-2.5 text-xs font-bold rounded-xl shadow-md transition-all hover:opacity-90 active:scale-95 cursor-pointer ${
+                            type === 'error' ? 'bg-rose-600 text-white' :
+                            type === 'warning' ? 'bg-amber-600 text-white' :
+                            type === 'success' ? 'bg-emerald-600 text-white' :
+                            'bg-[#0B3B7B] hover:bg-[#072B5C] text-white'
+                        }`}
                     >
-                        <span style={{ color: '#ffffff' }}>{confirmText}</span>
+                        <span>{confirmText}</span>
                     </button>
                 </div>
             </div>

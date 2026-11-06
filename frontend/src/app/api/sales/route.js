@@ -63,6 +63,52 @@ function getDateBoundaries(filter, startDate, endDate) {
     return null;
 }
 
+async function attachProfitMetrics(salesList) {
+    if (!salesList || salesList.length === 0) return salesList;
+    try {
+        const saleIds = salesList.map(s => s.id);
+        const [itemsRes, packRes] = await Promise.all([
+            supabase.from('sale_items').select('sale_id, quantity, variant_id, packaging_type_id').in('sale_id', saleIds),
+            supabase.from('product_packagings').select('variant_id, packaging_type_id, purchase_price, is_default')
+        ]);
+
+        const saleItems = itemsRes.data || [];
+        const packagings = packRes.data || [];
+
+        const ppMap = {};
+        const defMap = {};
+        packagings.forEach(p => {
+            ppMap[`${p.variant_id}_${p.packaging_type_id}`] = parseFloat(p.purchase_price) || 0;
+            if (p.is_default || !defMap[p.variant_id]) {
+                defMap[p.variant_id] = parseFloat(p.purchase_price) || 0;
+            }
+        });
+
+        const saleCostMap = {};
+        saleItems.forEach(item => {
+            const price = ppMap[`${item.variant_id}_${item.packaging_type_id}`] ?? defMap[item.variant_id] ?? 0;
+            const cost = (parseFloat(item.quantity) || 0) * price;
+            saleCostMap[item.sale_id] = (saleCostMap[item.sale_id] || 0) + cost;
+        });
+
+        return salesList.map(s => {
+            const cost = Math.round((saleCostMap[s.id] || 0) * 100) / 100;
+            const net = parseFloat(s.net_amount) || 0;
+            const profit = Math.round((net - cost) * 100) / 100;
+            const profit_margin_percent = net > 0 ? Math.round((profit / net) * 1000) / 10 : 0;
+            return {
+                ...s,
+                total_cost: cost,
+                profit,
+                profit_margin_percent
+            };
+        });
+    } catch (err) {
+        console.error('attachProfitMetrics error:', err);
+        return salesList;
+    }
+}
+
 export async function GET(request) {
     try {
         const { searchParams } = new URL(request.url);
@@ -80,7 +126,7 @@ export async function GET(request) {
             .select(`
                 *,
                 customers (
-                    id, name, business_name, phone, address
+                    id, name, business_name, phone, mobile, address
                 ),
                 users (
                     id, username
@@ -126,14 +172,16 @@ export async function GET(request) {
             const { data, count, error } = await query;
             if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-            const sales = (data || []).map(s => ({
+            let sales = (data || []).map(s => ({
                 ...s,
                 customer_name: s.customers?.name || 'Walk-in Customer',
                 customer_business: s.customers?.business_name || '',
-                customer_phone: s.customers?.phone || '',
+                customer_phone: s.customers?.mobile || s.customers?.phone || '',
+                customer_mobile: s.customers?.mobile || s.customers?.phone || '',
                 customer_address: s.customers?.address || '',
                 cashier_name: s.users?.username || 'Cashier'
             }));
+            sales = await attachProfitMetrics(sales);
 
             // Calculate date-range summary metrics across all sales in date range
             let summaryQuery = supabase
@@ -173,7 +221,7 @@ export async function GET(request) {
                 .from('payments')
                 .select(`
                     id, uuid, amount, payment_method, reference_no, payment_date, created_at, notes, party_id,
-                    customers ( name, business_name, phone )
+                    customers ( name, business_name, phone, mobile )
                 `)
                 .eq('party_type', 'customer')
                 .gt('amount', 0);
@@ -187,29 +235,47 @@ export async function GET(request) {
                 const ref = String(p.reference_no || '');
                 const notes = String(p.notes || '').toLowerCase();
                 return !ref.startsWith('SALE-') && !ref.startsWith('RET-') && !notes.includes('refund') && !notes.includes('return');
-            }).map(p => ({
-                payment_id: p.id,
-                payment_uuid: p.uuid,
-                recovered_amount: Number(p.amount) || 0,
-                payment_method: p.payment_method,
-                reference_no: p.reference_no,
-                recovery_date: p.payment_date || (p.created_at ? p.created_at.slice(0, 10) : ''),
-                payment_created_at: p.created_at,
-                notes: p.notes,
-                customer_id: p.party_id,
-                customer_name: p.customers?.name || 'Customer',
-                customer_business: p.customers?.business_name || '',
-                customer_phone: p.customers?.phone || '',
-                cashier_name: 'Cashier'
-            }));
+            }).map(p => {
+                const amt = Number(p.amount) || 0;
+                const refStr = (p.reference_no || '') + ' ' + (p.notes || '');
+                const invTokens = refStr.match(/INV-[A-Za-z0-9_-]+/gi) || [];
+                const uniqueInvoices = Array.from(new Set(invTokens));
+                const margin = 0.20;
+                const recProfit = Math.round(amt * margin);
+                return {
+                    payment_id: p.id,
+                    payment_uuid: p.uuid,
+                    recovered_amount: amt,
+                    recovered_profit: recProfit,
+                    profit: recProfit,
+                    profit_margin_percent: 20.0,
+                    payment_method: p.payment_method,
+                    reference_no: p.reference_no,
+                    recovery_date: p.payment_date || (p.created_at ? p.created_at.slice(0, 10) : ''),
+                    payment_created_at: p.created_at,
+                    notes: p.notes,
+                    customer_id: p.party_id,
+                    customer_name: p.customers?.name || 'Customer',
+                    customer_business: p.customers?.business_name || '',
+                    customer_phone: p.customers?.mobile || p.customers?.phone || '',
+                    customer_mobile: p.customers?.mobile || p.customers?.phone || '',
+                    cashier_name: 'Cashier',
+                    original_sale_id: uniqueInvoices.length > 0 ? uniqueInvoices[0] : null,
+                    linked_invoices: uniqueInvoices
+                };
+            });
 
             const recoveredDues = recoveredPaymentsList.reduce((sum, p) => sum + p.recovered_amount, 0);
             const totalCollected = checkoutCollected + recoveredDues;
+
+            const allSalesWithProfit = await attachProfitMetrics(allDateSales || []);
+            const totalProfit = allSalesWithProfit.reduce((sum, s) => sum + (Number(s.profit) || 0), 0);
 
             const summary = {
                 totalSalesCount: (allDateSales || []).length,
                 totalSaleAmount,
                 totalSale: totalSaleAmount,
+                totalProfit: Math.round(totalProfit),
                 checkoutCollected,
                 recoveredDues,
                 totalRecoveredDues: recoveredDues,
@@ -247,14 +313,16 @@ export async function GET(request) {
             const { data, error } = await query;
             if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-            const sales = (data || []).map(s => ({
+            let sales = (data || []).map(s => ({
                 ...s,
                 customer_name: s.customers?.name || 'Walk-in Customer',
                 customer_business: s.customers?.business_name || '',
-                customer_phone: s.customers?.phone || '',
+                customer_phone: s.customers?.mobile || s.customers?.phone || '',
+                customer_mobile: s.customers?.mobile || s.customers?.phone || '',
                 customer_address: s.customers?.address || '',
                 cashier_name: s.users?.username || 'Cashier'
             }));
+            sales = await attachProfitMetrics(sales);
 
             return NextResponse.json(sales);
         }
@@ -321,6 +389,67 @@ export async function POST(request) {
         const pkTime = getPakistanTimeParts();
         const nowDate = pkTime.date;
 
+        let effectiveCustomerId = customer_id || null;
+
+        // Auto-resolve or create Customer Ledger for walk-in credit / partial sales
+        if (!effectiveCustomerId && party_type === 'walkin' && remainingBalance > 0) {
+            const cleanPhone = (walkin_phone || '').trim();
+            const rawName = (walkin_name || '').trim();
+            const isGenericName = !rawName || rawName.toLowerCase() === 'walk-in customer' || rawName.toLowerCase() === 'walk-in' || rawName.toLowerCase() === 'walkin';
+            const cleanName = isGenericName ? (cleanPhone ? `Walk-in (${cleanPhone})` : 'Walk-in Customer') : rawName;
+
+            let existingCust = null;
+            if (cleanPhone) {
+                const { data } = await supabase
+                    .from('customers')
+                    .select('id, name, phone, mobile')
+                    .or(`phone.eq.${cleanPhone},mobile.eq.${cleanPhone}`)
+                    .eq('is_deleted', 0)
+                    .limit(1);
+                if (data && data.length > 0) existingCust = data[0];
+            }
+
+            if (!existingCust && !isGenericName) {
+                const { data } = await supabase
+                    .from('customers')
+                    .select('id, name')
+                    .ilike('name', cleanName)
+                    .eq('is_deleted', 0)
+                    .limit(1);
+                if (data && data.length > 0) existingCust = data[0];
+            }
+
+            if (existingCust) {
+                effectiveCustomerId = existingCust.id;
+            } else {
+                const nextCustId = await getNextId('customers');
+                const bName = isGenericName ? 'Walk-in Retail' : cleanName;
+                const addr = (walkin_address || 'Timergara').trim();
+                const { data: newCust, error: cErr } = await supabase
+                    .from('customers')
+                    .insert([{
+                        id: nextCustId,
+                        uuid: crypto.randomUUID(),
+                        name: cleanName,
+                        business_name: bName,
+                        phone: cleanPhone,
+                        mobile: cleanPhone,
+                        address: addr,
+                        credit_limit: 0,
+                        opening_balance: 0,
+                        balance: 0,
+                        is_deleted: 0,
+                        created_at: nowIso
+                    }])
+                    .select()
+                    .single();
+
+                if (newCust && !cErr) {
+                    effectiveCustomerId = newCust.id;
+                }
+            }
+        }
+
         // 1. Insert into sales
         const { data: saleData, error: saleErr } = await supabase
             .from('sales')
@@ -328,7 +457,7 @@ export async function POST(request) {
                 id: nextSaleId,
                 uuid: saleUUID,
                 invoice_no: invoiceNo,
-                customer_id: customer_id || null,
+                customer_id: effectiveCustomerId || null,
                 user_id: user.id || 1,
                 device_id: device_id || 'CLOUD-WEB-01',
                 gross_amount: gross_amount || 0,
@@ -425,13 +554,13 @@ export async function POST(request) {
         }
 
         // 3. Customer Ledger Entries
-        if (customer_id) {
+        if (effectiveCustomerId) {
             let nextLedgerId = await getNextId('customer_ledger');
             // Debit charge
             await supabase.from('customer_ledger').insert([{
                 id: nextLedgerId++,
                 uuid: crypto.randomUUID(),
-                customer_id,
+                customer_id: effectiveCustomerId,
                 sale_id: saleId,
                 amount: net_amount,
                 type: 'charge',
@@ -446,7 +575,7 @@ export async function POST(request) {
                 await supabase.from('customer_ledger').insert([{
                     id: nextLedgerId++,
                     uuid: crypto.randomUUID(),
-                    customer_id,
+                    customer_id: effectiveCustomerId,
                     sale_id: saleId,
                     amount: amount_paid,
                     type: 'payment',
@@ -461,7 +590,7 @@ export async function POST(request) {
                     id: nextPayId,
                     uuid: crypto.randomUUID(),
                     party_type: 'customer',
-                    party_id: customer_id,
+                    party_id: effectiveCustomerId,
                     amount: amount_paid,
                     payment_method: payment_method || 'cash',
                     reference_no: invoiceNo,
@@ -477,14 +606,14 @@ export async function POST(request) {
             const { data: custRow } = await supabase
                 .from('customers')
                 .select('balance')
-                .eq('id', customer_id)
+                .eq('id', effectiveCustomerId)
                 .single();
 
             const curBalance = parseFloat(custRow?.balance) || 0;
             await supabase
                 .from('customers')
                 .update({ balance: curBalance + remainingBalance })
-                .eq('id', customer_id);
+                .eq('id', effectiveCustomerId);
         }
 
         return NextResponse.json({
@@ -492,7 +621,8 @@ export async function POST(request) {
             saleId,
             invoiceNo,
             net_amount,
-            remainingBalance
+            remainingBalance,
+            customer_id: effectiveCustomerId
         });
     } catch (err) {
         console.error('Order creation error:', err);

@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useSelector } from 'react-redux';
 import CustomModalAlert from '../components/CustomModalAlert';
+import FastProductSearchModal from '../components/FastProductSearchModal';
 import { apiUrl } from '../../lib/api';
 import {
     IconPlus, IconClose, IconSuppliers, IconBill,
@@ -26,245 +27,17 @@ function getPageNumbers(current, total) {
     return [1, '...', current - 1, current, current + 1, '...', total];
 }
 
+function getTodayYMD() {
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 // In-memory module cache for instant (0ms) catalog access across modal opens
 let globalProductsCache = null;
 let globalProductsPromise = null;
 
-// Isolated, ultra-fast floating product search modal (keystrokes do NOT re-render parent page)
-const FastProductSearchModal = React.memo(function FastProductSearchModal({
-    isOpen,
-    onClose,
-    products,
-    targetRowIndex,
-    selectedVariantId,
-    onSelect
-}) {
-    const [query, setQuery] = useState('');
-    const [categoryFilter, setCategoryFilter] = useState('ALL');
-    const inputRef = useRef(null);
 
-    // Auto-focus search input on modal open
-    useEffect(() => {
-        if (isOpen) {
-            setQuery('');
-            setCategoryFilter('ALL');
-            const timer = setTimeout(() => {
-                if (inputRef.current) inputRef.current.focus();
-            }, 50);
-            return () => clearTimeout(timer);
-        }
-    }, [isOpen]);
-
-    // Distinct category list
-    const categories = useMemo(() => {
-        const cats = new Set();
-        (products || []).forEach(p => {
-            if (p.category_name) cats.add(p.category_name);
-        });
-        return Array.from(cats);
-    }, [products]);
-
-    // Instant filter with precomputed _searchText & slice cap
-    const filteredProducts = useMemo(() => {
-        if (!products || products.length === 0) return [];
-        const q = (query || '').toLowerCase().trim();
-        const cat = categoryFilter;
-
-        let res = products;
-        if (cat !== 'ALL') {
-            res = res.filter(p => p.category_name === cat);
-        }
-        if (q) {
-            res = res.filter(p => {
-                if (p._searchText) return p._searchText.includes(q);
-                const s = `${p.product_name || ''} ${p.variant_name || ''} ${p.sku || ''} ${p.category_name || ''} ${p.variant_barcode || ''}`.toLowerCase();
-                return s.includes(q);
-            });
-        }
-        return res.slice(0, 35); // Cap to 35 for ultra-fast instant 60fps rendering
-    }, [products, query, categoryFilter]);
-
-    if (!isOpen) return null;
-
-    return (
-        <div
-            className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-100"
-            onClick={onClose}
-            style={{ zIndex: 120 }}
-        >
-            <div
-                className="bg-white rounded-2xl max-w-xl w-full p-4 border border-[#F3E5AB] shadow-2xl flex flex-col max-h-[82vh] space-y-2.5 animate-in zoom-in-95 duration-100"
-                onClick={(e) => e.stopPropagation()}
-            >
-                {/* Header with refined, non-bold typography */}
-                <div className="flex items-center justify-between pb-2 border-b border-gray-100">
-                    <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-lg bg-[#FEF9E7] border border-[#F3E5AB] flex items-center justify-center text-[#B8860B] shrink-0">
-                            <IconSearch className="w-4 h-4" />
-                        </div>
-                        <div>
-                            <h4 className="font-semibold text-sm text-gray-800">Select Item / Product Variant</h4>
-                            <p className="text-[10.5px] text-gray-400 font-normal">Search catalog by product name, variant, category or barcode</p>
-                        </div>
-                    </div>
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
-                    >
-                        <IconClose className="w-4 h-4" />
-                    </button>
-                </div>
-
-                {/* Instant Search Bar */}
-                <div className="relative">
-                    <IconSearch className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                    <input
-                        ref={inputRef}
-                        type="text"
-                        value={query}
-                        onChange={(e) => setQuery(e.target.value)}
-                        placeholder="Type to search items (e.g. Adams, Cheese, Milk, SKU...)"
-                        className="w-full pl-9 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-normal text-gray-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/30 transition-all"
-                    />
-                    {query && (
-                        <button
-                            type="button"
-                            onClick={() => setQuery('')}
-                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5 cursor-pointer"
-                        >
-                            <IconClose className="w-3.5 h-3.5" />
-                        </button>
-                    )}
-                </div>
-
-                {/* Refined Category Pills */}
-                {categories.length > 0 && (
-                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-[11px] no-scrollbar">
-                        <button
-                            type="button"
-                            onClick={() => setCategoryFilter('ALL')}
-                            className={`px-2.5 py-0.5 rounded-full font-medium whitespace-nowrap transition-all cursor-pointer ${
-                                categoryFilter === 'ALL'
-                                    ? 'bg-black text-white'
-                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                            }`}
-                        >
-                            All ({products.length})
-                        </button>
-                        {categories.map(cat => {
-                            const count = products.filter(p => p.category_name === cat).length;
-                            return (
-                                <button
-                                    key={cat}
-                                    type="button"
-                                    onClick={() => setCategoryFilter(cat)}
-                                    className={`px-2.5 py-0.5 rounded-full font-medium whitespace-nowrap transition-all cursor-pointer ${
-                                        categoryFilter === cat
-                                            ? 'bg-[#B8860B] text-white'
-                                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                                    }`}
-                                >
-                                    {cat} ({count})
-                                </button>
-                            );
-                        })}
-                    </div>
-                )}
-
-                {/* Instant Filtered Products List */}
-                <div className="overflow-y-auto flex-1 divide-y divide-gray-100 pr-1 max-h-[350px]">
-                    {filteredProducts.length === 0 ? (
-                        <div className="py-10 text-center text-gray-400">
-                            <IconInventory className="w-7 h-7 mx-auto text-gray-300 mb-1.5" />
-                            <div className="text-xs font-medium text-gray-700">No matching items found</div>
-                            <div className="text-[10px] text-gray-400 mt-0.5 font-normal">Try a different search query or category</div>
-                        </div>
-                    ) : (
-                        filteredProducts.map((p) => {
-                            const stock = p.current_stock || 0;
-                            const isSelected = selectedVariantId === p.variant_id;
-                            const defaultPack = p.packagings?.[0] || {};
-                            const defaultCost = defaultPack.purchase_price || 0;
-                            const unitName = p.unit_symbol || p.unit_name || 'pcs';
-
-                            return (
-                                <div
-                                    key={p.variant_id}
-                                    onClick={() => onSelect(p)}
-                                    className={`p-2.5 rounded-xl transition-all cursor-pointer flex items-center justify-between gap-3 group ${
-                                        isSelected ? 'bg-[#FEF9E7] border border-[#F3E5AB]' : 'hover:bg-amber-50/40'
-                                    }`}
-                                >
-                                    {/* Left: Product Name, Variant, SKU & Category */}
-                                    <div className="space-y-0.5 min-w-0 flex-1">
-                                        <div className="flex items-center gap-1.5 flex-wrap">
-                                            <span className="font-semibold text-xs text-gray-800 group-hover:text-[#B8860B] transition-colors">
-                                                {p.product_name}
-                                            </span>
-                                            <span className="px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 text-[10px] font-normal">
-                                                {p.variant_name || 'Standard'}
-                                            </span>
-                                            {isSelected && (
-                                                <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-medium">
-                                                    Selected
-                                                </span>
-                                            )}
-                                        </div>
-                                        <div className="flex items-center gap-1.5 text-[10px] text-gray-400 font-normal">
-                                            <span>SKU: {p.sku || 'N/A'}</span>
-                                            {p.category_name && (
-                                                <>
-                                                    <span>•</span>
-                                                    <span className="text-gray-500 font-medium">{p.category_name}</span>
-                                                </>
-                                            )}
-                                            {p.variant_barcode && (
-                                                <>
-                                                    <span>•</span>
-                                                    <span>Barcode: {p.variant_barcode}</span>
-                                                </>
-                                            )}
-                                        </div>
-                                        <div className="text-[10px] text-gray-400 font-normal">
-                                            Packagings: {(p.packagings || []).map(pk => `${pk.packaging_name} (x${pk.conversion_factor})`).join(', ') || 'Standard PCS'}
-                                        </div>
-                                    </div>
-
-                                    {/* Right: Clean, elegant stock badge and default cost */}
-                                    <div className="text-right shrink-0 space-y-0.5">
-                                        <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium border bg-gray-50 border-gray-200">
-                                            <span className="text-gray-400 text-[10px]">Stock:</span>
-                                            <span className={stock > 10 ? 'font-semibold text-emerald-600' : stock > 0 ? 'font-semibold text-amber-600' : 'font-semibold text-rose-600'}>
-                                                {stock}
-                                            </span>
-                                            <span className="text-[10px] text-gray-400">{unitName}</span>
-                                        </div>
-                                        <div className="text-[10px] text-gray-500 font-normal">
-                                            Cost: <span className="font-semibold text-gray-800 font-mono">Rs. {Number(defaultCost).toLocaleString()}</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            );
-                        })
-                    )}
-                </div>
-
-                {/* Footer with item count */}
-                <div className="pt-2 border-t border-gray-100 flex items-center justify-between text-[11px] text-gray-400 font-normal">
-                    <span>Showing {filteredProducts.length} of {products.length} items</span>
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-600 font-medium rounded-lg transition-colors cursor-pointer text-xs"
-                    >
-                        Cancel
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-});
 
 export default function SuppliersPage() {
     const settings = useSelector(state => state.settings);
@@ -328,21 +101,22 @@ export default function SuppliersPage() {
         name: '',
         company_name: '',
         phone: '',
-        address: ''
+        address: '',
+        opening_balance: '0'
     });
 
     // Form: FIFO Payment
     const [payForm, setPayForm] = useState({
         amount: '',
         payment_method: 'cash',
-        payment_date: new Date().toISOString().split('T')[0],
+        payment_date: getTodayYMD(),
         reference_no: '',
         notes: ''
     });
 
     // Form: Add Multi-Item Purchase Bill (Stock Inward)
     const [billInvoiceNo, setBillInvoiceNo] = useState('');
-    const [billInvoiceDate, setBillInvoiceDate] = useState(new Date().toISOString().split('T')[0]);
+    const [billInvoiceDate, setBillInvoiceDate] = useState(() => getTodayYMD());
     const [billItems, setBillItems] = useState([]);
     const [billAmountPaid, setBillAmountPaid] = useState('0');
     const [billPaymentMethod, setBillPaymentMethod] = useState('cash');
@@ -557,7 +331,7 @@ export default function SuppliersPage() {
         setPayForm({
             amount: supplier.balance > 0 ? String(supplier.balance) : '',
             payment_method: 'cash',
-            payment_date: new Date().toISOString().split('T')[0],
+            payment_date: getTodayYMD(),
             reference_no: '',
             notes: `FIFO payment for ${supplier.name}`
         });
@@ -655,7 +429,7 @@ export default function SuppliersPage() {
         setActiveSupplier(sup);
         const randomInvoice = `INV-${Date.now().toString().slice(-5)}`;
         setBillInvoiceNo(randomInvoice);
-        setBillInvoiceDate(new Date().toISOString().split('T')[0]);
+        setBillInvoiceDate(getTodayYMD());
         setBillAmountPaid('0');
         setBillPaymentMethod('cash');
         setBillNotes('');
@@ -883,7 +657,8 @@ export default function SuppliersPage() {
             name: supplier.name,
             company_name: supplier.company_name || '',
             phone: supplier.phone || '',
-            address: supplier.address || ''
+            address: supplier.address || '',
+            opening_balance: String(supplier.opening_balance || 0)
         });
         setEditModalOpen(true);
     };
@@ -899,13 +674,19 @@ export default function SuppliersPage() {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
                 },
-                body: JSON.stringify(editForm)
+                body: JSON.stringify({
+                    ...editForm,
+                    opening_balance: parseFloat(editForm.opening_balance) || 0
+                })
             });
 
             const data = await res.json();
             if (res.ok) {
                 setEditModalOpen(false);
-                loadData();
+                await loadData();
+                if (selectedSupplier?.id === editForm.id) {
+                    await handleOpenLedger({ ...selectedSupplier, id: editForm.id });
+                }
                 showAlert('Supplier profile updated successfully!', 'success');
             } else {
                 showAlert(data.error || 'Failed to update supplier', 'error');
@@ -1016,10 +797,10 @@ export default function SuppliersPage() {
     return (
         <div className="space-y-6 pb-12">
             {/* TOP HEADER: Title & + Add Supplier Button */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white p-4 sm:p-6 rounded-2xl border border-[#F3E5AB] shadow-xs gap-3 sm:gap-4">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white p-4 sm:p-6 rounded-2xl border border-gray-200 shadow-xs gap-3 sm:gap-4">
                 <div>
                     <h1 className="text-lg sm:text-xl font-extrabold text-gray-900 flex items-center gap-2">
-                        <IconSuppliers className="w-5 sm:w-6 h-5 sm:h-6 text-[#B8860B] shrink-0" />
+                        <IconSuppliers className="w-5 sm:w-6 h-5 sm:h-6 text-[#0B3B7B] shrink-0" />
                         <span>Supplier Accounts & Stock Inward</span>
                     </h1>
                     <p className="text-xs text-gray-500 mt-0.5">
@@ -1030,9 +811,9 @@ export default function SuppliersPage() {
                 {/* Right Side "+ Add Supplier" Button */}
                 <button
                     onClick={() => setAddModalOpen(true)}
-                    className="w-full sm:w-auto justify-center px-4 sm:px-5 py-2.5 gold-gradient hover:opacity-90 text-white rounded-xl font-bold text-xs shadow-md transition-all flex items-center gap-2 shrink-0 cursor-pointer"
+                    className="w-full sm:w-auto justify-center px-4 sm:px-5 py-2.5 bg-[#16A34A] hover:bg-[#15803D] text-white rounded-xl font-bold text-xs shadow-md transition-all flex items-center gap-2 shrink-0 cursor-pointer"
                 >
-                    <IconPlus className="w-4 h-4 text-[#FEF9E7]" />
+                    <IconPlus className="w-4 h-4 text-white" />
                     <span>+ Add Supplier</span>
                 </button>
             </div>
@@ -1040,10 +821,10 @@ export default function SuppliersPage() {
             {/* KPI STATS CARDS */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
                 {/* KPI 1: Total Stock Added */}
-                <div className="bg-white p-3.5 sm:p-5 rounded-xl sm:rounded-2xl border border-[#F3E5AB] shadow-xs space-y-1 sm:space-y-2">
+                <div className="bg-white p-3.5 sm:p-5 rounded-xl sm:rounded-2xl border border-gray-200 shadow-xs space-y-1 sm:space-y-2">
                     <div className="flex items-center justify-between text-xs font-semibold text-gray-500">
                         <span className="truncate">Total Stock Added</span>
-                        <div className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-amber-50 text-[#B8860B] shrink-0">
+                        <div className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-blue-50 text-[#0B3B7B] shrink-0">
                             <IconInventory className="w-3.5 sm:w-4 h-3.5 sm:h-4" />
                         </div>
                     </div>
@@ -1051,13 +832,13 @@ export default function SuppliersPage() {
                         Rs. {Number(totalStockAddedValue || 0).toLocaleString()}
                     </div>
                     <div className="text-[10px] sm:text-[11px] text-gray-500 font-medium flex items-center gap-1 truncate">
-                        <span className="font-bold text-[#B8860B]">{totalPurchasesCount || 0}</span>
+                        <span className="font-bold text-[#0B3B7B]">{totalPurchasesCount || 0}</span>
                         <span>inward bills</span>
                     </div>
                 </div>
 
                 {/* KPI 2: Total Paid to Suppliers */}
-                <div className="bg-white p-3.5 sm:p-5 rounded-xl sm:rounded-2xl border border-[#F3E5AB] shadow-xs space-y-1 sm:space-y-2">
+                <div className="bg-white p-3.5 sm:p-5 rounded-xl sm:rounded-2xl border border-gray-200 shadow-xs space-y-1 sm:space-y-2">
                     <div className="flex items-center justify-between text-xs font-semibold text-gray-500">
                         <span className="truncate">Total Paid</span>
                         <div className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-emerald-50 text-emerald-700 shrink-0">
@@ -1073,7 +854,7 @@ export default function SuppliersPage() {
                 </div>
 
                 {/* KPI 3: Total Pending / Payables */}
-                <div className="bg-white p-3.5 sm:p-5 rounded-xl sm:rounded-2xl border border-[#F3E5AB] shadow-xs space-y-1 sm:space-y-2">
+                <div className="bg-white p-3.5 sm:p-5 rounded-xl sm:rounded-2xl border border-gray-200 shadow-xs space-y-1 sm:space-y-2">
                     <div className="flex items-center justify-between text-xs font-semibold text-gray-500">
                         <span className="truncate">Outstanding Payables</span>
                         <div className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-rose-50 text-rose-600 shrink-0">
@@ -1089,14 +870,14 @@ export default function SuppliersPage() {
                 </div>
 
                 {/* KPI 4: Active Suppliers */}
-                <div className="bg-white p-3.5 sm:p-5 rounded-xl sm:rounded-2xl border border-[#F3E5AB] shadow-xs space-y-1 sm:space-y-2">
+                <div className="bg-white p-3.5 sm:p-5 rounded-xl sm:rounded-2xl border border-gray-200 shadow-xs space-y-1 sm:space-y-2">
                     <div className="flex items-center justify-between text-xs font-semibold text-gray-500">
                         <span className="truncate">Registered Vendors</span>
-                        <div className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-[#FEF9E7] text-[#B8860B] shrink-0">
+                        <div className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-blue-50 text-[#0B3B7B] shrink-0">
                             <IconSuppliers className="w-3.5 sm:w-4 h-3.5 sm:h-4" />
                         </div>
                     </div>
-                    <div className="text-lg sm:text-2xl font-black text-[#B8860B] truncate">
+                    <div className="text-lg sm:text-2xl font-black text-[#0B3B7B] truncate">
                         {totalSuppliersCount} Vendors
                     </div>
                     <div className="text-[10px] sm:text-[11px] text-gray-500 font-medium truncate">
@@ -1106,7 +887,7 @@ export default function SuppliersPage() {
             </div>
 
             {/* SEARCH & FILTERS BAR */}
-            <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2.5 sm:gap-3 bg-white p-3 sm:p-3.5 rounded-2xl border border-[#F3E5AB] shadow-xs">
+            <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2.5 sm:gap-3 bg-white p-3 sm:p-3.5 rounded-2xl border border-gray-200 shadow-xs">
                 <div className="relative w-full sm:w-80">
                     <IconSearch className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                     <input
@@ -1117,7 +898,7 @@ export default function SuppliersPage() {
                             setSearchQuery(e.target.value);
                             setCurrentPage(1);
                         }}
-                        className="w-full pl-9 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-medium text-gray-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/20 transition-all"
+                        className="w-full pl-9 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-medium text-gray-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0B3B7B]/20 transition-all"
                     />
                     {searchQuery && (
                         <button
@@ -1140,7 +921,7 @@ export default function SuppliersPage() {
                             setCurrentPage(1);
                         }}
                         className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer whitespace-nowrap ${statusFilter === 'all'
-                                ? 'gold-gradient text-white shadow-xs'
+                                ? 'bg-[#0B3B7B] text-white shadow-xs'
                                 : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                             }`}
                     >
@@ -1174,13 +955,13 @@ export default function SuppliersPage() {
             </div>
 
             {/* MAIN SUPPLIERS TABLE & MOBILE VIEW */}
-            <div className="bg-white rounded-2xl border border-[#F3E5AB] shadow-xs overflow-hidden">
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-xs overflow-hidden">
                 <div className="p-3.5 sm:p-4 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div>
                         <h2 className="font-extrabold text-sm text-gray-900 flex items-center gap-2">
                             <span>Wholesale Suppliers Directory</span>
                             {tableLoading && (
-                                <IconSpinner className="w-3.5 h-3.5 animate-spin text-[#B8860B]" />
+                                <IconSpinner className="w-3.5 h-3.5 animate-spin text-[#0B3B7B]" />
                             )}
                         </h2>
                         <p className="text-[11px] text-gray-400">
@@ -1217,11 +998,11 @@ export default function SuppliersPage() {
                                 <div
                                     key={`m-${sup.id}`}
                                     onClick={() => handleOpenLedger(sup)}
-                                    className="p-3.5 bg-white border border-gray-200/90 hover:border-[#D4AF37]/60 rounded-xl shadow-2xs space-y-2.5 transition-all cursor-pointer"
+                                    className="p-3.5 bg-white border border-gray-200 hover:border-[#0B3B7B]/30 rounded-xl shadow-2xs space-y-2.5 transition-all cursor-pointer"
                                 >
                                     <div className="flex items-start justify-between gap-2">
                                         <div className="flex items-center gap-2.5 min-w-0">
-                                            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#FEF9E7] to-[#FDF4D1] border border-[#F3E5AB] flex items-center justify-center font-black text-xs text-[#B8860B] shrink-0">
+                                            <div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center font-black text-xs text-[#0B3B7B] shrink-0">
                                                 {initials}
                                             </div>
                                             <div className="min-w-0">
@@ -1262,9 +1043,9 @@ export default function SuppliersPage() {
                                             <button
                                                 type="button"
                                                 onClick={() => handleOpenAddBill(sup)}
-                                                className="flex-1 py-1 px-2 bg-amber-50 hover:bg-amber-100 text-[#B8860B] rounded-lg font-bold text-[11px] border border-amber-200 transition-all flex items-center justify-center gap-1"
+                                                className="flex-1 py-1 px-2 bg-blue-50 hover:bg-blue-100 text-[#0B3B7B] rounded-lg font-bold text-[11px] border border-blue-200 transition-all flex items-center justify-center gap-1"
                                             >
-                                                <IconBill className="w-3 h-3 text-[#B8860B]" />
+                                                <IconBill className="w-3 h-3 text-[#0B3B7B]" />
                                                 <span>+ Bill</span>
                                             </button>
                                             <button
@@ -1288,7 +1069,7 @@ export default function SuppliersPage() {
                                             <button
                                                 type="button"
                                                 onClick={() => setActionModalSupplier(sup)}
-                                                className="p-1.5 bg-gray-50 hover:bg-amber-50 text-gray-600 rounded-lg border border-gray-200"
+                                                className="p-1.5 bg-gray-50 hover:bg-slate-100 text-gray-600 rounded-lg border border-gray-200"
                                                 title="More"
                                             >
                                                 <IconDotsVertical className="w-3.5 h-3.5" />
@@ -1351,20 +1132,20 @@ export default function SuppliersPage() {
                                         <tr
                                             key={sup.id}
                                             onClick={() => handleOpenLedger(sup)}
-                                            className="bg-white hover:bg-amber-50/25 border border-gray-200/90 hover:border-[#D4AF37]/60 rounded-xl transition-all shadow-2xs hover:shadow-xs group cursor-pointer"
+                                            className="bg-white hover:bg-blue-50/20 border border-gray-200/90 hover:border-[#0B3B7B]/30 rounded-xl transition-all shadow-2xs hover:shadow-xs group cursor-pointer"
                                         >
                                             {/* Column 1: Supplier & Company (Unified) */}
-                                            <td className="py-2.5 px-3.5 rounded-l-xl border-y border-l border-gray-200/80 group-hover:border-[#D4AF37]/50 transition-colors">
+                                            <td className="py-2.5 px-3.5 rounded-l-xl border-y border-l border-gray-200/80 group-hover:border-[#0B3B7B]/30 transition-colors">
                                                 <div className="flex items-center gap-3">
-                                                    <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#FEF9E7] to-[#FDF4D1] border border-[#F3E5AB] flex items-center justify-center font-black text-xs text-[#B8860B] shrink-0 shadow-2xs">
+                                                    <div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center font-black text-xs text-[#0B3B7B] shrink-0 shadow-2xs">
                                                         {initials}
                                                     </div>
                                                     <div className="space-y-0.5 min-w-0">
                                                         <div className="flex items-center gap-1.5 flex-wrap">
-                                                            <span className="font-bold text-gray-900 text-sm group-hover:text-[#B8860B] transition-colors truncate">
+                                                            <span className="font-bold text-gray-900 text-sm group-hover:text-[#0B3B7B] transition-colors truncate">
                                                                 {sup.name}
                                                             </span>
-                                                            <span className="px-1.5 py-0.2 rounded bg-[#FEF9E7] border border-[#F3E5AB] text-[9.5px] font-bold text-[#B8860B] truncate max-w-[120px]">
+                                                            <span className="px-1.5 py-0.2 rounded bg-slate-100 border border-gray-200 text-[9.5px] font-bold text-gray-700 truncate max-w-[120px]">
                                                                 {sup.company_name || 'Individual Vendor'}
                                                             </span>
                                                         </div>
@@ -1378,15 +1159,15 @@ export default function SuppliersPage() {
                                             </td>
 
                                             {/* Column 2: Inward Bills Count */}
-                                            <td className="py-2.5 px-2.5 text-center border-y border-gray-200/80 group-hover:border-[#D4AF37]/50 transition-colors">
-                                                <span className="px-2.5 py-0.5 rounded-full bg-amber-50 text-[#B8860B] font-bold text-[10.5px] border border-amber-200/80 inline-flex items-center gap-1 shadow-2xs">
-                                                    <IconBill className="w-3 h-3 text-[#B8860B]" />
+                                            <td className="py-2.5 px-2.5 text-center border-y border-gray-200/80 group-hover:border-[#0B3B7B]/30 transition-colors">
+                                                <span className="px-2.5 py-0.5 rounded-full bg-blue-50 text-[#0B3B7B] font-bold text-[10.5px] border border-blue-200 inline-flex items-center gap-1 shadow-2xs">
+                                                    <IconBill className="w-3 h-3 text-[#0B3B7B]" />
                                                     <span>{sup.total_purchases || 0} Bills</span>
                                                 </span>
                                             </td>
 
                                             {/* Column 3: Total Inward Value */}
-                                            <td className="py-2.5 px-2.5 text-right border-y border-gray-200/80 group-hover:border-[#D4AF37]/50 transition-colors">
+                                            <td className="py-2.5 px-2.5 text-right border-y border-gray-200/80 group-hover:border-[#0B3B7B]/30 transition-colors">
                                                 <div className="font-black text-xs text-gray-900 tracking-tight">
                                                     Rs. {Number(sup.total_purchase_amount || 0).toLocaleString()}
                                                 </div>
@@ -1394,7 +1175,7 @@ export default function SuppliersPage() {
                                             </td>
 
                                             {/* Column 4: Total Paid */}
-                                            <td className="py-2.5 px-2.5 text-right border-y border-gray-200/80 group-hover:border-[#D4AF37]/50 transition-colors">
+                                            <td className="py-2.5 px-2.5 text-right border-y border-gray-200/80 group-hover:border-[#0B3B7B]/30 transition-colors">
                                                 <div className="font-black text-xs text-emerald-700 tracking-tight">
                                                     Rs. {Number(sup.total_paid || 0).toLocaleString()}
                                                 </div>
@@ -1402,7 +1183,7 @@ export default function SuppliersPage() {
                                             </td>
 
                                             {/* Column 5: Net Balance */}
-                                            <td className="py-2.5 px-2.5 text-right border-y border-gray-200/80 group-hover:border-[#D4AF37]/50 transition-colors">
+                                            <td className="py-2.5 px-2.5 text-right border-y border-gray-200/80 group-hover:border-[#0B3B7B]/30 transition-colors">
                                                 <div className={`font-black text-sm tracking-tight ${hasPending ? 'text-rose-600' : 'text-emerald-700'}`}>
                                                     Rs. {Number(Math.abs(sup.balance || 0)).toLocaleString()}
                                                 </div>
@@ -1416,7 +1197,7 @@ export default function SuppliersPage() {
                                             </td>
 
                                             {/* Column 6: Status Pill */}
-                                            <td className="py-2.5 px-2.5 text-center border-y border-gray-200/80 group-hover:border-[#D4AF37]/50 transition-colors">
+                                            <td className="py-2.5 px-2.5 text-center border-y border-gray-200/80 group-hover:border-[#0B3B7B]/30 transition-colors">
                                                 {hasPending ? (
                                                     <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9.5px] font-bold bg-amber-50 text-amber-800 border border-amber-200 shadow-2xs">
                                                         <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
@@ -1431,16 +1212,16 @@ export default function SuppliersPage() {
                                             </td>
 
                                             {/* Column 7: Quick Actions with 3-dot Menu at end */}
-                                            <td className="py-2.5 px-3 text-center rounded-r-xl border-y border-r border-gray-200/80 group-hover:border-[#D4AF37]/50 transition-colors" onClick={(e) => e.stopPropagation()}>
+                                            <td className="py-2.5 px-3 text-center rounded-r-xl border-y border-r border-gray-200/80 group-hover:border-[#0B3B7B]/30 transition-colors" onClick={(e) => e.stopPropagation()}>
                                                 <div className="flex items-center justify-center gap-1.5">
                                                     {/* 1. Add Bill (Stock Inward) */}
                                                     <button
                                                         type="button"
                                                         title="Add Inward Bill (Stock Inward)"
                                                         onClick={() => handleOpenAddBill(sup)}
-                                                        className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-[#B8860B] rounded-lg font-bold text-xs border border-amber-200 transition-all flex items-center gap-1 cursor-pointer active:scale-95 shadow-2xs"
+                                                        className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-[#0B3B7B] rounded-lg font-bold text-xs border border-blue-200 transition-all flex items-center gap-1 cursor-pointer active:scale-95 shadow-2xs"
                                                     >
-                                                        <IconBill className="w-3 h-3 text-[#B8860B]" />
+                                                        <IconBill className="w-3 h-3 text-[#0B3B7B]" />
                                                         <span>+ Bill</span>
                                                     </button>
 
@@ -1470,7 +1251,7 @@ export default function SuppliersPage() {
                                                         type="button"
                                                         title="More options (Edit, Delete, WhatsApp)"
                                                         onClick={() => setActionModalSupplier(sup)}
-                                                        className="p-1.5 bg-gray-50 hover:bg-amber-50 text-gray-600 hover:text-[#B8860B] rounded-lg border border-gray-200 hover:border-[#D4AF37]/50 transition-all cursor-pointer shadow-2xs active:scale-95"
+                                                        className="p-1.5 bg-gray-50 hover:bg-slate-100 text-gray-600 hover:text-[#0B3B7B] rounded-lg border border-gray-200 hover:border-blue-300 transition-all cursor-pointer shadow-2xs active:scale-95"
                                                     >
                                                         <IconDotsVertical className="w-3.5 h-3.5" />
                                                     </button>
@@ -1565,7 +1346,7 @@ export default function SuppliersPage() {
                                             onClick={() => setCurrentPage(p)}
                                             className={`min-w-[28px] h-7 px-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                                                 isCurrent
-                                                    ? 'gold-gradient text-white shadow-xs'
+                                                    ? 'bg-[#0B3B7B] text-white shadow-xs'
                                                     : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-100 hover:text-gray-900 shadow-2xs'
                                             }`}
                                         >
@@ -1616,13 +1397,13 @@ export default function SuppliersPage() {
                     onClick={() => setActionModalSupplier(null)}
                 >
                     <div
-                        className="bg-white rounded-2xl max-w-sm w-full p-5 border border-[#F3E5AB] shadow-2xl space-y-4 animate-in zoom-in-95 duration-150"
+                        className="bg-white rounded-2xl max-w-sm w-full p-5 border border-gray-200 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150"
                         onClick={(e) => e.stopPropagation()}
                     >
                         {/* Header */}
                         <div className="flex items-center justify-between pb-3 border-b border-gray-100">
                             <div className="flex items-center gap-3 min-w-0">
-                                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#FEF9E7] to-[#FDF4D1] border border-[#F3E5AB] flex items-center justify-center font-black text-sm text-[#B8860B] shrink-0 shadow-2xs">
+                                <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center font-black text-sm text-[#0B3B7B] shrink-0 shadow-2xs">
                                     {actionModalSupplier.name?.slice(0, 2).toUpperCase() || 'SP'}
                                 </div>
                                 <div className="min-w-0">
@@ -1630,7 +1411,7 @@ export default function SuppliersPage() {
                                         {actionModalSupplier.name}
                                     </h4>
                                     <div className="flex items-center gap-1.5 flex-wrap text-[11px] text-gray-500">
-                                        <span className="font-semibold text-[#B8860B]">
+                                        <span className="font-semibold text-[#0B3B7B]">
                                             {actionModalSupplier.company_name || 'Individual Vendor'}
                                         </span>
                                         <span>•</span>
@@ -1680,18 +1461,18 @@ export default function SuppliersPage() {
                                     setActionModalSupplier(null);
                                     handleOpenEdit(sup);
                                 }}
-                                className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-bold text-gray-800 bg-gray-50 hover:bg-amber-50 hover:text-[#B8860B] rounded-xl border border-gray-200 transition-all cursor-pointer group shadow-2xs active:scale-95"
+                                className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-bold text-gray-800 bg-gray-50 hover:bg-blue-50 hover:text-[#0B3B7B] rounded-xl border border-gray-200 transition-all cursor-pointer group shadow-2xs active:scale-95"
                             >
                                 <div className="flex items-center gap-2.5">
-                                    <div className="p-1.5 rounded-lg bg-white border border-gray-200 group-hover:border-[#D4AF37]/50 text-gray-600 group-hover:text-[#B8860B]">
+                                    <div className="p-1.5 rounded-lg bg-white border border-gray-200 group-hover:border-blue-300 text-gray-600 group-hover:text-[#0B3B7B]">
                                         <IconEdit className="w-4 h-4" />
                                     </div>
                                     <div className="text-left">
                                         <div>Edit Supplier Profile</div>
-                                        <div className="text-[10px] text-gray-400 font-normal">Update name, company, phone, address</div>
+                                        <div className="text-[10px] text-gray-400 font-normal">Update name, company, phone, address & opening due</div>
                                     </div>
                                 </div>
-                                <IconChevronRight className="w-4 h-4 text-gray-400 group-hover:text-[#B8860B]" />
+                                <IconChevronRight className="w-4 h-4 text-gray-400 group-hover:text-[#0B3B7B]" />
                             </button>
 
                             {/* 2. WhatsApp Button */}
@@ -1760,15 +1541,15 @@ export default function SuppliersPage() {
             {/* ───────────────────────────────────────────────────────────── */}
             {detailsModalOpen && activeSupplier && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-2 sm:p-4 overflow-y-auto">
-                    <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[96vh] sm:max-h-[90vh] flex flex-col shadow-2xl overflow-hidden border border-[#F3E5AB]">
+                    <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[96vh] sm:max-h-[90vh] flex flex-col shadow-2xl overflow-hidden border border-gray-200">
                         {/* Header */}
-                        <div className="p-3.5 sm:p-5 border-b border-gray-100 bg-[#FEF9E7]/70 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shrink-0">
+                        <div className="p-3.5 sm:p-5 border-b border-gray-100 bg-slate-50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shrink-0">
                             <div>
                                 <div className="flex items-center gap-2 flex-wrap">
                                     <h3 className="font-black text-gray-900 text-base sm:text-lg">
                                         {activeSupplier.name}
                                     </h3>
-                                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-white border border-[#F3E5AB] text-gray-700">
+                                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-white border border-gray-200 text-gray-700">
                                         {activeSupplier.company_name || 'Supplier'}
                                     </span>
                                 </div>
@@ -1799,7 +1580,7 @@ export default function SuppliersPage() {
                             <button
                                 onClick={() => setActiveDetailTab('purchases')}
                                 className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${activeDetailTab === 'purchases'
-                                        ? 'gold-gradient text-white shadow-xs'
+                                        ? 'bg-[#0B3B7B] text-white shadow-xs'
                                         : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                                     }`}
                             >
@@ -1810,7 +1591,7 @@ export default function SuppliersPage() {
                             <button
                                 onClick={() => setActiveDetailTab('payments')}
                                 className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${activeDetailTab === 'payments'
-                                        ? 'gold-gradient text-white shadow-xs'
+                                        ? 'bg-[#0B3B7B] text-white shadow-xs'
                                         : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                                     }`}
                             >
@@ -1824,7 +1605,7 @@ export default function SuppliersPage() {
                                         setDetailsModalOpen(false);
                                         handleOpenAddBill(activeSupplier);
                                     }}
-                                    className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-[#B8860B] rounded-xl font-bold text-xs border border-amber-200 cursor-pointer whitespace-nowrap"
+                                    className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-[#0B3B7B] rounded-xl font-bold text-xs border border-blue-200 cursor-pointer whitespace-nowrap"
                                 >
                                     + Add Bill
                                 </button>
@@ -1953,11 +1734,10 @@ export default function SuppliersPage() {
                                                                         });
                                                                         setReceiptModalOpen(true);
                                                                     }}
-                                                                    style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                                                    className="btn-black !bg-black !text-white px-2 py-1 rounded text-[10px] font-bold flex items-center gap-1 mx-auto cursor-pointer shadow-sm hover:opacity-90"
+                                                                    className="px-2.5 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1 mx-auto cursor-pointer shadow-xs bg-[#0B3B7B] hover:bg-[#072B5C] text-white transition-all"
                                                                 >
-                                                                    <IconPrinter className="w-3 h-3" style={{ color: '#ffffff', stroke: '#ffffff' }} />
-                                                                    <span style={{ color: '#ffffff' }}>Receipt</span>
+                                                                    <IconPrinter className="w-3 h-3 text-white" />
+                                                                    <span>Receipt</span>
                                                                 </button>
                                                             </td>
                                                         </tr>
@@ -1974,10 +1754,9 @@ export default function SuppliersPage() {
                         <div className="p-3 border-t border-gray-100 bg-gray-50 flex justify-end shrink-0">
                             <button
                                 onClick={() => setDetailsModalOpen(false)}
-                                style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                className="btn-black !bg-black !text-white w-full sm:w-auto px-4 py-2 rounded-xl text-xs font-bold shadow-md hover:opacity-90 cursor-pointer"
+                                className="w-full sm:w-auto px-4 py-2 rounded-xl text-xs font-bold border border-gray-300 text-gray-700 bg-white hover:bg-gray-100 shadow-xs cursor-pointer transition-all"
                             >
-                                <span style={{ color: '#ffffff' }}>Close Details</span>
+                                <span>Close Details</span>
                             </button>
                         </div>
                     </div>
@@ -1989,7 +1768,7 @@ export default function SuppliersPage() {
             {/* ───────────────────────────────────────────────────────────── */}
             {payFifoModalOpen && activeSupplier && (
                 <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-[100] p-2.5 sm:p-4 overflow-y-auto">
-                    <form onSubmit={handleSubmitFifoPay} className="bg-white rounded-2xl max-w-lg w-full p-4 sm:p-6 space-y-4 shadow-2xl border border-[#F3E5AB] max-h-[96vh] overflow-y-auto">
+                    <form onSubmit={handleSubmitFifoPay} className="bg-white rounded-2xl max-w-lg w-full p-4 sm:p-6 space-y-4 shadow-2xl border border-gray-200 max-h-[96vh] overflow-y-auto">
                         <div className="flex justify-between items-start border-b border-gray-100 pb-3">
                             <div>
                                 <h3 className="font-black text-gray-900 text-base flex items-center gap-2">
@@ -2006,7 +1785,7 @@ export default function SuppliersPage() {
                         </div>
 
                         {/* Current Balance Box */}
-                        <div className="bg-[#FEF9E7] rounded-xl p-3 border border-[#F3E5AB] flex items-center justify-between">
+                        <div className="bg-slate-50 rounded-xl p-3 border border-gray-200 flex items-center justify-between">
                             <div>
                                 <div className="text-[10px] uppercase font-bold text-gray-500">Total Outstanding Due</div>
                                 <div className="text-xl font-black text-rose-600">
@@ -2014,7 +1793,7 @@ export default function SuppliersPage() {
                                 </div>
                             </div>
                             <div className="text-right">
-                                <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded gold-gradient text-white">
+                                <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-[#0B3B7B] text-white">
                                     FIFO Priority
                                 </span>
                                 <div className="text-[10px] text-gray-500 mt-0.5">Oldest bills settled first</div>
@@ -2033,7 +1812,7 @@ export default function SuppliersPage() {
                                     min="1"
                                     value={payForm.amount}
                                     onChange={(e) => setPayForm({ ...payForm, amount: e.target.value })}
-                                    className="w-full p-2.5 border border-[#F3E5AB] rounded-xl text-sm font-black text-[#B8860B] focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/20"
+                                    className="w-full p-2.5 border border-gray-200 rounded-xl text-sm font-black text-[#0B3B7B] focus:outline-none focus:ring-2 focus:ring-[#0B3B7B]/20"
                                     placeholder="Enter payment amount"
                                 />
                             </div>
@@ -2044,7 +1823,7 @@ export default function SuppliersPage() {
                                     <select
                                         value={payForm.payment_method}
                                         onChange={(e) => setPayForm({ ...payForm, payment_method: e.target.value })}
-                                        className="w-full p-2 border border-[#F3E5AB] rounded-xl font-semibold bg-white"
+                                        className="w-full p-2 border border-gray-200 rounded-xl font-semibold bg-white"
                                     >
                                         <option value="cash">Cash in Hand</option>
                                         <option value="bank">Bank Transfer</option>
@@ -2058,7 +1837,7 @@ export default function SuppliersPage() {
                                         type="date"
                                         value={payForm.payment_date}
                                         onChange={(e) => setPayForm({ ...payForm, payment_date: e.target.value })}
-                                        className="w-full p-2 border border-[#F3E5AB] rounded-xl font-semibold bg-white"
+                                        className="w-full p-2 border border-gray-200 rounded-xl font-semibold bg-white"
                                     />
                                 </div>
                             </div>
@@ -2070,7 +1849,7 @@ export default function SuppliersPage() {
                                     value={payForm.reference_no}
                                     onChange={(e) => setPayForm({ ...payForm, reference_no: e.target.value })}
                                     placeholder="e.g. HBL-CHQ-98214"
-                                    className="w-full p-2 border border-[#F3E5AB] rounded-xl font-medium"
+                                    className="w-full p-2 border border-gray-200 rounded-xl font-medium"
                                 />
                             </div>
 
@@ -2081,7 +1860,7 @@ export default function SuppliersPage() {
                                     value={payForm.notes}
                                     onChange={(e) => setPayForm({ ...payForm, notes: e.target.value })}
                                     placeholder="Notes for ledger entry"
-                                    className="w-full p-2 border border-[#F3E5AB] rounded-xl font-medium"
+                                    className="w-full p-2 border border-gray-200 rounded-xl font-medium"
                                 />
                             </div>
                         </div>
@@ -2108,18 +1887,16 @@ export default function SuppliersPage() {
                             <button
                                 type="button"
                                 onClick={() => setPayFifoModalOpen(false)}
-                                style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                className="btn-black !bg-black !text-white w-full sm:flex-1 py-2.5 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center hover:opacity-90"
+                                className="w-full sm:flex-1 py-2.5 rounded-xl font-bold text-xs border border-gray-300 text-gray-700 bg-white hover:bg-gray-100 shadow-xs transition-all cursor-pointer flex items-center justify-center"
                             >
-                                <span style={{ color: '#ffffff' }}>Cancel</span>
+                                <span>Cancel</span>
                             </button>
                             <button
                                 type="submit"
-                                style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                className="btn-black !bg-black !text-white w-full sm:flex-1 py-2.5 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5 hover:opacity-90"
+                                className="w-full sm:flex-1 py-2.5 rounded-xl font-bold text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
                             >
-                                <IconCheck className="w-4 h-4" style={{ color: '#ffffff', stroke: '#ffffff' }} />
-                                <span style={{ color: '#ffffff' }}>Confirm & Record Payment</span>
+                                <IconCheck className="w-4 h-4 text-white" />
+                                <span>Confirm & Record Payment</span>
                             </button>
                         </div>
                     </form>
@@ -2136,11 +1913,11 @@ export default function SuppliersPage() {
 
                 return (
                     <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-[100] p-2 sm:p-4 overflow-y-auto" style={{ zIndex: 100 }}>
-                        <form onSubmit={handleSubmitMultiBill} className="bg-white rounded-2xl max-w-4xl w-full p-3.5 sm:p-5 space-y-3 shadow-2xl border border-[#F3E5AB] max-h-[96vh] sm:max-h-[94vh] flex flex-col">
+                        <form onSubmit={handleSubmitMultiBill} className="bg-white rounded-2xl max-w-4xl w-full p-3.5 sm:p-5 space-y-3 shadow-2xl border border-gray-200 max-h-[96vh] sm:max-h-[94vh] flex flex-col">
                             {/* Modal Header */}
                             <div className="flex justify-between items-center border-b border-gray-100 pb-2.5 shrink-0">
                                 <div className="flex items-center gap-2.5 flex-wrap min-w-0">
-                                    <div className="w-8 h-8 rounded-lg bg-[#FEF9E7] border border-[#F3E5AB] flex items-center justify-center text-[#B8860B] shrink-0">
+                                    <div className="w-8 h-8 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center text-[#0B3B7B] shrink-0">
                                         <IconBill className="w-4 h-4" />
                                     </div>
                                     <div className="min-w-0">
@@ -2148,7 +1925,7 @@ export default function SuppliersPage() {
                                             <h3 className="font-semibold text-gray-800 text-sm truncate">
                                                 Add Purchase Bill (Stock Inward)
                                             </h3>
-                                            <span className="px-2 py-0.5 rounded-md bg-[#FEF9E7] border border-[#F3E5AB] text-[10.5px] font-medium text-[#B8860B] truncate">
+                                            <span className="px-2 py-0.5 rounded-md bg-blue-50 border border-blue-200 text-[10.5px] font-medium text-[#0B3B7B] truncate">
                                                 {activeSupplier.name} ({activeSupplier.company_name || 'Vendor'})
                                             </span>
                                         </div>
@@ -2171,7 +1948,7 @@ export default function SuppliersPage() {
                                             value={billInvoiceNo}
                                             onChange={(e) => setBillInvoiceNo(e.target.value)}
                                             placeholder="e.g. INV-90412"
-                                            className="w-full py-1.5 px-2 bg-white border border-gray-200 rounded-lg font-medium font-mono text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-[#D4AF37]"
+                                            className="w-full py-1.5 px-2 bg-white border border-gray-200 rounded-lg font-medium font-mono text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-[#0B3B7B]"
                                         />
                                     </div>
                                     <div>
@@ -2181,7 +1958,7 @@ export default function SuppliersPage() {
                                             required
                                             value={billInvoiceDate}
                                             onChange={(e) => setBillInvoiceDate(e.target.value)}
-                                            className="w-full py-1.5 px-2 bg-white border border-gray-200 rounded-lg font-medium text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-[#D4AF37]"
+                                            className="w-full py-1.5 px-2 bg-white border border-gray-200 rounded-lg font-medium text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-[#0B3B7B]"
                                         />
                                     </div>
                                     <div>
@@ -2191,7 +1968,7 @@ export default function SuppliersPage() {
                                             value={billNotes}
                                             onChange={(e) => setBillNotes(e.target.value)}
                                             placeholder="e.g. Delivery truck 4"
-                                            className="w-full py-1.5 px-2 bg-white border border-gray-200 rounded-lg font-normal text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-[#D4AF37]"
+                                            className="w-full py-1.5 px-2 bg-white border border-gray-200 rounded-lg font-normal text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-[#0B3B7B]"
                                         />
                                     </div>
                                 </div>
@@ -2205,11 +1982,10 @@ export default function SuppliersPage() {
                                         <button
                                             type="button"
                                             onClick={handleAddBillItemRow}
-                                            style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                            className="btn-black !bg-black !text-white px-2.5 py-1 rounded-lg font-medium text-xs shadow-xs flex items-center gap-1 cursor-pointer transition-all hover:opacity-90 active:scale-95"
+                                            className="px-2.5 py-1 rounded-lg font-medium text-xs shadow-xs flex items-center gap-1 cursor-pointer transition-all bg-[#0B3B7B] hover:bg-[#072B5C] text-white active:scale-95"
                                         >
-                                            <IconPlus className="w-3 h-3" style={{ color: '#ffffff', stroke: '#ffffff' }} />
-                                            <span style={{ color: '#ffffff' }}>Add Another Item</span>
+                                            <IconPlus className="w-3 h-3 text-white" />
+                                            <span>Add Another Item</span>
                                         </button>
                                     </div>
 
@@ -2232,41 +2008,25 @@ export default function SuppliersPage() {
                                                     const unitSym = prod?.unit_symbol || prod?.unit_name || 'pcs';
 
                                                     return (
-                                                        <tr key={idx} className="hover:bg-amber-50/20 transition-colors">
+                                                        <tr key={idx} className="hover:bg-slate-50 transition-colors">
                                                             {/* Interactive Product Selector Card that opens the Floating Search Modal */}
                                                             <td className="p-1.5">
                                                                 <div
                                                                     role="button"
                                                                     tabIndex={0}
                                                                     onClick={() => handleOpenProductSearchForRow(idx)}
-                                                                    className="w-full py-1 px-2 bg-white hover:bg-amber-50/40 border border-gray-200 hover:border-[#D4AF37] rounded-lg transition-all cursor-pointer group flex items-center justify-between gap-1.5 shadow-2xs"
+                                                                    className="w-full py-1 px-2 bg-white hover:bg-slate-50 border border-gray-200 hover:border-[#0B3B7B] rounded-lg transition-all cursor-pointer group flex items-center justify-between gap-1.5 shadow-2xs"
                                                                     title="Click to search and change item"
                                                                 >
                                                                     <div className="min-w-0 flex-1">
-                                                                        <div className="font-semibold text-xs text-gray-800 group-hover:text-[#B8860B] truncate">
+                                                                        <div className="font-semibold text-xs text-gray-800 group-hover:text-[#0B3B7B] truncate">
                                                                             {prod ? `${prod.product_name} (${prod.variant_name || 'Standard'})` : 'Click to select product...'}
                                                                         </div>
-                                                                        <div className="flex items-center gap-1.5 text-[10px] text-gray-400 font-normal">
-                                                                            {prod ? (
-                                                                                <>
-                                                                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                                                                                        currentStock > 10
-                                                                                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                                                                            : currentStock > 0
-                                                                                                ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                                                                                                : 'bg-rose-50 text-rose-700 border border-rose-200'
-                                                                                    }`}>
-                                                                                        Stock: {currentStock} {unitSym}
-                                                                                    </span>
-                                                                                    <span>•</span>
-                                                                                    <span className="text-gray-400 truncate max-w-[110px]">{prod.category_name || prod.sku || 'Item'}</span>
-                                                                                </>
-                                                                            ) : (
-                                                                                <span className="text-gray-400">Search product catalog</span>
-                                                                            )}
+                                                                        <div className="text-[10px] text-gray-500 font-medium">
+                                                                            {prod ? `Stock: ${currentStock} ${unitSym}` : 'Search product catalog'}
                                                                         </div>
                                                                     </div>
-                                                                    <div className="p-1 rounded bg-gray-50 group-hover:bg-[#FEF9E7] text-gray-400 group-hover:text-[#B8860B] shrink-0 transition-colors">
+                                                                    <div className="p-1 rounded bg-gray-50 group-hover:bg-blue-50 text-gray-400 group-hover:text-[#0B3B7B] shrink-0 transition-colors">
                                                                         <IconSearch className="w-3 h-3" />
                                                                     </div>
                                                                 </div>
@@ -2277,7 +2037,7 @@ export default function SuppliersPage() {
                                                                 <select
                                                                     value={item.packaging_type_id}
                                                                     onChange={(e) => handleUpdateBillItemRow(idx, 'packaging_type_id', e.target.value)}
-                                                                    className="w-full py-1.5 px-1.5 bg-white border border-gray-200 rounded-lg font-medium text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#D4AF37]"
+                                                                    className="w-full py-1.5 px-1.5 bg-white border border-gray-200 rounded-lg font-medium text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#0B3B7B]"
                                                                 >
                                                                     {(prod?.packagings || []).map(pk => (
                                                                         <option key={pk.packaging_type_id} value={pk.packaging_type_id}>
@@ -2295,7 +2055,7 @@ export default function SuppliersPage() {
                                                                     min="1"
                                                                     value={item.quantity}
                                                                     onChange={(e) => handleUpdateBillItemRow(idx, 'quantity', e.target.value)}
-                                                                    className="w-full py-1.5 px-1 text-center bg-white border border-gray-200 rounded-lg font-medium text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-[#D4AF37]"
+                                                                    className="w-full py-1.5 px-1 text-center bg-white border border-gray-200 rounded-lg font-medium text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-[#0B3B7B]"
                                                                 />
                                                             </td>
 
@@ -2308,7 +2068,7 @@ export default function SuppliersPage() {
                                                                     step="any"
                                                                     value={item.purchase_price}
                                                                     onChange={(e) => handleUpdateBillItemRow(idx, 'purchase_price', e.target.value)}
-                                                                    className="w-full py-1.5 px-1.5 text-right bg-white border border-gray-200 rounded-lg font-medium font-mono text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-[#D4AF37]"
+                                                                    className="w-full py-1.5 px-1.5 text-right bg-white border border-gray-200 rounded-lg font-medium font-mono text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-[#0B3B7B]"
                                                                 />
                                                             </td>
 
@@ -2348,7 +2108,7 @@ export default function SuppliersPage() {
                                                     min="0"
                                                     value={billAmountPaid}
                                                     onChange={(e) => setBillAmountPaid(e.target.value)}
-                                                    className="w-full py-1 px-2 bg-white border border-gray-200 rounded-lg font-medium font-mono text-xs text-emerald-700 focus:outline-none focus:ring-1 focus:ring-[#D4AF37]"
+                                                    className="w-full py-1 px-2 bg-white border border-gray-200 rounded-lg font-medium font-mono text-xs text-emerald-700 focus:outline-none focus:ring-1 focus:ring-[#0B3B7B]"
                                                 />
                                             </div>
                                             <div>
@@ -2356,7 +2116,7 @@ export default function SuppliersPage() {
                                                 <select
                                                     value={billPaymentMethod}
                                                     onChange={(e) => setBillPaymentMethod(e.target.value)}
-                                                    className="w-full py-1 px-2 bg-white border border-gray-200 rounded-lg font-medium text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#D4AF37]"
+                                                    className="w-full py-1 px-2 bg-white border border-gray-200 rounded-lg font-medium text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#0B3B7B]"
                                                 >
                                                     <option value="cash">Cash</option>
                                                     <option value="bank">Bank Transfer</option>
@@ -2366,7 +2126,7 @@ export default function SuppliersPage() {
                                         </div>
                                     </div>
 
-                                    <div className="bg-[#FEF9E7] p-2.5 rounded-xl border border-[#F3E5AB] flex flex-col justify-between text-xs font-mono">
+                                    <div className="bg-slate-50 p-2.5 rounded-xl border border-gray-200 flex flex-col justify-between text-xs font-mono">
                                         <div className="space-y-0.5">
                                             <div className="flex justify-between text-gray-600 text-[11px]">
                                                 <span>Total Inward Gross:</span>
@@ -2377,7 +2137,7 @@ export default function SuppliersPage() {
                                                 <span className="font-semibold">Rs. {paidAmt.toLocaleString()}</span>
                                             </div>
                                         </div>
-                                        <div className="flex justify-between items-center border-t border-[#F3E5AB] pt-1 mt-1">
+                                        <div className="flex justify-between items-center border-t border-gray-200 pt-1 mt-1">
                                             <span className="font-medium text-gray-700 text-[11px]">Added to Supplier Due:</span>
                                             <span className="text-sm font-semibold text-rose-600">
                                                 Rs. {addedToDue.toLocaleString()}
@@ -2392,18 +2152,16 @@ export default function SuppliersPage() {
                                 <button
                                     type="button"
                                     onClick={() => setAddBillModalOpen(false)}
-                                    style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                    className="btn-black !bg-black !text-white w-full sm:flex-1 py-2 rounded-xl font-medium text-xs shadow-md transition-all cursor-pointer flex items-center justify-center hover:opacity-90 active:scale-95"
+                                    className="w-full sm:flex-1 py-2 rounded-xl font-medium text-xs border border-gray-300 text-gray-700 bg-white hover:bg-gray-100 shadow-xs transition-all cursor-pointer flex items-center justify-center active:scale-95"
                                 >
-                                    <span style={{ color: '#ffffff' }}>Cancel</span>
+                                    <span>Cancel</span>
                                 </button>
                                 <button
                                     type="submit"
-                                    style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                    className="btn-black !bg-black !text-white w-full sm:flex-1 py-2 rounded-xl font-medium text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5 hover:opacity-90 active:scale-95"
+                                    className="w-full sm:flex-1 py-2 rounded-xl font-medium text-xs bg-[#16A34A] hover:bg-[#15803D] text-white shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-95"
                                 >
-                                    <IconCheck className="w-4 h-4" style={{ color: '#ffffff', stroke: '#ffffff' }} />
-                                    <span style={{ color: '#ffffff' }}>Save Inward Bill ({billItems.length} items)</span>
+                                    <IconCheck className="w-4 h-4 text-white" />
+                                    <span>Save Inward Bill ({billItems.length} items)</span>
                                 </button>
                             </div>
                         </form>
@@ -2442,16 +2200,16 @@ export default function SuppliersPage() {
 
                 return (
                     <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[60] p-2 sm:p-4 overflow-y-auto">
-                        <div className="bg-white rounded-2xl sm:rounded-3xl max-w-5xl w-full max-h-[96vh] sm:max-h-[92vh] flex flex-col shadow-2xl overflow-hidden border border-[#F3E5AB]">
+                        <div className="bg-white rounded-2xl sm:rounded-3xl max-w-5xl w-full max-h-[96vh] sm:max-h-[92vh] flex flex-col shadow-2xl overflow-hidden border border-gray-200">
                             {/* Modal Header & Quick Actions Bar */}
                             <div className="p-3 sm:p-5 border-b border-gray-200 bg-gray-50/60 flex flex-col md:flex-row md:items-center justify-between gap-2.5 sm:gap-3 shrink-0">
                                 <div>
                                     <div className="flex items-center gap-2 flex-wrap">
                                         <h3 className="font-black text-gray-900 text-base sm:text-lg flex items-center gap-2">
-                                            <IconSuppliers className="w-4 sm:w-5 h-4 sm:h-5 text-[#B8860B] shrink-0" />
+                                            <IconSuppliers className="w-4 sm:w-5 h-4 sm:h-5 text-[#0B3B7B] shrink-0" />
                                             <span>Supplier Ledger: {activeSupplier.name}</span>
                                         </h3>
-                                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#FEF9E7] border border-[#F3E5AB] text-[#B8860B]">
+                                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 border border-blue-200 text-[#0B3B7B]">
                                             {activeSupplier.company_name || 'Vendor'}
                                         </span>
                                     </div>
@@ -2461,38 +2219,35 @@ export default function SuppliersPage() {
                                     </div>
                                 </div>
 
-                                {/* Quick Action Buttons in Header: Black bg with white text */}
+                                {/* Quick Action Buttons in Header */}
                                 <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                                     <button
                                         type="button"
                                         onClick={() => handleOpenAddBill(activeSupplier)}
-                                        style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                        className="btn-black !bg-black !text-white px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-1.5 cursor-pointer hover:opacity-90"
+                                        className="px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-1.5 cursor-pointer bg-[#0B3B7B] hover:bg-[#072B5C] text-white"
                                         title="Inward stock / record purchase invoice with multiple items"
                                     >
-                                        <IconBill className="w-3.5 h-3.5" style={{ color: '#ffffff', stroke: '#ffffff' }} />
-                                        <span style={{ color: '#ffffff' }}>+ Add Bill</span>
+                                        <IconBill className="w-3.5 h-3.5 text-white" />
+                                        <span>+ Add Bill</span>
                                     </button>
 
                                     <button
                                         type="button"
                                         onClick={() => handleOpenPayFifo(activeSupplier)}
-                                        style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                        className="btn-black !bg-black !text-white px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-1.5 cursor-pointer hover:opacity-90"
+                                        className="px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-1.5 cursor-pointer bg-emerald-600 hover:bg-emerald-700 text-white"
                                         title="Record supplier payment"
                                     >
-                                        <IconPayments className="w-3.5 h-3.5" style={{ color: '#ffffff', stroke: '#ffffff' }} />
-                                        <span style={{ color: '#ffffff' }}>Pay Supplier</span>
+                                        <IconPayments className="w-3.5 h-3.5 text-white" />
+                                        <span>Pay Supplier</span>
                                     </button>
 
                                     <button
                                         type="button"
                                         onClick={() => window.print()}
-                                        style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                        className="btn-black !bg-black !text-white p-1.5 sm:p-2 rounded-xl transition-all cursor-pointer flex items-center justify-center shadow-md hover:opacity-90"
+                                        className="p-1.5 sm:p-2 rounded-xl transition-all cursor-pointer flex items-center justify-center shadow-xs bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-200"
                                         title="Print Ledger Statement"
                                     >
-                                        <IconPrinter className="w-4 h-4" style={{ color: '#ffffff', stroke: '#ffffff' }} />
+                                        <IconPrinter className="w-4 h-4 text-gray-700" />
                                     </button>
 
                                     <button
@@ -2508,8 +2263,8 @@ export default function SuppliersPage() {
                             {/* 4 PROPER KPI CARDS INSIDE LEDGER MODAL */}
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 p-2.5 sm:p-4 bg-white border-b border-gray-100 shrink-0">
                                 {/* Card 1: Outstanding Balance Due */}
-                                <div className="p-2.5 sm:p-3.5 rounded-xl sm:rounded-2xl bg-[#FEF9E7] border border-[#F3E5AB] space-y-0.5 sm:space-y-1">
-                                    <div className="text-[10px] font-bold text-[#B8860B] uppercase tracking-wider truncate">
+                                <div className="p-2.5 sm:p-3.5 rounded-xl sm:rounded-2xl bg-slate-50 border border-gray-200 space-y-0.5 sm:space-y-1">
+                                    <div className="text-[10px] font-bold text-[#0B3B7B] uppercase tracking-wider truncate">
                                         Current Due Payable
                                     </div>
                                     <div className={`text-base sm:text-xl font-black font-mono truncate ${currentPendingDue > 0 ? 'text-rose-600' : 'text-emerald-700'
@@ -2552,7 +2307,7 @@ export default function SuppliersPage() {
                                     <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider truncate">
                                         Inward Bills Count
                                     </div>
-                                    <div className="text-base sm:text-xl font-black text-[#B8860B] truncate">
+                                    <div className="text-base sm:text-xl font-black text-[#0B3B7B] truncate">
                                         {supplierPurchases.length} Inward Bills
                                     </div>
                                     <div className="text-[10px] text-gray-400 font-medium truncate">
@@ -2566,7 +2321,7 @@ export default function SuppliersPage() {
                                 <button
                                     onClick={() => setActiveLedgerTab('statement')}
                                     className={`py-2.5 sm:py-3 border-b-2 transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${activeLedgerTab === 'statement'
-                                            ? 'border-[#B8860B] text-[#B8860B]'
+                                            ? 'border-[#0B3B7B] text-[#0B3B7B]'
                                             : 'border-transparent text-gray-500 hover:text-gray-900'
                                         }`}
                                 >
@@ -2577,7 +2332,7 @@ export default function SuppliersPage() {
                                 <button
                                     onClick={() => setActiveLedgerTab('bills')}
                                     className={`py-2.5 sm:py-3 border-b-2 transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${activeLedgerTab === 'bills'
-                                            ? 'border-[#B8860B] text-[#B8860B]'
+                                            ? 'border-[#0B3B7B] text-[#0B3B7B]'
                                             : 'border-transparent text-gray-500 hover:text-gray-900'
                                         }`}
                                 >
@@ -2587,11 +2342,10 @@ export default function SuppliersPage() {
 
                                 <button
                                     onClick={() => handleOpenAddBill(activeSupplier)}
-                                    style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                    className="btn-black !bg-black !text-white px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer flex items-center gap-1.5 ml-auto shadow-md transition-all hover:opacity-90 whitespace-nowrap shrink-0"
+                                    className="px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer flex items-center gap-1.5 ml-auto shadow-md transition-all bg-[#0B3B7B] hover:bg-[#072B5C] text-white whitespace-nowrap shrink-0"
                                 >
-                                    <IconPlus className="w-3.5 h-3.5" style={{ color: '#ffffff', stroke: '#ffffff' }} />
-                                    <span style={{ color: '#ffffff' }}>+ Add Inward Bill</span>
+                                    <IconPlus className="w-3.5 h-3.5 text-white" />
+                                    <span>+ Add Inward Bill</span>
                                 </button>
                             </div>
 
@@ -2617,7 +2371,7 @@ export default function SuppliersPage() {
                                                 </thead>
                                                 <tbody className="divide-y divide-gray-100">
                                                     {activeLedger.map((row) => (
-                                                        <tr key={row.id} className="hover:bg-amber-50/20">
+                                                        <tr key={row.id} className="hover:bg-slate-50">
                                                             <td className="p-2.5 text-gray-600 font-mono text-[11px]">
                                                                 {row.payment_date || (row.created_at ? row.created_at.split(' ')[0] : '-')}
                                                             </td>
@@ -2666,11 +2420,10 @@ export default function SuppliersPage() {
                                         <button
                                             type="button"
                                             onClick={() => handleOpenAddBill(activeSupplier)}
-                                            style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                            className="btn-black !bg-black !text-white px-3.5 py-1.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-md transition-all hover:opacity-90 w-full sm:w-auto"
+                                            className="px-3.5 py-1.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-md transition-all bg-[#0B3B7B] hover:bg-[#072B5C] text-white w-full sm:w-auto"
                                         >
-                                            <IconBill className="w-3.5 h-3.5" style={{ color: '#ffffff', stroke: '#ffffff' }} />
-                                            <span style={{ color: '#ffffff' }}>+ Record New Bill</span>
+                                            <IconBill className="w-3.5 h-3.5 text-white" />
+                                            <span>+ Record New Bill</span>
                                         </button>
                                     </div>
 
@@ -2695,8 +2448,8 @@ export default function SuppliersPage() {
                                                 </thead>
                                                 <tbody className="divide-y divide-gray-100">
                                                     {supplierPurchases.map((bill) => (
-                                                        <tr key={bill.id} className="hover:bg-amber-50/20">
-                                                            <td className="p-2.5 font-bold text-[#B8860B] font-mono">
+                                                        <tr key={bill.id} className="hover:bg-slate-50">
+                                                            <td className="p-2.5 font-bold text-[#0B3B7B] font-mono">
                                                                 {bill.supplier_invoice_no || `PUR-#${bill.id}`}
                                                             </td>
                                                             <td className="p-2.5 text-gray-500 font-mono text-[11px]">
@@ -2727,11 +2480,10 @@ export default function SuppliersPage() {
                                                             <td className="p-2.5 text-center">
                                                                 <button
                                                                     onClick={() => handleViewPurchaseBill(bill.id)}
-                                                                    style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                                                    className="btn-black !bg-black !text-white px-3 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 mx-auto cursor-pointer shadow-sm transition-all hover:opacity-90"
+                                                                    className="px-3 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 mx-auto cursor-pointer shadow-xs transition-all bg-[#0B3B7B] hover:bg-[#072B5C] text-white"
                                                                 >
-                                                                    <IconEye className="w-3.5 h-3.5" style={{ color: '#ffffff', stroke: '#ffffff' }} />
-                                                                    <span style={{ color: '#ffffff' }}>View Bill</span>
+                                                                    <IconEye className="w-3.5 h-3.5 text-white" />
+                                                                    <span>View Bill</span>
                                                                 </button>
                                                             </td>
                                                         </tr>
@@ -2755,20 +2507,18 @@ export default function SuppliersPage() {
                                     <button
                                         type="button"
                                         onClick={() => handleOpenAddBill(activeSupplier)}
-                                        style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                        className="btn-black !bg-black !text-white px-4 py-2 rounded-xl font-bold text-xs shadow-md cursor-pointer flex items-center justify-center gap-1.5 transition-all hover:opacity-90 text-center"
+                                        className="px-4 py-2 rounded-xl font-bold text-xs shadow-md cursor-pointer flex items-center justify-center gap-1.5 transition-all bg-[#0B3B7B] hover:bg-[#072B5C] text-white text-center"
                                     >
-                                        <IconBill className="w-3.5 h-3.5" style={{ color: '#ffffff', stroke: '#ffffff' }} />
-                                        <span style={{ color: '#ffffff' }}>+ Add Inward Bill</span>
+                                        <IconBill className="w-3.5 h-3.5 text-white" />
+                                        <span>+ Add Inward Bill</span>
                                     </button>
                                     <button
                                         type="button"
                                         onClick={() => handleOpenPayFifo(activeSupplier)}
-                                        style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                        className="btn-black !bg-black !text-white px-4 py-2 rounded-xl font-bold text-xs shadow-md cursor-pointer flex items-center justify-center gap-1.5 transition-all hover:opacity-90 text-center"
+                                        className="px-4 py-2 rounded-xl font-bold text-xs shadow-md cursor-pointer flex items-center justify-center gap-1.5 transition-all bg-emerald-600 hover:bg-emerald-700 text-white text-center"
                                     >
-                                        <IconPayments className="w-3.5 h-3.5" style={{ color: '#ffffff', stroke: '#ffffff' }} />
-                                        <span style={{ color: '#ffffff' }}>Pay Supplier (Rs. {currentPendingDue.toLocaleString()})</span>
+                                        <IconPayments className="w-3.5 h-3.5 text-white" />
+                                        <span>Pay Supplier (Rs. {currentPendingDue.toLocaleString()})</span>
                                     </button>
                                 </div>
                             </div>
@@ -2786,7 +2536,7 @@ export default function SuppliersPage() {
                         <div className="p-3.5 sm:p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50 shrink-0">
                             <div className="min-w-0 pr-2">
                                 <h3 className="font-extrabold text-sm text-gray-900 flex items-center gap-2 truncate">
-                                    <IconBill className="w-4 h-4 text-[#B8860B] shrink-0" />
+                                    <IconBill className="w-4 h-4 text-[#0B3B7B] shrink-0" />
                                     <span className="truncate">Purchase Bill: {selectedPurchaseDetail?.supplier_invoice_no || `PUR-#${selectedPurchaseDetail?.id}`}</span>
                                 </h3>
                                 <p className="text-[11px] text-gray-500 truncate">
@@ -2804,7 +2554,7 @@ export default function SuppliersPage() {
                         <div className="p-3 sm:p-4 overflow-y-auto flex-1">
                             {purchaseDetailLoading || !selectedPurchaseDetail ? (
                                 <div className="py-8 text-center text-gray-400 text-xs flex items-center justify-center gap-2">
-                                    <IconSpinner className="w-4 h-4 text-[#B8860B]" />
+                                    <IconSpinner className="w-4 h-4 text-[#0B3B7B]" />
                                     Loading purchase items...
                                 </div>
                             ) : (
@@ -2882,10 +2632,9 @@ export default function SuppliersPage() {
                             <button
                                 type="button"
                                 onClick={() => setPurchaseDetailModalOpen(false)}
-                                style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                className="btn-black !bg-black !text-white w-full sm:w-auto px-4 py-2 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer hover:opacity-90"
+                                className="w-full sm:w-auto px-4 py-2 rounded-xl font-bold text-xs border border-gray-300 text-gray-700 bg-white hover:bg-gray-100 shadow-xs transition-all cursor-pointer"
                             >
-                                <span style={{ color: '#ffffff' }}>Close Details</span>
+                                <span>Close Details</span>
                             </button>
                         </div>
                     </div>
@@ -2897,11 +2646,11 @@ export default function SuppliersPage() {
             {/* ───────────────────────────────────────────────────────────── */}
             {receiptModalOpen && activeReceipt && (
                 <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-[100] p-2.5 sm:p-4 overflow-y-auto">
-                    <div className="bg-white rounded-2xl max-w-md w-full p-4 sm:p-6 space-y-4 shadow-2xl border border-[#F3E5AB] max-h-[96vh] overflow-y-auto">
+                    <div className="bg-white rounded-2xl max-w-md w-full p-4 sm:p-6 space-y-4 shadow-2xl border border-gray-200 max-h-[96vh] overflow-y-auto">
                         {/* Printable Voucher Section */}
                         <div id="printable-receipt" className="border border-gray-200 rounded-xl p-3.5 sm:p-4 bg-white space-y-3">
                             <div className="text-center border-b border-gray-100 pb-2">
-                                <h3 className="font-black text-base text-[#B8860B]">{(settings?.shop_name || 'HILAL WHOLESALER SHOP').toUpperCase()}</h3>
+                                <h3 className="font-black text-base text-[#0B3B7B]">{(settings?.shop_name || 'HILAL WHOLESALER SHOP').toUpperCase()}</h3>
                                 <p className="text-[10px] text-gray-500">{settings?.shop_address || 'Main Bazar, Timergara, Dir Lower'} • Contact: {settings?.shop_phone || '0300-1234567'}</p>
                                 <div className="inline-block mt-1 px-2 py-0.5 bg-emerald-50 text-emerald-800 text-[10px] font-black rounded border border-emerald-200 uppercase">
                                     Supplier Payment Voucher
@@ -2925,15 +2674,13 @@ export default function SuppliersPage() {
                                     <span className="text-gray-400">Payment Mode:</span>
                                     <span className="font-bold uppercase text-gray-800">{activeReceipt.payment_method}</span>
                                 </div>
-                                {activeReceipt.reference_no && (
-                                    <div className="flex justify-between">
-                                        <span className="text-gray-400">Ref / Cheque #:</span>
-                                        <span className="font-semibold">{activeReceipt.reference_no}</span>
-                                    </div>
-                                )}
+                                <div className="flex justify-between">
+                                    <span className="text-gray-400">Ref / Cheque #:</span>
+                                    <span className="font-semibold">{activeReceipt.reference_no || '-'}</span>
+                                </div>
                             </div>
 
-                            <div className="bg-[#FEF9E7] p-3 rounded-xl border border-[#F3E5AB] flex justify-between items-center">
+                            <div className="bg-slate-50 p-3 rounded-xl border border-gray-200 flex justify-between items-center">
                                 <span className="font-bold text-xs text-gray-700">Amount Paid:</span>
                                 <span className="text-lg font-black text-emerald-800">
                                     Rs. {Number(activeReceipt.amount).toLocaleString()}
@@ -2969,7 +2716,7 @@ export default function SuppliersPage() {
                             <button
                                 type="button"
                                 onClick={() => window.print()}
-                                className="w-full sm:flex-1 py-2 gold-gradient hover:opacity-90 text-white rounded-xl font-bold text-xs shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
+                                className="w-full sm:flex-1 py-2 bg-[#0B3B7B] hover:bg-[#072B5C] text-white rounded-xl font-bold text-xs shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
                             >
                                 <IconPrinter className="w-4 h-4" />
                                 <span>Print Voucher</span>
@@ -2984,10 +2731,10 @@ export default function SuppliersPage() {
             {/* ───────────────────────────────────────────────────────────── */}
             {addModalOpen && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-2.5 sm:p-4 overflow-y-auto">
-                    <form onSubmit={handleSaveAddSupplier} className="bg-white rounded-2xl max-w-md w-full p-4 sm:p-6 space-y-4 shadow-2xl border border-[#F3E5AB] max-h-[96vh] overflow-y-auto">
+                    <form onSubmit={handleSaveAddSupplier} className="bg-white rounded-2xl max-w-md w-full p-4 sm:p-6 space-y-4 shadow-2xl border border-gray-200 max-h-[96vh] overflow-y-auto">
                         <div className="flex justify-between items-center border-b border-gray-100 pb-3">
                             <h3 className="font-black text-gray-900 text-base flex items-center gap-2">
-                                <IconSuppliers className="w-5 h-5 text-[#B8860B]" />
+                                <IconSuppliers className="w-5 h-5 text-[#0B3B7B]" />
                                 <span>Add New Wholesale Supplier</span>
                             </h3>
                             <button type="button" onClick={() => setAddModalOpen(false)} className="text-gray-400 hover:text-gray-600 p-1 cursor-pointer">
@@ -3004,7 +2751,7 @@ export default function SuppliersPage() {
                                     value={addForm.name}
                                     onChange={(e) => setAddForm({ ...addForm, name: e.target.value })}
                                     placeholder="e.g. Haji Muhammad Tariq"
-                                    className="w-full p-2.5 border border-[#F3E5AB] rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/20"
+                                    className="w-full p-2.5 border border-gray-200 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-[#0B3B7B]/20"
                                 />
                             </div>
 
@@ -3015,7 +2762,7 @@ export default function SuppliersPage() {
                                     value={addForm.company_name}
                                     onChange={(e) => setAddForm({ ...addForm, company_name: e.target.value })}
                                     placeholder="e.g. National Foods Ltd"
-                                    className="w-full p-2.5 border border-[#F3E5AB] rounded-xl font-medium"
+                                    className="w-full p-2.5 border border-gray-200 rounded-xl font-medium"
                                 />
                             </div>
 
@@ -3027,7 +2774,7 @@ export default function SuppliersPage() {
                                     value={addForm.phone}
                                     onChange={(e) => setAddForm({ ...addForm, phone: e.target.value })}
                                     placeholder="e.g. 03001234567"
-                                    className="w-full p-2.5 border border-[#F3E5AB] rounded-xl font-medium"
+                                    className="w-full p-2.5 border border-gray-200 rounded-xl font-medium"
                                 />
                             </div>
 
@@ -3038,7 +2785,7 @@ export default function SuppliersPage() {
                                     value={addForm.address}
                                     onChange={(e) => setAddForm({ ...addForm, address: e.target.value })}
                                     placeholder="e.g. Timergara / Peshawar"
-                                    className="w-full p-2.5 border border-[#F3E5AB] rounded-xl font-medium"
+                                    className="w-full p-2.5 border border-gray-200 rounded-xl font-medium"
                                 />
                             </div>
 
@@ -3049,7 +2796,7 @@ export default function SuppliersPage() {
                                     value={addForm.opening_balance}
                                     onChange={(e) => setAddForm({ ...addForm, opening_balance: e.target.value })}
                                     placeholder="0"
-                                    className="w-full p-2.5 border border-[#F3E5AB] rounded-xl font-bold"
+                                    className="w-full p-2.5 border border-gray-200 rounded-xl font-bold"
                                 />
                                 <span className="text-[10px] text-gray-400 mt-0.5 block">Previous due if migrating accounts</span>
                             </div>
@@ -3059,18 +2806,16 @@ export default function SuppliersPage() {
                             <button
                                 type="button"
                                 onClick={() => setAddModalOpen(false)}
-                                style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                className="btn-black !bg-black !text-white w-full sm:flex-1 py-2.5 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center hover:opacity-90"
+                                className="w-full sm:flex-1 py-2.5 rounded-xl font-bold text-xs border border-gray-300 text-gray-700 bg-white hover:bg-gray-100 shadow-xs transition-all cursor-pointer flex items-center justify-center"
                             >
-                                <span style={{ color: '#ffffff' }}>Cancel</span>
+                                <span>Cancel</span>
                             </button>
                             <button
                                 type="submit"
-                                style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                className="btn-black !bg-black !text-white w-full sm:flex-1 py-2.5 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5 hover:opacity-90"
+                                className="w-full sm:flex-1 py-2.5 rounded-xl font-bold text-xs bg-[#16A34A] hover:bg-[#15803D] text-white shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
                             >
-                                <IconCheck className="w-4 h-4" style={{ color: '#ffffff', stroke: '#ffffff' }} />
-                                <span style={{ color: '#ffffff' }}>Save Supplier Profile</span>
+                                <IconCheck className="w-4 h-4 text-white" />
+                                <span>Save Supplier Profile</span>
                             </button>
                         </div>
                     </form>
@@ -3082,10 +2827,10 @@ export default function SuppliersPage() {
             {/* ───────────────────────────────────────────────────────────── */}
             {editModalOpen && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-2.5 sm:p-4 overflow-y-auto">
-                    <form onSubmit={handleSaveEdit} className="bg-white rounded-2xl max-w-md w-full p-4 sm:p-6 space-y-4 shadow-2xl border border-[#F3E5AB] max-h-[96vh] overflow-y-auto">
+                    <form onSubmit={handleSaveEdit} className="bg-white rounded-2xl max-w-md w-full p-4 sm:p-6 space-y-4 shadow-2xl border border-gray-200 max-h-[96vh] overflow-y-auto">
                         <div className="flex justify-between items-center border-b border-gray-100 pb-3">
                             <h3 className="font-black text-gray-900 text-base flex items-center gap-2">
-                                <IconEdit className="w-5 h-5 text-[#B8860B]" />
+                                <IconEdit className="w-5 h-5 text-[#0B3B7B]" />
                                 <span>Edit Supplier Profile</span>
                             </h3>
                             <button type="button" onClick={() => setEditModalOpen(false)} className="text-gray-400 hover:text-gray-600 p-1 cursor-pointer">
@@ -3101,7 +2846,7 @@ export default function SuppliersPage() {
                                     required
                                     value={editForm.name}
                                     onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                                    className="w-full p-2.5 border border-[#F3E5AB] rounded-xl font-medium"
+                                    className="w-full p-2.5 border border-gray-200 rounded-xl font-medium"
                                 />
                             </div>
 
@@ -3111,7 +2856,7 @@ export default function SuppliersPage() {
                                     type="text"
                                     value={editForm.company_name}
                                     onChange={(e) => setEditForm({ ...editForm, company_name: e.target.value })}
-                                    className="w-full p-2.5 border border-[#F3E5AB] rounded-xl font-medium"
+                                    className="w-full p-2.5 border border-gray-200 rounded-xl font-medium"
                                 />
                             </div>
 
@@ -3121,7 +2866,7 @@ export default function SuppliersPage() {
                                     type="text"
                                     value={editForm.phone}
                                     onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
-                                    className="w-full p-2.5 border border-[#F3E5AB] rounded-xl font-medium"
+                                    className="w-full p-2.5 border border-gray-200 rounded-xl font-medium"
                                 />
                             </div>
 
@@ -3131,8 +2876,27 @@ export default function SuppliersPage() {
                                     type="text"
                                     value={editForm.address}
                                     onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
-                                    className="w-full p-2.5 border border-[#F3E5AB] rounded-xl font-medium"
+                                    className="w-full p-2.5 border border-gray-200 rounded-xl font-medium"
                                 />
+                            </div>
+
+                            <div>
+                                <label className="font-bold text-gray-700 mb-1 flex items-center justify-between text-xs">
+                                    <span>Opening Due Balance (Rs.)</span>
+                                    <span className="text-[10px] font-semibold text-[#0B3B7B] bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
+                                        Editable
+                                    </span>
+                                </label>
+                                <input
+                                    type="number"
+                                    placeholder="0"
+                                    value={editForm.opening_balance}
+                                    onChange={(e) => setEditForm({ ...editForm, opening_balance: e.target.value })}
+                                    className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl font-bold font-mono text-gray-900 focus:bg-white focus:outline-none focus:border-[#0B3B7B]"
+                                />
+                                <span className="text-[10px] text-gray-400">
+                                    Adjusting opening balance updates supplier running balance and ledger automatically.
+                                </span>
                             </div>
                         </div>
 
@@ -3140,18 +2904,16 @@ export default function SuppliersPage() {
                             <button
                                 type="button"
                                 onClick={() => setEditModalOpen(false)}
-                                style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                className="btn-black !bg-black !text-white w-full sm:flex-1 py-2.5 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center hover:opacity-90"
+                                className="w-full sm:flex-1 py-2.5 rounded-xl font-bold text-xs border border-gray-300 text-gray-700 bg-white hover:bg-gray-100 shadow-xs transition-all cursor-pointer flex items-center justify-center"
                             >
-                                <span style={{ color: '#ffffff' }}>Cancel</span>
+                                <span>Cancel</span>
                             </button>
                             <button
                                 type="submit"
-                                style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                className="btn-black !bg-black !text-white w-full sm:flex-1 py-2.5 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5 hover:opacity-90"
+                                className="w-full sm:flex-1 py-2.5 rounded-xl font-bold text-xs bg-[#0B3B7B] hover:bg-[#072B5C] text-white shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
                             >
-                                <IconCheck className="w-4 h-4" style={{ color: '#ffffff', stroke: '#ffffff' }} />
-                                <span style={{ color: '#ffffff' }}>Update Profile</span>
+                                <IconCheck className="w-4 h-4 text-white" />
+                                <span>Update Profile</span>
                             </button>
                         </div>
                     </form>

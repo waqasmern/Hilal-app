@@ -98,6 +98,62 @@ export async function GET(request) {
         const newDuesAdded = netNewDuesAdded;
         const totalSale = totalGrossSale > 0 ? totalGrossSale : (totalNetSale + totalDiscount);
 
+        // Compute Cost of Goods Sold (COGS) & Profit metrics
+        let totalCogs = 0;
+        let totalProfit = 0;
+        let pendingProfit = 0;
+
+        const saleIds = sales.map(s => s.id);
+        if (saleIds.length > 0) {
+            const [itemsRes, packRes] = await Promise.all([
+                supabase.from('sale_items').select('sale_id, quantity, variant_id, packaging_type_id').in('sale_id', saleIds),
+                supabase.from('product_packagings').select('variant_id, packaging_type_id, purchase_price, is_default')
+            ]);
+
+            const saleItems = itemsRes.data || [];
+            const packagings = packRes.data || [];
+
+            const ppMap = {};
+            const defMap = {};
+            packagings.forEach(p => {
+                ppMap[`${p.variant_id}_${p.packaging_type_id}`] = parseFloat(p.purchase_price) || 0;
+                if (p.is_default || !defMap[p.variant_id]) {
+                    defMap[p.variant_id] = parseFloat(p.purchase_price) || 0;
+                }
+            });
+
+            // Group items by sale_id
+            const saleCostMap = {};
+            saleItems.forEach(item => {
+                const price = ppMap[`${item.variant_id}_${item.packaging_type_id}`] ?? defMap[item.variant_id] ?? 0;
+                const cost = (parseFloat(item.quantity) || 0) * price;
+                saleCostMap[item.sale_id] = (saleCostMap[item.sale_id] || 0) + cost;
+            });
+
+            sales.forEach(s => {
+                const cost = saleCostMap[s.id] || 0;
+                const net = parseFloat(s.net_amount) || 0;
+                const rem = parseFloat(s.remaining_balance) || 0;
+                const profit = net - cost;
+
+                totalCogs += cost;
+                totalProfit += profit;
+
+                if (net > 0 && rem > 0) {
+                    const pendingRatio = Math.min(net, rem) / net;
+                    pendingProfit += (profit * pendingRatio);
+                }
+            });
+        }
+
+        totalCogs = Math.round(totalCogs);
+        totalProfit = Math.round(totalProfit);
+        pendingProfit = Math.round(pendingProfit);
+
+        const overallMargin = totalNetSale > 0 ? (totalProfit / totalNetSale) : 0.15;
+        const recoveredDuesProfit = Math.round(recoveredDues * overallMargin);
+        const grossRealizedProfit = Math.round(totalProfit - pendingProfit + recoveredDuesProfit);
+
         // Standard gross revenue formula matching backend/server.js
         const grossRevenue = totalSale + recoveredDues - newDuesAdded - expenses - totalDiscount - stockPaid - totalReturns;
 
@@ -116,7 +172,12 @@ export async function GET(request) {
             cashRefunds,
             creditReturns,
             returnCount: returns.length,
-            grossRevenue
+            grossRevenue,
+            totalCogs,
+            totalProfit,
+            pendingProfit,
+            recoveredDuesProfit,
+            grossRealizedProfit
         });
     } catch (err) {
         return NextResponse.json({ error: err.message }, { status: 500 });

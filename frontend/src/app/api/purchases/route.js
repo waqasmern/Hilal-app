@@ -6,10 +6,13 @@ async function getNextId(tableName) {
     return (data?.[0]?.id || 0) + 1;
 }
 
-export async function GET() {
+export async function GET(request) {
     try {
+        const { searchParams } = new URL(request.url);
+        const isPaginated = searchParams.get('paginate') === 'true' || searchParams.has('page');
+
         const [purchasesRes, suppliersRes, itemsRes] = await Promise.all([
-            supabase.from('purchases').select('*').order('created_at', { ascending: false }).limit(200),
+            supabase.from('purchases').select('*').order('created_at', { ascending: false }).limit(500),
             supabase.from('suppliers').select('id, name, company_name'),
             supabase.from('purchase_items').select('purchase_id')
         ]);
@@ -24,7 +27,7 @@ export async function GET() {
             itemCountMap[item.purchase_id] = (itemCountMap[item.purchase_id] || 0) + 1;
         });
 
-        const list = (purchasesRes.data || []).map(p => {
+        let list = (purchasesRes.data || []).map(p => {
             const s = supplierMap[p.supplier_id] || {};
             return {
                 ...p,
@@ -34,7 +37,79 @@ export async function GET() {
             };
         });
 
-        return NextResponse.json(list);
+        if (!isPaginated) {
+            return NextResponse.json(list);
+        }
+
+        const page = Math.max(1, parseInt(searchParams.get('page')) || 1);
+        const limit = Math.min(500, Math.max(1, parseInt(searchParams.get('limit')) || 25));
+        const search = (searchParams.get('search') || '').toLowerCase().trim();
+        const supplierId = searchParams.get('supplier_id');
+        const status = searchParams.get('status') || 'all';
+        const dateDuration = searchParams.get('dateDuration') || 'all';
+        const startDate = searchParams.get('startDate');
+        const endDate = searchParams.get('endDate');
+
+        const now = new Date();
+        const pad = (n) => String(n).padStart(2, '0');
+        const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+
+        // Filter list
+        let filtered = list.filter(p => {
+            if (search) {
+                const sInv = (p.supplier_invoice_no || '').toLowerCase();
+                const sName = (p.supplier_name || '').toLowerCase();
+                const cName = (p.company_name || '').toLowerCase();
+                if (!sInv.includes(search) && !sName.includes(search) && !cName.includes(search)) {
+                    return false;
+                }
+            }
+            if (supplierId && supplierId !== 'all') {
+                if (String(p.supplier_id) !== String(supplierId)) return false;
+            }
+            if (status === 'due' && (p.remaining_balance || 0) <= 0.01) return false;
+            if (status === 'paid' && (p.remaining_balance || 0) > 0.01) return false;
+
+            // Date filtering
+            const invDate = (p.invoice_date || '').split('T')[0];
+            const crDate = (p.created_at || '').split('T')[0];
+            if (dateDuration === 'today') {
+                if (invDate !== todayStr && crDate !== todayStr) return false;
+            } else if (dateDuration === 'yesterday') {
+                const yDate = new Date();
+                yDate.setDate(yDate.getDate() - 1);
+                const yStr = `${yDate.getFullYear()}-${pad(yDate.getMonth() + 1)}-${pad(yDate.getDate())}`;
+                if (invDate !== yStr && crDate !== yStr) return false;
+            } else if (dateDuration === 'custom' && (startDate || endDate)) {
+                const checkDate = invDate || crDate;
+                if (startDate && checkDate < startDate) return false;
+                if (endDate && checkDate > endDate) return false;
+            }
+            return true;
+        });
+
+        const total = filtered.length;
+        const totalPages = Math.ceil(total / limit) || 1;
+        const offset = (page - 1) * limit;
+        const paginatedData = filtered.slice(offset, offset + limit);
+
+        const summary = {
+            total_purchases_amount: filtered.reduce((sum, p) => sum + (Number(p.net_amount) || 0), 0),
+            total_paid_amount: filtered.reduce((sum, p) => sum + (Number(p.amount_paid) || 0), 0),
+            total_due_amount: filtered.reduce((sum, p) => sum + (Number(p.remaining_balance) || 0), 0),
+            active_suppliers_count: new Set(filtered.map(p => p.supplier_id)).size
+        };
+
+        return NextResponse.json({
+            data: paginatedData,
+            pagination: {
+                total,
+                page,
+                limit,
+                totalPages
+            },
+            summary
+        });
     } catch (err) {
         console.error('API GET /api/purchases error:', err);
         return NextResponse.json({ error: err.message }, { status: 500 });
@@ -87,7 +162,11 @@ export async function POST(request) {
                 remaining_balance: remainingBalance,
                 status: 'completed',
                 payment_method: payment_method || 'cash',
-                invoice_date: invoice_date || new Date().toISOString().split('T')[0]
+                invoice_date: invoice_date || (() => {
+                    const d = new Date();
+                    const pad = (n) => String(n).padStart(2, '0');
+                    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+                })()
             }])
             .select()
             .single();

@@ -336,47 +336,117 @@ async function processPullSync() {
     // Apply entire pull transactionally with strict error propagation and rollback
     await runQuery("BEGIN TRANSACTION");
     try {
-        // 1. Categories
+        // 1. Categories (Name-safe upsert)
         if (Array.isArray(data.categories)) {
             for (const c of data.categories) {
-                await runQuery(
-                    `INSERT INTO categories (id, uuid, name, is_pinned, is_deleted)
-                     VALUES (?, ?, ?, ?, ?)
-                     ON CONFLICT(id) DO UPDATE SET
-                         name = excluded.name,
-                         is_pinned = excluded.is_pinned,
-                         is_deleted = excluded.is_deleted`,
-                    [c.id, c.uuid || generateUUID(), c.name, c.is_pinned ? 1 : 0, c.is_deleted ? 1 : 0]
+                if (!c || !c.name) continue;
+                const existing = await getQuery(
+                    `SELECT id FROM categories WHERE LOWER(name) = LOWER(?)`,
+                    [c.name.trim()]
                 );
+                if (existing) {
+                    await runQuery(
+                        `UPDATE categories 
+                         SET is_pinned = ?, is_deleted = ?, uuid = COALESCE(uuid, ?)
+                         WHERE id = ?`,
+                        [c.is_pinned ? 1 : 0, c.is_deleted ? 1 : 0, c.uuid || generateUUID(), existing.id]
+                    );
+                } else {
+                    const idConflict = c.id ? await getQuery(`SELECT id FROM categories WHERE id = ?`, [c.id]) : null;
+                    if (idConflict) {
+                        await runQuery(
+                            `INSERT INTO categories (uuid, name, is_pinned, is_deleted)
+                             VALUES (?, ?, ?, ?)`,
+                            [c.uuid || generateUUID(), c.name.trim(), c.is_pinned ? 1 : 0, c.is_deleted ? 1 : 0]
+                        );
+                    } else {
+                        await runQuery(
+                            `INSERT INTO categories (id, uuid, name, is_pinned, is_deleted)
+                             VALUES (?, ?, ?, ?, ?)
+                             ON CONFLICT(id) DO UPDATE SET
+                                 name = excluded.name,
+                                 is_pinned = excluded.is_pinned,
+                                 is_deleted = excluded.is_deleted`,
+                            [c.id, c.uuid || generateUUID(), c.name.trim(), c.is_pinned ? 1 : 0, c.is_deleted ? 1 : 0]
+                        );
+                    }
+                }
             }
         }
 
-        // 2. Units
+        // 2. Units (Name-safe upsert)
         if (Array.isArray(data.units)) {
             for (const u of data.units) {
-                await runQuery(
-                    `INSERT INTO units (id, uuid, name, symbol, description)
-                     VALUES (?, ?, ?, ?, ?)
-                     ON CONFLICT(id) DO UPDATE SET
-                         name = excluded.name,
-                         symbol = excluded.symbol,
-                         description = excluded.description`,
-                    [u.id, u.uuid || generateUUID(), u.name, u.symbol || u.name, u.description || '']
+                if (!u || !u.name) continue;
+                const existing = await getQuery(
+                    `SELECT id FROM units WHERE LOWER(name) = LOWER(?)`,
+                    [u.name.trim()]
                 );
+                if (existing) {
+                    await runQuery(
+                        `UPDATE units 
+                         SET symbol = ?, description = ?, uuid = COALESCE(uuid, ?)
+                         WHERE id = ?`,
+                        [u.symbol || u.name, u.description || '', u.uuid || generateUUID(), existing.id]
+                    );
+                } else {
+                    const idConflict = u.id ? await getQuery(`SELECT id FROM units WHERE id = ?`, [u.id]) : null;
+                    if (idConflict) {
+                        await runQuery(
+                            `INSERT INTO units (uuid, name, symbol, description)
+                             VALUES (?, ?, ?, ?)`,
+                            [u.uuid || generateUUID(), u.name.trim(), u.symbol || u.name, u.description || '']
+                        );
+                    } else {
+                        await runQuery(
+                            `INSERT INTO units (id, uuid, name, symbol, description)
+                             VALUES (?, ?, ?, ?, ?)
+                             ON CONFLICT(id) DO UPDATE SET
+                                 name = excluded.name,
+                                 symbol = excluded.symbol,
+                                 description = excluded.description`,
+                            [u.id, u.uuid || generateUUID(), u.name.trim(), u.symbol || u.name, u.description || '']
+                        );
+                    }
+                }
             }
         }
 
-        // 3. Packaging Types
+        // 3. Packaging Types (Name-safe upsert preventing SQLITE_CONSTRAINT UNIQUE violations)
         if (Array.isArray(data.packagingTypes)) {
             for (const p of data.packagingTypes) {
-                await runQuery(
-                    `INSERT INTO packaging_types (id, uuid, name, description)
-                     VALUES (?, ?, ?, ?)
-                     ON CONFLICT(id) DO UPDATE SET
-                         name = excluded.name,
-                         description = excluded.description`,
-                    [p.id, p.uuid || generateUUID(), p.name, p.description || '']
+                if (!p || !p.name) continue;
+                const existing = await getQuery(
+                    `SELECT id FROM packaging_types WHERE LOWER(name) = LOWER(?)`,
+                    [p.name.trim()]
                 );
+                if (existing) {
+                    await runQuery(
+                        `UPDATE packaging_types 
+                         SET description = COALESCE(NULLIF(?, ''), description),
+                             uuid = COALESCE(uuid, ?)
+                         WHERE id = ?`,
+                        [p.description || '', p.uuid || generateUUID(), existing.id]
+                    );
+                } else {
+                    const idConflict = p.id ? await getQuery(`SELECT id FROM packaging_types WHERE id = ?`, [p.id]) : null;
+                    if (idConflict) {
+                        await runQuery(
+                            `INSERT INTO packaging_types (uuid, name, description)
+                             VALUES (?, ?, ?)`,
+                            [p.uuid || generateUUID(), p.name.trim(), p.description || '']
+                        );
+                    } else {
+                        await runQuery(
+                            `INSERT INTO packaging_types (id, uuid, name, description)
+                             VALUES (?, ?, ?, ?)
+                             ON CONFLICT(id) DO UPDATE SET
+                                 name = excluded.name,
+                                 description = excluded.description`,
+                            [p.id, p.uuid || generateUUID(), p.name.trim(), p.description || '']
+                        );
+                    }
+                }
             }
         }
 

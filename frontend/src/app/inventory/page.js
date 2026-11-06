@@ -1291,7 +1291,11 @@ export default function InventoryPage() {
                     net_amount: gross,
                     amount_paid: paid,
                     payment_method: inwardPaymentMethod,
-                    invoice_date: new Date().toISOString().split('T')[0]
+                    invoice_date: (() => {
+                        const d = new Date();
+                        const pad = (n) => String(n).padStart(2, '0');
+                        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+                    })()
                 })
             });
 
@@ -1574,7 +1578,7 @@ export default function InventoryPage() {
                 <div className="flex items-center gap-1.5 flex-wrap shrink-0 w-full sm:w-auto">
                     <button
                         onClick={handleOpenAddItemModal}
-                        className="flex-1 sm:flex-initial px-3 py-1.5 sm:py-1 bg-black hover:bg-gray-800 text-white rounded-lg font-bold text-[11px] shadow-2xs transition-all flex items-center justify-center gap-1 cursor-pointer"
+                        className="flex-1 sm:flex-initial px-3.5 py-1.5 sm:py-1.5 bg-[#16A34A] hover:bg-[#15803D] text-white rounded-xl font-bold text-[11px] shadow-2xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                     >
                         <IconPlus className="w-3.5 h-3.5 text-white" />
                         <span>+ Add Item</span>
@@ -1742,7 +1746,7 @@ export default function InventoryPage() {
                                 }}
                                 className={`px-2 py-1 rounded-md transition-all cursor-pointer whitespace-nowrap ${
                                     stockStatusFilter === 'ALL'
-                                        ? 'bg-black text-white font-bold shadow-2xs'
+                                        ? 'bg-[#0B3B7B] text-white font-bold shadow-2xs'
                                         : 'text-gray-600 hover:text-gray-900'
                                 }`}
                             >
@@ -2202,8 +2206,8 @@ export default function InventoryPage() {
                                             onClick={() => setCurrentPage(p)}
                                             className={`min-w-[28px] h-7 px-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                                                 isActive
-                                                    ? 'bg-black text-white shadow-2xs'
-                                                    : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-100 hover:text-gray-900'
+                                                    ? 'bg-[#0B3B7B] text-white shadow-2xs font-bold'
+                                                    : 'bg-white border border-gray-200 text-gray-700 hover:bg-blue-50 hover:text-[#0B3B7B]'
                                             }`}
                                         >
                                             {p}
@@ -2493,7 +2497,7 @@ export default function InventoryPage() {
                                                         <td className="p-2.5">
                                                             <span className={`px-2 py-0.5 rounded text-[10px] font-black whitespace-nowrap ${
                                                                 m.movement_type === 'PURCHASE' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' :
-                                                                m.movement_type === 'SALE' ? 'bg-amber-50 text-[#B8860B] border border-amber-200' :
+                                                                m.movement_type === 'SALE' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
                                                                 m.movement_type === 'DAMAGE' ? 'bg-rose-50 text-rose-700 border border-rose-200' :
                                                                 'bg-amber-50 text-amber-800 border border-amber-200'
                                                             }`}>
@@ -2542,12 +2546,12 @@ export default function InventoryPage() {
             {/* ───────────────────────────────────────────────────────────── */}
             {inwardModalOpen && (
                 <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-[100] p-2 sm:p-4 md:p-6 overflow-y-auto" style={{ zIndex: 100 }}>
-                    <form onSubmit={handleSaveInwardStock} className="bg-white rounded-2xl sm:rounded-3xl max-w-4xl w-full p-3.5 sm:p-6 md:p-7 space-y-4 sm:space-y-5 shadow-2xl border border-[#F3E5AB] max-h-[96vh] sm:max-h-[92vh] flex flex-col">
+                    <form onSubmit={handleSaveInwardStock} className="bg-white rounded-2xl sm:rounded-3xl max-w-4xl w-full p-3.5 sm:p-6 md:p-7 space-y-4 sm:space-y-5 shadow-2xl border border-gray-200 max-h-[96vh] sm:max-h-[92vh] flex flex-col">
                         {/* Header */}
                         <div className="flex justify-between items-start border-b border-gray-100 pb-3 sm:pb-3.5 shrink-0 gap-2">
                             <div className="min-w-0">
                                 <h3 className="font-black text-gray-900 text-base sm:text-lg flex items-center gap-2 truncate">
-                                    <IconBill className="w-5 h-5 text-[#B8860B] shrink-0" />
+                                    <IconBill className="w-5 h-5 text-[#0B3B7B] shrink-0" />
                                     <span className="truncate">Inward Stock from Supplier</span>
                                 </h3>
                                 <p className="text-[11px] sm:text-xs text-gray-500 mt-0.5">
@@ -2557,10 +2561,9 @@ export default function InventoryPage() {
                             <button 
                                 type="button" 
                                 onClick={() => setInwardModalOpen(false)} 
-                                style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                className="btn-black !bg-black !text-white p-1.5 rounded-xl cursor-pointer hover:opacity-90 transition-all shrink-0"
+                                className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-all cursor-pointer shrink-0"
                             >
-                                <IconClose className="w-5 h-5" style={{ color: '#ffffff', stroke: '#ffffff' }} />
+                                <IconClose className="w-5 h-5" />
                             </button>
                         </div>
 
@@ -2571,7 +2574,7 @@ export default function InventoryPage() {
                                 {/* Left Column: Supplier & Invoice Details */}
                                 <div className="space-y-3 bg-gray-50/70 p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-gray-200">
                                     <div className="font-extrabold text-gray-800 text-xs flex items-center gap-1.5">
-                                        <IconSuppliers className="w-4 h-4 text-[#B8860B]" />
+                                        <IconSuppliers className="w-4 h-4 text-[#0B3B7B]" />
                                         <span>Supplier & Invoice Information</span>
                                     </div>
 
@@ -2582,7 +2585,7 @@ export default function InventoryPage() {
                                             required
                                             value={inwardSupplierId}
                                             onChange={(e) => setInwardSupplierId(parseInt(e.target.value))}
-                                            className="w-full p-2 sm:p-2.5 border border-gray-200 rounded-xl font-bold text-xs bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/30"
+                                            className="w-full p-2 sm:p-2.5 border border-gray-200 rounded-xl font-bold text-xs bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#0B3B7B]/20 focus:border-[#0B3B7B]"
                                         >
                                             {suppliers.map(s => (
                                                 <option key={s.id} value={s.id}>
@@ -2601,7 +2604,7 @@ export default function InventoryPage() {
                                             value={inwardInvoiceNo}
                                             onChange={(e) => setInwardInvoiceNo(e.target.value)}
                                             placeholder="e.g. BILL-90184"
-                                            className="w-full p-2 sm:p-2.5 border border-gray-200 rounded-xl font-bold font-mono text-xs bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/30"
+                                            className="w-full p-2 sm:p-2.5 border border-gray-200 rounded-xl font-bold font-mono text-xs bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#0B3B7B]/20 focus:border-[#0B3B7B]"
                                         />
                                     </div>
 
@@ -2622,7 +2625,7 @@ export default function InventoryPage() {
                                 {/* Right Column: Product & Quantity Specifications */}
                                 <div className="space-y-3 bg-gray-50/70 p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-gray-200">
                                     <div className="font-extrabold text-gray-800 text-xs flex items-center gap-1.5">
-                                        <IconInventory className="w-4 h-4 text-[#B8860B]" />
+                                        <IconInventory className="w-4 h-4 text-[#0B3B7B]" />
                                         <span>Product & Quantity Selection</span>
                                     </div>
 
@@ -2641,7 +2644,7 @@ export default function InventoryPage() {
                                                     setInwardPurchasePrice(item.packagings[0].purchase_price || '1000');
                                                 }
                                             }}
-                                            className="w-full p-2 sm:p-2.5 border border-gray-200 rounded-xl font-bold text-xs bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/30"
+                                            className="w-full p-2 sm:p-2.5 border border-gray-200 rounded-xl font-bold text-xs bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#0B3B7B]/20 focus:border-[#0B3B7B]"
                                         >
                                             {stocks.map(s => {
                                                 const sb = formatStockBreakdown(s);
@@ -2662,7 +2665,7 @@ export default function InventoryPage() {
                                                 const currentItem = stocks.find(s => s.variant_id === inwardVariantId);
                                                 const availablePacks = currentItem?.packagings?.length > 0 
                                                     ? currentItem.packagings 
-                                                    : packagingTypes.map(pt => ({ packaging_type_id: pt.id, packaging_name: pt.name, conversion_factor: 1, purchase_price: 0 }));
+                                                     : packagingTypes.map(pt => ({ packaging_type_id: pt.id, packaging_name: pt.name, conversion_factor: 1, purchase_price: 0 }));
                                                 return (
                                                     <select
                                                         value={inwardPackagingId}
@@ -2674,7 +2677,7 @@ export default function InventoryPage() {
                                                                 setInwardPurchasePrice(String(pk.purchase_price));
                                                             }
                                                         }}
-                                                        className="w-full p-2 sm:p-2.5 border border-gray-200 rounded-xl font-bold text-xs bg-white text-[#B8860B] focus:outline-none"
+                                                        className="w-full p-2 sm:p-2.5 border border-gray-200 rounded-xl font-bold text-xs bg-white text-[#0B3B7B] focus:outline-none"
                                                     >
                                                         {availablePacks.map(pk => (
                                                              <option key={pk.packaging_type_id} value={pk.packaging_type_id}>
@@ -2703,7 +2706,7 @@ export default function InventoryPage() {
                                                 value={inwardQuantity}
                                                 onChange={(e) => setInwardQuantity(e.target.value)}
                                                 placeholder="e.g. 10"
-                                                className="w-full p-2 sm:p-2.5 border border-gray-200 rounded-xl font-black text-sm text-[#B8860B] bg-white text-center focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/30"
+                                                className="w-full p-2 sm:p-2.5 border border-gray-200 rounded-xl font-black text-sm text-[#0B3B7B] bg-white text-center focus:outline-none focus:ring-2 focus:ring-[#0B3B7B]/20 focus:border-[#0B3B7B]"
                                             />
                                         </div>
                                     </div>
@@ -2726,7 +2729,7 @@ export default function InventoryPage() {
                                             value={inwardPurchasePrice}
                                             onChange={(e) => setInwardPurchasePrice(e.target.value)}
                                             placeholder="e.g. 1000"
-                                            className="w-full p-2 sm:p-2.5 border border-gray-200 rounded-xl font-black font-mono text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/30"
+                                            className="w-full p-2 sm:p-2.5 border border-gray-200 rounded-xl font-black font-mono text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-[#0B3B7B]/20 focus:border-[#0B3B7B]"
                                         />
                                     </div>
                                 </div>
@@ -2753,50 +2756,50 @@ export default function InventoryPage() {
                                 const projectedStock = formatStockBreakdown({ ...currentItem, current_stock: newOnHand });
 
                                 return (
-                                    <div className="bg-[#FEF9E7] p-3 sm:p-4 md:p-5 rounded-xl sm:rounded-2xl border border-[#F3E5AB] space-y-3 sm:space-y-3.5 text-xs">
-                                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#F3E5AB] pb-2 sm:pb-2.5">
-                                            <span className="font-black text-[#B8860B] uppercase text-xs tracking-wider flex items-center gap-1.5">
-                                                <IconReceipt className="w-4 h-4 text-[#B8860B]" />
+                                    <div className="bg-slate-50 p-3 sm:p-4 md:p-5 rounded-xl sm:rounded-2xl border border-gray-200 space-y-3 sm:space-y-3.5 text-xs">
+                                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 pb-2 sm:pb-2.5">
+                                            <span className="font-black text-[#0B3B7B] uppercase text-xs tracking-wider flex items-center gap-1.5">
+                                                <IconReceipt className="w-4 h-4 text-[#0B3B7B]" />
                                                 <span>Supplier Bill & Stock Inward Summary</span>
                                             </span>
-                                            <span className="font-bold text-xs text-gray-600 bg-white px-2.5 py-1 rounded-lg border border-[#F3E5AB]">
+                                            <span className="font-bold text-xs text-gray-600 bg-white px-2.5 py-1 rounded-lg border border-gray-200">
                                                 1 {packName} = {factor} {unitSymbol}
                                             </span>
                                         </div>
 
                                         {/* 4 Financial KPI Cards */}
                                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 text-center">
-                                            <div className="bg-white p-2 sm:p-3 rounded-xl sm:rounded-2xl border border-[#F3E5AB] shadow-xs">
+                                            <div className="bg-white p-2 sm:p-3 rounded-xl sm:rounded-2xl border border-gray-200 shadow-xs">
                                                 <div className="text-[9.5px] sm:text-[10px] text-gray-500 font-bold uppercase truncate">Rate per {packName}</div>
-                                                <div className="text-xs sm:text-base font-black text-[#B8860B] font-mono mt-0.5 truncate">Rs. {price.toLocaleString()}</div>
+                                                <div className="text-xs sm:text-base font-black text-[#0B3B7B] font-mono mt-0.5 truncate">Rs. {price.toLocaleString()}</div>
                                             </div>
-                                            <div className="bg-white p-2 sm:p-3 rounded-xl sm:rounded-2xl border border-[#F3E5AB] shadow-xs">
+                                            <div className="bg-white p-2 sm:p-3 rounded-xl sm:rounded-2xl border border-gray-200 shadow-xs">
                                                 <div className="text-[9.5px] sm:text-[10px] text-gray-500 font-bold uppercase truncate">Cost per {unitSymbol}</div>
                                                 <div className="text-xs sm:text-base font-black text-blue-700 font-mono mt-0.5 truncate">Rs. {Number(costPerPiece.toFixed(2)).toLocaleString()}</div>
                                             </div>
-                                            <div className="bg-white p-2 sm:p-3 rounded-xl sm:rounded-2xl border border-[#F3E5AB] shadow-xs">
+                                            <div className="bg-white p-2 sm:p-3 rounded-xl sm:rounded-2xl border border-gray-200 shadow-xs">
                                                 <div className="text-[9.5px] sm:text-[10px] text-gray-500 font-bold uppercase truncate">Physical Added</div>
                                                 <div className="text-xs sm:text-base font-black text-emerald-700 mt-0.5 truncate">+{totalPhysicalUnits} {unitSymbol}</div>
                                             </div>
-                                            <div className="bg-white p-2 sm:p-3 rounded-xl sm:rounded-2xl border border-[#F3E5AB] shadow-xs">
+                                            <div className="bg-white p-2 sm:p-3 rounded-xl sm:rounded-2xl border border-gray-200 shadow-xs">
                                                 <div className="text-[9.5px] sm:text-[10px] text-gray-500 font-bold uppercase truncate">Total Bill Value</div>
                                                 <div className="text-xs sm:text-base font-black text-gray-900 font-mono mt-0.5 truncate">Rs. {gross.toLocaleString()}</div>
                                             </div>
                                         </div>
 
                                         {/* Projected Warehouse Balance Banner */}
-                                        <div className="bg-white p-2.5 sm:p-3 rounded-xl sm:rounded-2xl border border-[#F3E5AB] flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                        <div className="bg-white p-2.5 sm:p-3 rounded-xl sm:rounded-2xl border border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                                             <div className="text-xs text-gray-700 font-bold flex items-center gap-1.5">
-                                                <IconInventory className="w-4 h-4 text-[#B8860B] shrink-0" />
+                                                <IconInventory className="w-4 h-4 text-[#0B3B7B] shrink-0" />
                                                 <span>Warehouse Stock After Inward:</span>
                                             </div>
-                                            <div className="font-black text-xs sm:text-sm text-[#B8860B] bg-[#FEF9E7] px-2.5 py-1 rounded-xl border border-[#F3E5AB]">
+                                            <div className="font-black text-xs sm:text-sm text-[#0B3B7B] bg-blue-50 px-2.5 py-1 rounded-xl border border-blue-200">
                                                 {projectedStock.hasBulk ? `${projectedStock.breakdownStr} (Total: ${newOnHand} ${unitSymbol})` : `${newOnHand} ${unitSymbol}`}
                                             </div>
                                         </div>
 
                                         {/* Ledger Impact */}
-                                        <div className="flex flex-wrap justify-between items-center pt-1 text-xs border-t border-[#F3E5AB] gap-1">
+                                        <div className="flex flex-wrap justify-between items-center pt-1 text-xs border-t border-gray-200 gap-1">
                                             <span className="font-bold text-gray-700">Pending Amount Added to Supplier Ledger:</span>
                                             <span className="text-sm sm:text-base font-black text-rose-600 font-mono">
                                                 Rs. {pendingDue.toLocaleString()}
@@ -2807,23 +2810,21 @@ export default function InventoryPage() {
                             })()}
                         </div>
 
-                        {/* Action Buttons: Solid Black Background with White Text */}
+                        {/* Action Buttons */}
                         <div className="flex flex-col-reverse sm:flex-row gap-2 sm:gap-3 pt-3 border-t border-gray-100 shrink-0">
                             <button
                                 type="button"
                                 onClick={() => setInwardModalOpen(false)}
-                                style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                className="btn-black !bg-black !text-white w-full sm:flex-1 py-2.5 sm:py-3 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center hover:opacity-90"
+                                className="w-full sm:flex-1 py-2.5 sm:py-3 rounded-xl font-bold text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all cursor-pointer flex items-center justify-center text-center"
                             >
-                                <span style={{ color: '#ffffff' }}>Cancel</span>
+                                Cancel
                             </button>
                             <button
                                 type="submit"
-                                style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                className="btn-black !bg-black !text-white w-full sm:flex-1 py-2.5 sm:py-3 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 hover:opacity-90"
+                                className="w-full sm:flex-1 py-2.5 sm:py-3 rounded-xl font-bold text-xs bg-[#16A34A] hover:bg-[#15803D] text-white shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
                             >
-                                <IconCheck className="w-4 h-4" style={{ color: '#ffffff', stroke: '#ffffff' }} />
-                                <span style={{ color: '#ffffff' }}>Save & Inward Stock Bill</span>
+                                <IconCheck className="w-4 h-4 text-white" />
+                                <span>Save & Inward Stock Bill</span>
                             </button>
                         </div>
                     </form>
@@ -2835,12 +2836,12 @@ export default function InventoryPage() {
             {/* ───────────────────────────────────────────────────────────── */}
             {addItemModalOpen && (
                 <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-[100] p-2 sm:p-4 md:p-6 overflow-y-auto" style={{ zIndex: 100 }}>
-                    <form onSubmit={handleSaveNewItem} className="bg-white rounded-2xl sm:rounded-3xl max-w-4xl w-full p-3.5 sm:p-6 md:p-7 space-y-4 sm:space-y-5 shadow-2xl border border-[#F3E5AB] max-h-[96vh] sm:max-h-[92vh] flex flex-col">
+                    <form onSubmit={handleSaveNewItem} className="bg-white rounded-2xl sm:rounded-3xl max-w-4xl w-full p-3.5 sm:p-6 md:p-7 space-y-4 sm:space-y-5 shadow-2xl border border-gray-200 max-h-[96vh] sm:max-h-[92vh] flex flex-col">
                         {/* Header */}
                         <div className="flex justify-between items-start border-b border-gray-100 pb-3 sm:pb-3.5 shrink-0 gap-2">
                             <div className="min-w-0">
                                 <h3 className="font-black text-gray-900 text-base sm:text-lg flex items-center gap-2 truncate">
-                                    <IconProducts className="w-5 h-5 text-[#B8860B] shrink-0" />
+                                    <IconProducts className="w-5 h-5 text-[#0B3B7B] shrink-0" />
                                     <span className="truncate">Define Wholesale Product & Packaging Hierarchy</span>
                                 </h3>
                                 <p className="text-[11px] sm:text-xs text-gray-500 mt-0.5">
@@ -2850,10 +2851,9 @@ export default function InventoryPage() {
                             <button 
                                 type="button" 
                                 onClick={() => setAddItemModalOpen(false)} 
-                                style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                className="btn-black !bg-black !text-white p-1.5 rounded-xl cursor-pointer hover:opacity-90 transition-all shrink-0"
+                                className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-all cursor-pointer shrink-0"
                             >
-                                <IconClose className="w-5 h-5" style={{ color: '#ffffff', stroke: '#ffffff' }} />
+                                <IconClose className="w-5 h-5" />
                             </button>
                         </div>
 
@@ -2862,7 +2862,7 @@ export default function InventoryPage() {
                             {/* Section 1: Basic Product Information */}
                             <div className="bg-gray-50/70 p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-gray-200 space-y-3">
                                 <div className="flex flex-wrap items-center justify-between gap-2">
-                                    <div className="text-xs font-black uppercase text-[#B8860B] tracking-wider flex items-center gap-1.5">
+                                    <div className="text-xs font-black uppercase text-[#0B3B7B] tracking-wider flex items-center gap-1.5">
                                         <span>1. Basic Product & Base Unit</span>
                                     </div>
                                     <label className="flex items-center gap-1.5 cursor-pointer select-none bg-amber-50 border border-amber-300 px-2.5 py-1 rounded-xl text-amber-950 font-bold hover:bg-amber-100 transition-colors shadow-2xs">
@@ -2886,7 +2886,7 @@ export default function InventoryPage() {
                                             value={newProductName}
                                             onChange={(e) => setNewProductName(e.target.value)}
                                             placeholder="e.g. Sugar / Lays Chips / Oil Gallon"
-                                            className="w-full p-2.5 border border-gray-200 rounded-xl font-bold bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/30"
+                                            className="w-full p-2.5 border border-gray-200 rounded-xl font-bold bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#0B3B7B]/20 focus:border-[#0B3B7B]"
                                         />
                                     </div>
                                     <div>
@@ -2897,7 +2897,7 @@ export default function InventoryPage() {
                                             value={newVariantName}
                                             onChange={(e) => setNewVariantName(e.target.value)}
                                             placeholder="e.g. 40kg Bag / 50g / 300ml / Standard"
-                                            className="w-full p-2.5 border border-gray-200 rounded-xl font-semibold bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/30"
+                                            className="w-full p-2.5 border border-gray-200 rounded-xl font-semibold bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#0B3B7B]/20 focus:border-[#0B3B7B]"
                                         />
                                     </div>
                                 </div>
@@ -2908,7 +2908,7 @@ export default function InventoryPage() {
                                         <select
                                             value={newCategoryId}
                                             onChange={(e) => setNewCategoryId(parseInt(e.target.value))}
-                                            className="w-full p-2.5 border border-gray-200 rounded-xl font-bold bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/30"
+                                            className="w-full p-2.5 border border-gray-200 rounded-xl font-bold bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#0B3B7B]/20 focus:border-[#0B3B7B]"
                                         >
                                             {categories.map(c => (
                                                 <option key={c.id} value={c.id}>
@@ -2922,7 +2922,7 @@ export default function InventoryPage() {
                                         <select
                                             value={newBaseUnitId}
                                             onChange={(e) => setNewBaseUnitId(parseInt(e.target.value))}
-                                            className="w-full p-2.5 border border-gray-200 rounded-xl font-bold bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/30"
+                                            className="w-full p-2.5 border border-gray-200 rounded-xl font-bold bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#0B3B7B]/20 focus:border-[#0B3B7B]"
                                         >
                                             {units.map(u => (
                                                 <option key={u.id} value={u.id}>
@@ -2939,11 +2939,10 @@ export default function InventoryPage() {
                                         <button
                                             type="button"
                                             onClick={() => setNewBaseBarcode(generateBarcode('896'))}
-                                            style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                            className="btn-black !bg-black !text-white px-2.5 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1.5 cursor-pointer hover:opacity-90"
+                                            className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-[#0B3B7B] hover:bg-[#072B5C] text-white flex items-center gap-1.5 cursor-pointer transition-all"
                                         >
                                             <IconBolt className="w-3 h-3 text-white" />
-                                            <span style={{ color: '#ffffff' }}>Auto Generate</span>
+                                            <span>Auto Generate</span>
                                         </button>
                                     </div>
                                     <div className="flex gap-2">
@@ -2957,11 +2956,10 @@ export default function InventoryPage() {
                                         <button
                                             type="button"
                                             onClick={() => setNewBaseBarcode(generateBarcode('896'))}
-                                            style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                            className="btn-black !bg-black !text-white px-3.5 py-2 rounded-xl font-bold text-xs cursor-pointer flex items-center gap-1 hover:opacity-90"
+                                            className="px-3.5 py-2 rounded-xl font-bold text-xs bg-[#0B3B7B] hover:bg-[#072B5C] text-white cursor-pointer flex items-center gap-1 transition-all"
                                         >
-                                            <IconSync className="w-3.5 h-3.5" style={{ color: '#ffffff', stroke: '#ffffff' }} />
-                                            <span style={{ color: '#ffffff' }}>Regenerate</span>
+                                            <IconSync className="w-3.5 h-3.5 text-white" />
+                                            <span>Regenerate</span>
                                         </button>
                                     </div>
                                 </div>
@@ -2983,22 +2981,22 @@ export default function InventoryPage() {
 
                                 return (
                                     <>
-                                        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-[#F3E5AB] space-y-4 shadow-xs">
+                                        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-gray-200 space-y-4 shadow-xs">
                                             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-2.5">
                                                 <div>
-                                                    <div className="text-xs font-black uppercase text-[#B8860B] tracking-wider flex items-center gap-1.5">
-                                                        <IconLayers className="w-4 h-4 text-[#B8860B]" />
+                                                    <div className="text-xs font-black uppercase text-[#0B3B7B] tracking-wider flex items-center gap-1.5">
+                                                        <IconLayers className="w-4 h-4 text-[#0B3B7B]" />
                                                         <span>2. Wholesale Packaging & Bulk Tiers</span>
                                                     </div>
                                                     <div className="text-[11px] text-gray-500 mt-0.5">
                                                         {hasInnerPackaging ? (
                                                             <div className="flex items-center gap-1.5 flex-wrap">
                                                                 <span className="font-semibold text-gray-700">3-Tier Wholesale Hierarchy:</span>
-                                                                <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-900 border border-amber-200 px-2 py-0.5 rounded-md font-bold text-[10.5px]">
-                                                                    <IconBox className="w-3 h-3 text-amber-700" /> {bulkPackName}
-                                                                    <IconArrowRight className="w-2.5 h-2.5 text-amber-500" />
+                                                                <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-900 border border-blue-200 px-2 py-0.5 rounded-md font-bold text-[10.5px]">
+                                                                    <IconBox className="w-3 h-3 text-[#0B3B7B]" /> {bulkPackName}
+                                                                    <IconArrowRight className="w-2.5 h-2.5 text-blue-500" />
                                                                     <IconPackage className="w-3 h-3 text-blue-700" /> {innerPackName}
-                                                                    <IconArrowRight className="w-2.5 h-2.5 text-amber-500" />
+                                                                    <IconArrowRight className="w-2.5 h-2.5 text-blue-500" />
                                                                     <IconTag className="w-3 h-3 text-gray-700" /> {baseUnitSymbol}
                                                                 </span>
                                                             </div>
@@ -3012,7 +3010,7 @@ export default function InventoryPage() {
                                                         type="checkbox"
                                                         checked={hasCartonPackaging}
                                                         onChange={(e) => setHasCartonPackaging(e.target.checked)}
-                                                        className="w-4 h-4 text-[#B8860B] rounded focus:ring-0 cursor-pointer"
+                                                        className="w-4 h-4 text-[#0B3B7B] rounded focus:ring-0 cursor-pointer"
                                                     />
                                                     <span className="font-bold text-gray-800 text-xs">Enable Wholesale Bulk</span>
                                                 </label>
@@ -3021,28 +3019,28 @@ export default function InventoryPage() {
                                             {hasCartonPackaging ? (
                                                 <div className="space-y-4 pt-1">
                                                     {/* 3-Tier Multi-Packaging Toggle */}
-                                                    <div className="bg-gradient-to-r from-amber-50 to-orange-50/50 p-3 rounded-2xl border border-amber-200 flex flex-wrap items-center justify-between gap-2">
+                                                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50/50 p-3 rounded-2xl border border-blue-200 flex flex-wrap items-center justify-between gap-2">
                                                         <div className="flex items-center gap-2.5">
-                                                            <div className="w-8 h-8 rounded-xl bg-amber-100 flex items-center justify-center text-amber-800 shrink-0 border border-amber-200">
-                                                                <IconLayers className="w-4 h-4 text-amber-800" />
+                                                            <div className="w-8 h-8 rounded-xl bg-blue-100 flex items-center justify-center text-blue-800 shrink-0 border border-blue-200">
+                                                                <IconLayers className="w-4 h-4 text-blue-800" />
                                                             </div>
                                                             <div>
-                                                                <span className="font-extrabold text-amber-950 text-xs inline-flex items-center gap-1.5 flex-wrap">
+                                                                <span className="font-extrabold text-blue-950 text-xs inline-flex items-center gap-1.5 flex-wrap">
                                                                     <span>3-Tier Packaging Hierarchy</span>
-                                                                    <span className="inline-flex items-center gap-1 text-[10.5px] font-bold text-amber-800 bg-amber-200/60 px-2 py-0.5 rounded-md">
+                                                                    <span className="inline-flex items-center gap-1 text-[10.5px] font-bold text-blue-800 bg-blue-200/60 px-2 py-0.5 rounded-md">
                                                                         <span>{bulkPackName}</span>
-                                                                        <IconArrowRight className="w-2.5 h-2.5 text-amber-700 inline" />
+                                                                        <IconArrowRight className="w-2.5 h-2.5 text-blue-700 inline" />
                                                                         <span>{innerPackName}s</span>
-                                                                        <IconArrowRight className="w-2.5 h-2.5 text-amber-700 inline" />
+                                                                        <IconArrowRight className="w-2.5 h-2.5 text-blue-700 inline" />
                                                                         <span>{baseUnitSymbol}</span>
                                                                     </span>
                                                                 </span>
-                                                                <p className="text-[10.5px] text-amber-800">
+                                                                <p className="text-[10.5px] text-blue-800">
                                                                     Enable when {bulkPackName} contains multiple {innerPackName}s, and each {innerPackName} contains {baseUnitSymbol}
                                                                 </p>
                                                             </div>
                                                         </div>
-                                                        <label className="flex items-center gap-2 cursor-pointer bg-white px-3 py-1.5 rounded-xl border border-amber-300 shadow-2xs">
+                                                        <label className="flex items-center gap-2 cursor-pointer bg-white px-3 py-1.5 rounded-xl border border-blue-300 shadow-2xs">
                                                             <input
                                                                 type="checkbox"
                                                                 checked={hasInnerPackaging}
@@ -3074,7 +3072,7 @@ export default function InventoryPage() {
                                                                         }
                                                                     }
                                                                 }}
-                                                                className="w-4 h-4 text-[#B8860B] rounded focus:ring-0 cursor-pointer"
+                                                                className="w-4 h-4 text-[#0B3B7B] rounded focus:ring-0 cursor-pointer"
                                                             />
                                                             <span className="font-extrabold text-gray-900 text-xs">Has Inner {innerPackName}s?</span>
                                                         </label>
@@ -3084,7 +3082,7 @@ export default function InventoryPage() {
                                                     {hasInnerPackaging ? (
                                                         <div className="space-y-3">
                                                             {/* Tier 1 & 2 Units Setup */}
-                                                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 bg-amber-50/40 p-3.5 rounded-2xl border border-amber-200">
+                                                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 bg-blue-50/40 p-3.5 rounded-2xl border border-blue-200">
                                                                 <div>
                                                                     <label className="block font-bold text-gray-700 mb-1">Outer Bulk Unit</label>
                                                                     <select
@@ -3108,7 +3106,7 @@ export default function InventoryPage() {
                                                                         value={newCartonPacketsCount}
                                                                         onChange={(e) => handleCartonPacketsCountChange(e.target.value)}
                                                                         placeholder="4"
-                                                                        className="w-full p-2 border border-gray-200 rounded-xl font-black text-xs text-[#B8860B] bg-white text-center"
+                                                                        className="w-full p-2 border border-gray-200 rounded-xl font-black text-xs text-[#0B3B7B] bg-white text-center"
                                                                     />
                                                                 </div>
                                                                 <div>
@@ -3134,17 +3132,17 @@ export default function InventoryPage() {
                                                                         value={newInnerPiecesCount}
                                                                         onChange={(e) => handleInnerPiecesCountChange(e.target.value)}
                                                                         placeholder="50"
-                                                                        className="w-full p-2 border border-gray-200 rounded-xl font-black text-xs text-[#B8860B] bg-white text-center"
+                                                                        className="w-full p-2 border border-gray-200 rounded-xl font-black text-xs text-[#0B3B7B] bg-white text-center"
                                                                     />
                                                                 </div>
                                                             </div>
 
                                                             {/* Formula Visual Banner */}
-                                                            <div className="bg-white p-2.5 sm:p-3 rounded-xl border border-amber-300 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between text-xs gap-1.5 sm:gap-2">
+                                                            <div className="bg-white p-2.5 sm:p-3 rounded-xl border border-blue-200 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between text-xs gap-1.5 sm:gap-2">
                                                                 <div className="font-extrabold text-gray-800 flex items-center gap-1.5 flex-wrap">
-                                                                    <IconBox className="w-4 h-4 text-[#B8860B] shrink-0" />
+                                                                    <IconBox className="w-4 h-4 text-[#0B3B7B] shrink-0" />
                                                                     <span>Hierarchy Formula:</span>
-                                                                    <span className="text-[#B8860B] font-black">
+                                                                    <span className="text-[#0B3B7B] font-black">
                                                                         1 {bulkPackName} = {newCartonPacketsCount || 4} {innerPackName}s = {totalCartonPieces} {baseUnitSymbol}
                                                                     </span>
                                                                 </div>
@@ -3159,13 +3157,13 @@ export default function InventoryPage() {
                                                                 <div className="p-3 bg-gray-50/80 rounded-xl border border-gray-200">
                                                                     <div className="flex justify-between items-center mb-1">
                                                                         <label className="font-bold text-gray-700 text-xs flex items-center gap-1">
-                                                                            <IconBox className="w-3.5 h-3.5 text-amber-700" />
+                                                                            <IconBox className="w-3.5 h-3.5 text-blue-700" />
                                                                             <span>Outer {bulkPackName} Barcode</span>
                                                                         </label>
                                                                         <button
                                                                             type="button"
                                                                             onClick={() => setNewCartonBarcode(generateBarcode('897'))}
-                                                                            className="px-2 py-0.5 rounded text-[10px] font-bold bg-black text-white cursor-pointer hover:opacity-90 flex items-center gap-1"
+                                                                            className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#0B3B7B] text-white cursor-pointer hover:bg-[#072B5C] flex items-center gap-1"
                                                                         >
                                                                             <IconBolt className="w-2.5 h-2.5 text-white" />
                                                                             <span>Auto</span>
@@ -3190,7 +3188,7 @@ export default function InventoryPage() {
                                                                         <button
                                                                             type="button"
                                                                             onClick={() => setNewInnerBarcode(generateBarcode('898'))}
-                                                                            className="px-2 py-0.5 rounded text-[10px] font-bold bg-black text-white cursor-pointer hover:opacity-90 flex items-center gap-1"
+                                                                            className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#0B3B7B] text-white cursor-pointer hover:bg-[#072B5C] flex items-center gap-1"
                                                                         >
                                                                             <IconBolt className="w-2.5 h-2.5 text-white" />
                                                                             <span>Auto</span>
@@ -3209,10 +3207,10 @@ export default function InventoryPage() {
                                                             {/* 3-Tier Synchronized Pricing Cards */}
                                                             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                                                 {/* 1. Carton Pricing */}
-                                                                <div className="p-3 bg-amber-50/50 rounded-2xl border border-amber-200 space-y-2">
+                                                                <div className="p-3 bg-blue-50/50 rounded-2xl border border-blue-200 space-y-2">
                                                                     <div className="flex justify-between items-center">
-                                                                        <span className="font-black text-xs text-amber-900 flex items-center gap-1.5">
-                                                                            <IconBox className="w-3.5 h-3.5 text-amber-800" />
+                                                                        <span className="font-black text-xs text-blue-900 flex items-center gap-1.5">
+                                                                            <IconBox className="w-3.5 h-3.5 text-blue-800" />
                                                                             <span>{bulkPackName} (x{totalCartonPieces})</span>
                                                                         </span>
                                                                         {parseFloat(newCartonSalePrice) > parseFloat(newCartonBuyPrice) && (
@@ -3248,10 +3246,10 @@ export default function InventoryPage() {
                                                                 </div>
 
                                                                 {/* 2. Packet Pricing */}
-                                                                <div className="p-3 bg-blue-50/50 rounded-2xl border border-blue-200 space-y-2">
+                                                                <div className="p-3 bg-indigo-50/50 rounded-2xl border border-indigo-200 space-y-2">
                                                                     <div className="flex justify-between items-center">
-                                                                        <span className="font-black text-xs text-blue-900 flex items-center gap-1.5">
-                                                                            <IconPackage className="w-3.5 h-3.5 text-blue-800" />
+                                                                        <span className="font-black text-xs text-indigo-900 flex items-center gap-1.5">
+                                                                            <IconPackage className="w-3.5 h-3.5 text-indigo-800" />
                                                                             <span>{innerPackName} (x{newInnerPiecesCount || 50})</span>
                                                                         </span>
                                                                         {parseFloat(newInnerSalePrice) > parseFloat(newInnerBuyPrice) && (
@@ -3331,7 +3329,7 @@ export default function InventoryPage() {
                                                                 <button
                                                                     type="button"
                                                                     onClick={handleCalculatePieceFromCarton}
-                                                                    className="w-full sm:w-auto px-3 py-1.5 rounded-xl font-bold text-[11px] sm:text-xs bg-black text-white hover:opacity-90 flex items-center justify-center gap-1.5 cursor-pointer shadow-xs text-center"
+                                                                    className="w-full sm:w-auto px-3 py-1.5 rounded-xl font-bold text-[11px] sm:text-xs bg-[#0B3B7B] hover:bg-[#072B5C] text-white flex items-center justify-center gap-1.5 cursor-pointer shadow-xs text-center"
                                                                 >
                                                                     <IconBolt className="w-3.5 h-3.5 text-white shrink-0" />
                                                                     <span>Auto-Calculate {innerPackName} & {baseUnitSymbol} from {bulkPackName}</span>
@@ -3339,7 +3337,7 @@ export default function InventoryPage() {
                                                                 <button
                                                                     type="button"
                                                                     onClick={handleCalculateCartonFromPiece}
-                                                                    className="w-full sm:w-auto px-3 py-1.5 rounded-xl font-bold text-[11px] sm:text-xs bg-slate-800 text-white hover:opacity-90 flex items-center justify-center gap-1.5 cursor-pointer shadow-xs text-center"
+                                                                    className="w-full sm:w-auto px-3 py-1.5 rounded-xl font-bold text-[11px] sm:text-xs bg-slate-700 hover:bg-slate-800 text-white flex items-center justify-center gap-1.5 cursor-pointer shadow-xs text-center"
                                                                 >
                                                                     <IconBolt className="w-3.5 h-3.5 text-white shrink-0" />
                                                                     <span>Auto-Calculate {bulkPackName} from {baseUnitSymbol}</span>
@@ -3349,7 +3347,7 @@ export default function InventoryPage() {
                                                     ) : (
                                                         /* Standard 2-Tier: Bulk Carton + Piece */
                                                         <div className="space-y-4">
-                                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-amber-50/50 p-3.5 rounded-2xl border border-amber-200">
+                                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-blue-50/40 p-3.5 rounded-2xl border border-blue-200">
                                                                 <div>
                                                                     <label className="block font-bold text-gray-700 mb-1">Bulk Packaging Type</label>
                                                                     <select
@@ -3373,7 +3371,7 @@ export default function InventoryPage() {
                                                                         value={newConversionFactor}
                                                                         onChange={(e) => handleConversionFactorChange(e.target.value)}
                                                                         placeholder="4"
-                                                                        className="w-full p-2.5 border border-gray-200 rounded-xl font-black text-sm text-[#B8860B] bg-white text-center"
+                                                                        className="w-full p-2.5 border border-gray-200 rounded-xl font-black text-sm text-[#0B3B7B] bg-white text-center"
                                                                     />
                                                                     <span className="text-[10px] text-gray-500 font-medium mt-1 block">
                                                                         1 {bulkPackName} = {newConversionFactor || 1} {baseUnitName}
@@ -3385,17 +3383,16 @@ export default function InventoryPage() {
                                                             <div>
                                                                 <div className="flex justify-between items-center mb-1">
                                                                     <label className="font-bold text-gray-700 flex items-center gap-1">
-                                                                        <IconBox className="w-3.5 h-3.5 text-amber-700" />
+                                                                        <IconBox className="w-3.5 h-3.5 text-blue-700" />
                                                                         <span>Bulk / {bulkPackName} Barcode (Outer {bulkPackName})</span>
                                                                     </label>
                                                                     <button
                                                                         type="button"
                                                                         onClick={() => setNewCartonBarcode(generateBarcode('897'))}
-                                                                        style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                                                        className="btn-black !bg-black !text-white px-2.5 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1.5 cursor-pointer hover:opacity-90"
+                                                                        className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-[#0B3B7B] hover:bg-[#072B5C] text-white flex items-center gap-1.5 cursor-pointer"
                                                                     >
                                                                         <IconBolt className="w-3 h-3 text-white" />
-                                                                        <span style={{ color: '#ffffff' }}>Auto Generate</span>
+                                                                        <span>Auto Generate</span>
                                                                     </button>
                                                                 </div>
                                                                 <div className="flex gap-2">
@@ -3409,11 +3406,10 @@ export default function InventoryPage() {
                                                                     <button
                                                                         type="button"
                                                                         onClick={() => setNewCartonBarcode(generateBarcode('897'))}
-                                                                        style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                                                        className="btn-black !bg-black !text-white px-3.5 py-2 rounded-xl font-bold text-xs cursor-pointer flex items-center gap-1 hover:opacity-90"
+                                                                        className="px-3.5 py-2 rounded-xl font-bold text-xs bg-[#0B3B7B] hover:bg-[#072B5C] text-white cursor-pointer flex items-center gap-1"
                                                                     >
-                                                                        <IconSync className="w-3.5 h-3.5" style={{ color: '#ffffff', stroke: '#ffffff' }} />
-                                                                        <span style={{ color: '#ffffff' }}>Regenerate</span>
+                                                                        <IconSync className="w-3.5 h-3.5 text-white" />
+                                                                        <span>Regenerate</span>
                                                                     </button>
                                                                 </div>
                                                             </div>
@@ -3422,7 +3418,7 @@ export default function InventoryPage() {
                                                             <div className="p-3.5 bg-gray-50/80 rounded-2xl border border-gray-200 space-y-2.5">
                                                                 <div className="flex justify-between items-center">
                                                                     <span className="font-extrabold text-gray-800 text-xs flex items-center gap-1.5">
-                                                                        <IconBox className="w-3.5 h-3.5 text-[#B8860B]" />
+                                                                        <IconBox className="w-3.5 h-3.5 text-[#0B3B7B]" />
                                                                         <span>Bulk / {bulkPackName} Pricing (Per {bulkPackName})</span>
                                                                     </span>
                                                                     {parseFloat(newCartonSalePrice) > parseFloat(newCartonBuyPrice) && (
@@ -3463,11 +3459,10 @@ export default function InventoryPage() {
                                                                     <button
                                                                         type="button"
                                                                         onClick={handleCalculatePieceFromCarton}
-                                                                        style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                                                        className="btn-black !bg-black !text-white px-3.5 py-1.5 rounded-xl font-bold text-xs shadow-md cursor-pointer flex items-center gap-1.5 transition-all hover:opacity-90"
+                                                                        className="px-3.5 py-1.5 rounded-xl font-bold text-xs bg-[#0B3B7B] hover:bg-[#072B5C] text-white shadow-xs cursor-pointer flex items-center gap-1.5 transition-all"
                                                                     >
                                                                         <IconBolt className="w-3.5 h-3.5 text-white" />
-                                                                        <span style={{ color: '#ffffff' }}>
+                                                                        <span>
                                                                             Auto-Calculate {baseUnitSymbol} Rates
                                                                         </span>
                                                                     </button>
@@ -3555,17 +3550,17 @@ export default function InventoryPage() {
                                         </div>
 
                                         {/* Section 3: Live Wholesale Preview Summary */}
-                                        <div className="bg-[#FEF9E7] p-4 sm:p-5 rounded-2xl border border-[#F3E5AB] space-y-2.5">
+                                        <div className="bg-slate-50 p-4 sm:p-5 rounded-2xl border border-gray-200 space-y-2.5">
                                             <div className="text-[11px] uppercase font-black text-gray-600 tracking-wider flex items-center gap-1.5">
-                                                <IconReceipt className="w-4 h-4 text-[#B8860B]" />
+                                                <IconReceipt className="w-4 h-4 text-[#0B3B7B]" />
                                                 <span>Product Summary Preview</span>
                                             </div>
                                             <div className="space-y-2">
                                                 {hasCartonPackaging ? (
                                                     <>
-                                                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center text-xs bg-white p-2.5 rounded-xl border border-[#F3E5AB] gap-1 sm:gap-2">
-                                                            <span className="font-bold text-[#B8860B] flex items-center gap-1.5">
-                                                                <IconBox className="w-4 h-4 text-[#B8860B] shrink-0" />
+                                                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center text-xs bg-white p-2.5 rounded-xl border border-gray-200 gap-1 sm:gap-2">
+                                                            <span className="font-bold text-[#0B3B7B] flex items-center gap-1.5">
+                                                                <IconBox className="w-4 h-4 text-[#0B3B7B] shrink-0" />
                                                                 <span>1 {bulkPackName} ({totalCartonPieces} {baseUnitName})</span>
                                                             </span>
                                                             <span className="font-semibold text-gray-700">
@@ -3583,7 +3578,7 @@ export default function InventoryPage() {
                                                                 </span>
                                                             </div>
                                                         )}
-                                                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center text-xs bg-white p-2.5 rounded-xl border border-[#F3E5AB] gap-1 sm:gap-2">
+                                                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center text-xs bg-white p-2.5 rounded-xl border border-gray-200 gap-1 sm:gap-2">
                                                             <span className="font-bold text-gray-800 flex items-center gap-1.5">
                                                                 <IconTag className="w-4 h-4 text-gray-600 shrink-0" />
                                                                 <span>1 {baseUnitSymbol} (Loose Piece)</span>
@@ -3594,9 +3589,9 @@ export default function InventoryPage() {
                                                         </div>
                                                     </>
                                                 ) : (
-                                                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center text-xs bg-white p-2.5 rounded-xl border border-[#F3E5AB] gap-1 sm:gap-2">
-                                                        <span className="font-bold text-[#B8860B] flex items-center gap-1.5">
-                                                            <IconTag className="w-4 h-4 text-[#B8860B] shrink-0" />
+                                                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center text-xs bg-white p-2.5 rounded-xl border border-gray-200 gap-1 sm:gap-2">
+                                                        <span className="font-bold text-[#0B3B7B] flex items-center gap-1.5">
+                                                            <IconTag className="w-4 h-4 text-[#0B3B7B] shrink-0" />
                                                             <span>1 {baseUnitName} (Standalone)</span>
                                                         </span>
                                                         <span className="font-semibold text-gray-700">
@@ -3604,7 +3599,7 @@ export default function InventoryPage() {
                                                         </span>
                                                     </div>
                                                 )}
-                                                <div className="pt-2 border-t border-[#F3E5AB] flex flex-col sm:flex-row justify-between items-start sm:items-center text-xs text-gray-700 gap-2 bg-[#FCF8E3]/60 p-2.5 rounded-xl border border-[#F3E5AB]">
+                                                <div className="pt-2 border-t border-gray-200 flex flex-col sm:flex-row justify-between items-start sm:items-center text-xs text-gray-700 gap-2 bg-blue-50/50 p-2.5 rounded-xl border border-blue-200">
                                                     <div>
                                                         <div className="font-bold text-gray-900 flex items-center gap-1.5">
                                                             <span>Opening Warehouse Stock:</span>
@@ -3622,7 +3617,7 @@ export default function InventoryPage() {
                                                             value={newInitialStock}
                                                             onChange={(e) => setNewInitialStock(e.target.value)}
                                                             placeholder="0"
-                                                            className="w-24 px-2.5 py-1.5 bg-white border border-gray-300 focus:border-[#B8860B] focus:ring-1 focus:ring-[#B8860B] rounded-lg text-right font-black text-sm text-gray-900 shadow-2xs outline-none"
+                                                            className="w-24 px-2.5 py-1.5 bg-white border border-gray-300 focus:border-[#0B3B7B] focus:ring-1 focus:ring-[#0B3B7B] rounded-lg text-right font-black text-sm text-gray-900 shadow-2xs outline-none"
                                                         />
                                                         <span className="font-bold text-xs text-gray-600 uppercase font-mono">{baseUnitName}</span>
                                                     </div>
@@ -3634,23 +3629,21 @@ export default function InventoryPage() {
                             })()}
                         </div>
 
-                        {/* Modal Action Buttons: Solid Black Background with White Text */}
+                        {/* Modal Action Buttons */}
                         <div className="flex flex-col-reverse sm:flex-row gap-2 sm:gap-3 pt-3 border-t border-gray-100 shrink-0">
                             <button
                                 type="button"
                                 onClick={() => setAddItemModalOpen(false)}
-                                style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                className="btn-black !bg-black !text-white w-full sm:flex-1 py-2.5 sm:py-3 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center hover:opacity-90"
+                                className="w-full sm:flex-1 py-2.5 sm:py-3 rounded-xl font-bold text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all cursor-pointer flex items-center justify-center text-center"
                             >
-                                <span style={{ color: '#ffffff' }}>Cancel</span>
+                                Cancel
                             </button>
                             <button
                                 type="submit"
-                                style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                className="btn-black !bg-black !text-white w-full sm:flex-1 py-2.5 sm:py-3 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 hover:opacity-90"
+                                className="w-full sm:flex-1 py-2.5 sm:py-3 rounded-xl font-bold text-xs bg-[#16A34A] hover:bg-[#15803D] text-white shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
                             >
-                                <IconCheck className="w-4 h-4" style={{ color: '#ffffff', stroke: '#ffffff' }} />
-                                <span style={{ color: '#ffffff' }}>Save Product Item</span>
+                                <IconCheck className="w-4 h-4 text-white" />
+                                <span>Save Product Item</span>
                             </button>
                         </div>
                     </form>
@@ -3677,10 +3670,9 @@ export default function InventoryPage() {
                             <button 
                                 type="button" 
                                 onClick={() => setEditItemModalOpen(false)} 
-                                style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                className="btn-black !bg-black !text-white p-1.5 rounded-xl cursor-pointer hover:opacity-90 transition-all shrink-0"
+                                className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-all cursor-pointer shrink-0"
                             >
-                                <IconClose className="w-5 h-5" style={{ color: '#ffffff', stroke: '#ffffff' }} />
+                                <IconClose className="w-5 h-5" />
                             </button>
                         </div>
 
@@ -4013,7 +4005,7 @@ export default function InventoryPage() {
                                                                         <button
                                                                             type="button"
                                                                             onClick={() => setEditCartonBarcode(generateBarcode('897'))}
-                                                                            className="px-2 py-0.5 rounded text-[10px] font-bold bg-black text-white cursor-pointer hover:opacity-90 flex items-center gap-1"
+                                                                            className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#0B3B7B] text-white cursor-pointer hover:bg-[#072B5C] flex items-center gap-1"
                                                                         >
                                                                             <IconBolt className="w-2.5 h-2.5 text-white" />
                                                                             <span>Auto</span>
@@ -4037,7 +4029,7 @@ export default function InventoryPage() {
                                                                         <button
                                                                             type="button"
                                                                             onClick={() => setEditInnerBarcode(generateBarcode('898'))}
-                                                                            className="px-2 py-0.5 rounded text-[10px] font-bold bg-black text-white cursor-pointer hover:opacity-90 flex items-center gap-1"
+                                                                            className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#0B3B7B] text-white cursor-pointer hover:bg-[#072B5C] flex items-center gap-1"
                                                                         >
                                                                             <IconBolt className="w-2.5 h-2.5 text-white" />
                                                                             <span>Auto</span>
@@ -4178,7 +4170,7 @@ export default function InventoryPage() {
                                                                 <button
                                                                     type="button"
                                                                     onClick={handleEditCalculatePieceFromCarton}
-                                                                    className="w-full sm:w-auto px-3 py-1.5 rounded-xl font-bold text-[11px] sm:text-xs bg-black text-white hover:opacity-90 flex items-center justify-center gap-1.5 cursor-pointer shadow-xs text-center"
+                                                                    className="w-full sm:w-auto px-3 py-1.5 rounded-xl font-bold text-[11px] sm:text-xs bg-[#0B3B7B] hover:bg-[#072B5C] text-white flex items-center justify-center gap-1.5 cursor-pointer shadow-xs text-center"
                                                                 >
                                                                     <IconBolt className="w-3.5 h-3.5 text-white shrink-0" />
                                                                     <span>Auto-Calculate {innerPackName} & {baseUnitSymbol} from {bulkPackName}</span>
@@ -4186,7 +4178,7 @@ export default function InventoryPage() {
                                                                 <button
                                                                     type="button"
                                                                     onClick={handleEditCalculateCartonFromPiece}
-                                                                    className="w-full sm:w-auto px-3 py-1.5 rounded-xl font-bold text-[11px] sm:text-xs bg-slate-800 text-white hover:opacity-90 flex items-center justify-center gap-1.5 cursor-pointer shadow-xs text-center"
+                                                                    className="w-full sm:w-auto px-3 py-1.5 rounded-xl font-bold text-[11px] sm:text-xs bg-slate-700 hover:bg-slate-800 text-white flex items-center justify-center gap-1.5 cursor-pointer shadow-xs text-center"
                                                                 >
                                                                     <IconBolt className="w-3.5 h-3.5 text-white shrink-0" />
                                                                     <span>Auto-Calculate {bulkPackName} from {baseUnitSymbol}</span>
@@ -4240,7 +4232,7 @@ export default function InventoryPage() {
                                                                         <button
                                                                             type="button"
                                                                             onClick={() => setEditCartonBarcode(generateBarcode('897'))}
-                                                                            className="px-2 py-0.5 rounded text-[10px] font-bold bg-black text-white cursor-pointer hover:opacity-90 flex items-center gap-1"
+                                                                            className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#0B3B7B] text-white cursor-pointer hover:bg-[#072B5C] flex items-center gap-1"
                                                                         >
                                                                             <IconBolt className="w-2.5 h-2.5 text-white" />
                                                                             <span>Auto</span>
@@ -4286,7 +4278,7 @@ export default function InventoryPage() {
                                                                     <button
                                                                         type="button"
                                                                         onClick={handleEditCalculatePieceFromCarton}
-                                                                        className="px-3.5 py-1.5 rounded-xl font-bold text-xs shadow-xs cursor-pointer flex items-center gap-1.5 transition-all bg-black text-white hover:opacity-90"
+                                                                        className="px-3.5 py-1.5 rounded-xl font-bold text-xs shadow-xs cursor-pointer flex items-center gap-1.5 transition-all bg-[#0B3B7B] text-white hover:bg-[#072B5C]"
                                                                     >
                                                                         <IconBolt className="w-3.5 h-3.5 text-white" />
                                                                         <span>Auto-Calculate {baseUnitSymbol} Rates</span>
@@ -4365,17 +4357,17 @@ export default function InventoryPage() {
                                         </div>
 
                                         {/* Section 3: Live Wholesale Preview Summary */}
-                                        <div className="bg-[#FEF9E7] p-4 sm:p-5 rounded-2xl border border-[#F3E5AB] space-y-2.5 mt-3">
+                                        <div className="bg-slate-50 p-4 sm:p-5 rounded-2xl border border-gray-200 space-y-2.5 mt-3">
                                             <div className="text-[11px] uppercase font-black text-gray-600 tracking-wider flex items-center gap-1.5">
-                                                <IconReceipt className="w-4 h-4 text-[#B8860B]" />
+                                                <IconReceipt className="w-4 h-4 text-[#0B3B7B]" />
                                                 <span>Product Summary Preview</span>
                                             </div>
                                             <div className="space-y-2">
                                                 {editHasCartonPackaging ? (
                                                     <>
-                                                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center text-xs bg-white p-2.5 rounded-xl border border-[#F3E5AB] gap-1 sm:gap-2">
-                                                            <span className="font-bold text-[#B8860B] flex items-center gap-1.5">
-                                                                <IconBox className="w-4 h-4 text-[#B8860B] shrink-0" />
+                                                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center text-xs bg-white p-2.5 rounded-xl border border-gray-200 gap-1 sm:gap-2">
+                                                            <span className="font-bold text-[#0B3B7B] flex items-center gap-1.5">
+                                                                <IconBox className="w-4 h-4 text-[#0B3B7B] shrink-0" />
                                                                 <span>1 {bulkPackName} ({totalCartonPieces} {baseUnitName})</span>
                                                             </span>
                                                             <span className="font-semibold text-gray-700">
@@ -4393,7 +4385,7 @@ export default function InventoryPage() {
                                                                 </span>
                                                             </div>
                                                         )}
-                                                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center text-xs bg-white p-2.5 rounded-xl border border-[#F3E5AB] gap-1 sm:gap-2">
+                                                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center text-xs bg-white p-2.5 rounded-xl border border-gray-200 gap-1 sm:gap-2">
                                                             <span className="font-bold text-gray-800 flex items-center gap-1.5">
                                                                 <IconTag className="w-4 h-4 text-gray-600 shrink-0" />
                                                                 <span>1 {baseUnitSymbol} (Loose Piece)</span>
@@ -4404,9 +4396,9 @@ export default function InventoryPage() {
                                                         </div>
                                                     </>
                                                 ) : (
-                                                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center text-xs bg-white p-2.5 rounded-xl border border-[#F3E5AB] gap-1 sm:gap-2">
-                                                        <span className="font-bold text-[#B8860B] flex items-center gap-1.5">
-                                                            <IconTag className="w-4 h-4 text-[#B8860B] shrink-0" />
+                                                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center text-xs bg-white p-2.5 rounded-xl border border-gray-200 gap-1 sm:gap-2">
+                                                        <span className="font-bold text-[#0B3B7B] flex items-center gap-1.5">
+                                                            <IconTag className="w-4 h-4 text-[#0B3B7B] shrink-0" />
                                                             <span>1 {baseUnitName} (Standalone)</span>
                                                         </span>
                                                         <span className="font-semibold text-gray-700">
@@ -4426,17 +4418,16 @@ export default function InventoryPage() {
                             <button
                                 type="button"
                                 onClick={() => setEditItemModalOpen(false)}
-                                className="w-full sm:flex-1 py-2.5 sm:py-3 rounded-xl font-bold text-xs border border-gray-300 text-gray-700 hover:bg-gray-100 transition-all cursor-pointer flex items-center justify-center text-center"
+                                className="w-full sm:flex-1 py-2.5 sm:py-3 rounded-xl font-bold text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all cursor-pointer flex items-center justify-center text-center"
                             >
                                 Cancel
                             </button>
                             <button
                                 type="submit"
-                                style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                className="btn-black !bg-black !text-white w-full sm:flex-1 py-2.5 sm:py-3 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 hover:opacity-90"
+                                className="w-full sm:flex-1 py-2.5 sm:py-3 rounded-xl font-bold text-xs bg-[#0B3B7B] hover:bg-[#072B5C] text-white shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
                             >
-                                <IconCheck className="w-4 h-4" style={{ color: '#ffffff', stroke: '#ffffff' }} />
-                                <span style={{ color: '#ffffff' }}>Update Product Item</span>
+                                <IconCheck className="w-4 h-4 text-white" />
+                                <span>Update Product Item</span>
                             </button>
                         </div>
                     </form>
@@ -4448,10 +4439,10 @@ export default function InventoryPage() {
             {/* ───────────────────────────────────────────────────────────── */}
             {addSupplierModalOpen && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[70] p-2.5 sm:p-4 overflow-y-auto">
-                    <form onSubmit={handleSaveSupplier} className="bg-white rounded-2xl max-w-md w-full p-4 sm:p-6 space-y-3.5 sm:space-y-4 shadow-2xl border border-[#F3E5AB] max-h-[94vh] flex flex-col">
+                    <form onSubmit={handleSaveSupplier} className="bg-white rounded-2xl max-w-md w-full p-4 sm:p-6 space-y-3.5 sm:space-y-4 shadow-2xl border border-gray-200 max-h-[94vh] flex flex-col">
                         <div className="flex justify-between items-center border-b border-gray-100 pb-3 shrink-0">
                             <h3 className="font-black text-gray-900 text-base flex items-center gap-2">
-                                <IconSuppliers className="w-5 h-5 text-[#B8860B]" />
+                                <IconSuppliers className="w-5 h-5 text-[#0B3B7B]" />
                                 <span>Register New Supplier</span>
                             </h3>
                             <button type="button" onClick={() => setAddSupplierModalOpen(false)} className="text-gray-400 hover:text-gray-600 p-1 cursor-pointer">
@@ -4468,7 +4459,7 @@ export default function InventoryPage() {
                                     value={supName}
                                     onChange={(e) => setSupName(e.target.value)}
                                     placeholder="e.g. Haji Muhammad Tariq"
-                                    className="w-full p-2.5 border border-[#F3E5AB] rounded-xl font-medium"
+                                    className="w-full p-2.5 border border-gray-200 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-[#0B3B7B]/20 focus:border-[#0B3B7B]"
                                 />
                             </div>
 
@@ -4479,7 +4470,7 @@ export default function InventoryPage() {
                                     value={supCompanyName}
                                     onChange={(e) => setSupCompanyName(e.target.value)}
                                     placeholder="e.g. Hilal Foods Pvt Ltd"
-                                    className="w-full p-2.5 border border-[#F3E5AB] rounded-xl font-medium"
+                                    className="w-full p-2.5 border border-gray-200 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-[#0B3B7B]/20 focus:border-[#0B3B7B]"
                                 />
                             </div>
 
@@ -4490,7 +4481,7 @@ export default function InventoryPage() {
                                     value={supPhone}
                                     onChange={(e) => setSupPhone(e.target.value)}
                                     placeholder="03001234567"
-                                    className="w-full p-2.5 border border-[#F3E5AB] rounded-xl font-medium"
+                                    className="w-full p-2.5 border border-gray-200 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-[#0B3B7B]/20 focus:border-[#0B3B7B]"
                                 />
                             </div>
 
@@ -4500,7 +4491,7 @@ export default function InventoryPage() {
                                     type="text"
                                     value={supAddress}
                                     onChange={(e) => setSupAddress(e.target.value)}
-                                    className="w-full p-2.5 border border-[#F3E5AB] rounded-xl font-medium"
+                                    className="w-full p-2.5 border border-gray-200 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-[#0B3B7B]/20 focus:border-[#0B3B7B]"
                                 />
                             </div>
 
@@ -4511,7 +4502,7 @@ export default function InventoryPage() {
                                     value={supOpeningBal}
                                     onChange={(e) => setSupOpeningBal(e.target.value)}
                                     placeholder="0"
-                                    className="w-full p-2.5 border border-[#F3E5AB] rounded-xl font-bold"
+                                    className="w-full p-2.5 border border-gray-200 rounded-xl font-bold font-mono focus:outline-none focus:ring-2 focus:ring-[#0B3B7B]/20 focus:border-[#0B3B7B]"
                                 />
                             </div>
                         </div>
@@ -4526,9 +4517,9 @@ export default function InventoryPage() {
                             </button>
                             <button
                                 type="submit"
-                                className="w-full sm:flex-1 py-2.5 gold-gradient hover:opacity-90 text-white rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                                className="w-full sm:flex-1 py-2.5 bg-[#0B3B7B] hover:bg-[#072B5C] text-white rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
                             >
-                                <IconCheck className="w-4 h-4" />
+                                <IconCheck className="w-4 h-4 text-white" />
                                 <span>Save Supplier</span>
                             </button>
                         </div>
@@ -4541,7 +4532,7 @@ export default function InventoryPage() {
             {/* ───────────────────────────────────────────────────────────── */}
             {adjustmentModalOpen && selectedVariant && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[70] p-2.5 sm:p-4 overflow-y-auto">
-                    <form onSubmit={handleSaveAdjustment} className="bg-white rounded-2xl max-w-md w-full p-4 sm:p-6 space-y-3.5 sm:space-y-4 shadow-2xl border border-[#F3E5AB] max-h-[94vh] flex flex-col">
+                    <form onSubmit={handleSaveAdjustment} className="bg-white rounded-2xl max-w-md w-full p-4 sm:p-6 space-y-3.5 sm:space-y-4 shadow-2xl border border-gray-200 max-h-[94vh] flex flex-col">
                         <div className="flex justify-between items-start border-b border-gray-100 pb-3 shrink-0">
                             <div>
                                 <h3 className="font-black text-gray-900 text-base flex items-center gap-2">
@@ -4558,7 +4549,7 @@ export default function InventoryPage() {
                         </div>
 
                         <div className="space-y-3 text-xs overflow-y-auto flex-1 pr-0.5 sm:pr-1">
-                            <div className="bg-[#FEF9E7] p-2.5 sm:p-3 rounded-xl border border-[#F3E5AB] flex justify-between">
+                            <div className="bg-slate-50 p-2.5 sm:p-3 rounded-xl border border-gray-200 flex justify-between">
                                 <span className="font-bold text-gray-600">Current Stock:</span>
                                 <span className="font-black text-emerald-800">{selectedVariant.current_stock} {selectedVariant.unit_symbol || selectedVariant.unit_name}</span>
                             </div>
@@ -4599,7 +4590,7 @@ export default function InventoryPage() {
                                     min="1"
                                     value={adjustmentQuantity}
                                     onChange={(e) => setAdjustmentQuantity(e.target.value)}
-                                    className="w-full p-2.5 border border-[#F3E5AB] rounded-xl font-black text-[#B8860B]"
+                                    className="w-full p-2.5 border border-gray-200 rounded-xl font-black text-[#0B3B7B] focus:outline-none focus:ring-2 focus:ring-[#0B3B7B]/20 focus:border-[#0B3B7B]"
                                 />
                             </div>
 
@@ -4611,7 +4602,7 @@ export default function InventoryPage() {
                                     value={adjustmentNotes}
                                     onChange={(e) => setAdjustmentNotes(e.target.value)}
                                     placeholder="e.g. Broken in warehouse handling"
-                                    className="w-full p-2.5 border border-[#F3E5AB] rounded-xl font-medium"
+                                    className="w-full p-2.5 border border-gray-200 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-[#0B3B7B]/20 focus:border-[#0B3B7B]"
                                 />
                             </div>
                         </div>
@@ -4620,18 +4611,16 @@ export default function InventoryPage() {
                             <button
                                 type="button"
                                 onClick={() => setAdjustmentModalOpen(false)}
-                                style={{ backgroundColor: '#ffffff', color: '#000000', border: '1px solid #d1d5db' }}
-                                className="w-full sm:flex-1 py-2.5 rounded-xl font-bold text-xs hover:bg-gray-50 cursor-pointer text-center"
+                                className="w-full sm:flex-1 py-2.5 rounded-xl font-bold text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 cursor-pointer text-center"
                             >
                                 Cancel
                             </button>
                             <button
                                 type="submit"
-                                style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                className="btn-black !bg-black !text-white w-full sm:flex-1 py-2.5 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5 hover:opacity-90"
+                                className="w-full sm:flex-1 py-2.5 rounded-xl font-bold text-xs bg-[#0B3B7B] hover:bg-[#072B5C] text-white shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
                             >
-                                <IconCheck className="w-4 h-4" style={{ color: '#ffffff', stroke: '#ffffff' }} />
-                                <span style={{ color: '#ffffff' }}>Record Adjustment</span>
+                                <IconCheck className="w-4 h-4 text-white" />
+                                <span>Record Adjustment</span>
                             </button>
                         </div>
                     </form>

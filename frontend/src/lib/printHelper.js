@@ -267,8 +267,8 @@ export function generateThermalReceiptHtml(inv, settings = {}, cashierName = '',
         }
         body {
             font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
-            font-size: 10px;
-            line-height: 1.25;
+            font-size: 11px;
+            line-height: 1.3;
             padding: 1mm 4mm 0mm 2mm !important;
             width: 100% !important;
             box-sizing: border-box !important;
@@ -302,35 +302,37 @@ export function generateThermalReceiptHtml(inv, settings = {}, cashierName = '',
             table-layout: fixed;
         }
         th, td {
-            padding: 1.5px 1px;
+            padding: 2px 1px;
             vertical-align: top;
             color: #000000;
         }
         .text-right {
             text-align: right;
-            padding-right: 4px !important;
+            padding-right: 2px !important;
         }
         .text-center {
             text-align: center;
         }
         .item-title {
-            font-size: 8.5px;
-            font-weight: normal;
-            line-height: 1.15;
+            font-size: 10px;
+            font-weight: bold;
+            line-height: 1.2;
             word-break: break-word;
             white-space: normal;
             display: block;
             width: 100%;
+            color: #000000;
         }
         .item-sub {
-            font-size: 7.5px;
-            line-height: 1.1;
-            color: #444444;
+            font-size: 8.5px;
+            line-height: 1.15;
+            color: #000000;
             font-weight: normal;
+            margin-top: 1px;
         }
         .logo-img {
-            max-height: 42px;
-            max-width: 120px;
+            max-height: 40px;
+            max-width: 130px;
             margin: 0 auto 3px auto;
             display: block;
             object-fit: contain;
@@ -339,67 +341,67 @@ export function generateThermalReceiptHtml(inv, settings = {}, cashierName = '',
 </head>
 <body>
     <div style="width: 100%; max-width: 100%; margin: 0; padding: 0;">
-    <!-- 1. HEADER (LOGO, SHOP DETAILS & TOP BANK ACCOUNT) -->
-    <div style="text-align: center; padding-bottom: 3px; border-bottom: 1.5px solid #000000;">
+    <!-- 1. HEADER (LOGO & SHOP DETAILS) -->
+    <div style="text-align: center; padding-bottom: 4px; border-bottom: 1px solid #000000;">
         ${shopLogo ? `
-            <div style="margin-bottom: 2px;">
+            <div style="margin-bottom: 3px;">
                 <img src="${shopLogo}" alt="Shop Logo" class="logo-img" />
             </div>
         ` : ''}
-        <div style="font-size: 13px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; line-height: 1.2;">
+        <div style="font-size: 13.5px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; line-height: 1.2;">
             ${shopName}
         </div>
-        ${shopAddress ? `<div style="font-size: 9px; font-weight: normal; line-height: 1.2; margin-top: 1px; color: #222;">${shopAddress}</div>` : ''}
-        <div style="font-size: 8.5px; font-weight: normal; margin-top: 1px; color: #222;">
+        ${shopAddress ? `<div style="font-size: 10px; font-weight: normal; line-height: 1.2; margin-top: 2px;">${shopAddress}</div>` : ''}
+        <div style="font-size: 9.5px; font-weight: normal; margin-top: 2px;">
             ${shopPhone ? `<span>Tel: ${shopPhone}</span>` : ''}
             ${shopPhone && shopNtn ? `<span style="margin: 0 4px;">|</span>` : ''}
             ${shopNtn ? `<span>NTN: ${shopNtn}</span>` : ''}
         </div>
     </div>
 
-    <!-- 2. METADATA TABLE (SOLID BORDER, DYNAMIC CUSTOMER DETAILS) -->
-    <div style="padding: 2px 0; border-bottom: 1px solid #000000;">
-        <table style="width: 100%; border-collapse: collapse; font-size: 9px;">
+    <!-- 2. METADATA TABLE (SOLID BORDERS, 2-COLUMN TABULAR FORMAT) -->
+    <div style="padding: 3px 0; border-bottom: 1px solid #000000;">
+        <table style="width: 100%; border-collapse: collapse; font-size: 10.5px;">
             <tr>
-                <td style="width: 32%; font-weight: bold; color: #000000; text-align: left;">Invoice #:</td>
-                <td style="text-align: right; font-weight: bold; font-family: monospace; font-size: 9px; padding-right: 4px; color: #000000;">${inv.invoice_no || inv.id}</td>
+                <td style="width: 35%; font-weight: bold; color: #000000; text-align: left; padding: 1.5px 0;">Invoice #:</td>
+                <td style="width: 65%; text-align: right; font-weight: bold; font-family: monospace; font-size: 11px; padding: 1.5px 0; color: #000000;">${inv.invoice_no || inv.id}</td>
             </tr>
             <tr>
-                <td style="text-align: left; font-weight: normal; color: #333;">Date & Time:</td>
-                <td style="text-align: right; font-weight: normal; padding-right: 4px;">${formattedDate}</td>
+                <td style="text-align: left; font-weight: 600; color: #000000; padding: 1.5px 0;">Date & Time:</td>
+                <td style="text-align: right; font-weight: normal; color: #000000; padding: 1.5px 0;">${formattedDate}</td>
             </tr>
             <tr>
-                <td style="text-align: left; font-weight: normal; color: #333;">Cashier:</td>
-                <td style="text-align: right; font-weight: normal; padding-right: 4px;">${cashier}</td>
+                <td style="text-align: left; font-weight: 600; color: #000000; padding: 1.5px 0;">Cashier:</td>
+                <td style="text-align: right; font-weight: normal; color: #000000; padding: 1.5px 0;">${cashier}</td>
             </tr>
-            <tr style="border-top: 1px dashed #666666;">
-                <td style="font-weight: normal; color: #333; text-align: left; padding-top: 2px;">Billed To:</td>
-                <td style="text-align: right; font-weight: bold; padding-top: 2px; padding-right: 4px; word-break: break-word;">${customerName}</td>
+            <tr style="border-top: 1px solid #000000;">
+                <td style="font-weight: 600; color: #000000; text-align: left; padding: 2.5px 0 1.5px 0;">Billed To:</td>
+                <td style="text-align: right; font-weight: bold; color: #000000; padding: 2.5px 0 1.5px 0; word-break: break-word;">${customerName}</td>
             </tr>
             ${customerPhone ? `
             <tr>
-                <td style="text-align: left; font-weight: normal; color: #333;">Mobile / Tel:</td>
-                <td style="text-align: right; font-weight: normal; padding-right: 4px;">${customerPhone}</td>
+                <td style="text-align: left; font-weight: 600; color: #000000; padding: 1.5px 0;">Mobile / Tel:</td>
+                <td style="text-align: right; font-weight: normal; color: #000000; padding: 1.5px 0;">${customerPhone}</td>
             </tr>` : ''}
             ${customerAddress ? `
             <tr>
-                <td style="text-align: left; vertical-align: top; font-weight: normal; color: #333;">Address:</td>
-                <td style="text-align: right; font-weight: normal; padding-right: 4px; word-break: break-word;">${customerAddress}</td>
+                <td style="text-align: left; vertical-align: top; font-weight: 600; color: #000000; padding: 1.5px 0;">Address:</td>
+                <td style="text-align: right; font-weight: normal; color: #000000; padding: 1.5px 0; word-break: break-word;">${customerAddress}</td>
             </tr>` : ''}
         </table>
     </div>
 
-    <!-- 3. ITEMS TABLE (FULL ITEM NAME, RATE, DISC & NET IN ROW, 72mm WIDTH) -->
-    <div style="padding: 2px 0; border-bottom: 1px solid #000000;">
-        <table style="width: 100%; border-collapse: collapse;">
+    <!-- 3. ITEMS TABLE (TABULAR FORMAT, LIGHT 1PX BORDERS FOR ROWS & COLUMNS) -->
+    <div style="padding: 3px 0;">
+        <table style="width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 10px; border: 1px solid #000000;">
             <thead>
-                <tr style="border-bottom: 1px solid #000000; font-size: 8.5px; font-weight: bold; text-transform: uppercase;">
-                    <th style="text-align: center; width: 7%; padding: 2px 0; font-weight: bold;">#</th>
-                    <th style="text-align: left; width: 36%; padding: 2px 1px; font-weight: bold;">Item Description</th>
-                    <th style="text-align: center; width: 13%; padding: 2px 1px; font-weight: bold;">Qty</th>
-                    <th style="text-align: right; width: 14%; padding: 2px 1px; font-weight: bold;">Rate</th>
-                    <th style="text-align: right; width: 13%; padding: 2px 1px; font-weight: bold;">Disc</th>
-                    <th style="text-align: right; width: 17%; padding: 2px 4px 2px 1px; font-weight: bold;">Net</th>
+                <tr style="text-transform: uppercase;">
+                    <th style="text-align: center; width: 7%; padding: 3.5px 1px; font-weight: bold; color: #000000; border: 1px solid #000000;">#</th>
+                    <th style="text-align: left; width: 41%; padding: 3.5px 3px; font-weight: bold; color: #000000; border: 1px solid #000000;">Item</th>
+                    <th style="text-align: center; width: 14%; padding: 3.5px 1px; font-weight: bold; color: #000000; border: 1px solid #000000;">Qty</th>
+                    <th style="text-align: right; width: 13%; padding: 3.5px 2px; font-weight: bold; color: #000000; border: 1px solid #000000;">Rate</th>
+                    <th style="text-align: right; width: 10%; padding: 3.5px 2px; font-weight: bold; color: #000000; border: 1px solid #000000;">Disc</th>
+                    <th style="text-align: right; width: 15%; padding: 3.5px 3px; font-weight: bold; color: #000000; border: 1px solid #000000;">Net</th>
                 </tr>
             </thead>
             <tbody>
@@ -410,30 +412,31 @@ export function generateThermalReceiptHtml(inv, settings = {}, cashierName = '',
                     const packName = it.packaging_name || (isBulk ? 'Bulk' : uSymbol);
                     const qty = parseFloat(it.quantity) || 0;
                     const looseQty = isBulk ? (qty * factor) : qty;
-                    const qtyCol = isBulk ? `${qty} ${formatPackShort(packName)}` : `${looseQty}`;
-                    const packageDetail = isBulk ? `${qty} ${packName} (${looseQty} ${uSymbol})` : `${looseQty} ${uSymbol}`;
+                    const qtyCol = isBulk ? `${qty} ${formatPackShort(packName)}` : `${looseQty} ${uSymbol}`;
                     const variantText = it.variant_name && it.variant_name !== 'Standard' ? `(${it.variant_name}) ` : '';
+                    const packageDetail = isBulk ? `Pack: ${qty} ${packName} (${looseQty} ${uSymbol})` : '';
+                    const hasSub = variantText || packageDetail;
                     const itDiscount = parseFloat(it.discount) || 0;
 
                     return `
-                    <tr style="border-bottom: 1px solid #999999;">
-                        <td style="padding: 3px 0; text-align: center; font-size: 8.5px; font-weight: normal; color: #555; border-bottom: 1px solid #999999;">
+                    <tr style="vertical-align: top;">
+                        <td style="padding: 4.5px 1px; text-align: center; font-size: 10px; font-weight: 500; color: #000000; border: 1px solid #000000;">
                             ${idx + 1}
                         </td>
-                        <td style="padding: 3px 1px; text-align: left; border-bottom: 1px solid #999999;">
+                        <td style="padding: 4.5px 3px; text-align: left; border: 1px solid #000000;">
                             <div class="item-title">${it.product_name}</div>
-                            <div class="item-sub">${variantText}${packageDetail}</div>
+                            ${hasSub ? `<div class="item-sub">${variantText}${packageDetail}</div>` : ''}
                         </td>
-                        <td style="padding: 3px 1px; text-align: center; font-size: 8.5px; font-weight: normal; border-bottom: 1px solid #999999;">
+                        <td style="padding: 4.5px 1px; text-align: center; font-size: 10px; font-weight: bold; white-space: nowrap; color: #000000; border: 1px solid #000000;">
                             ${qtyCol}
                         </td>
-                        <td style="padding: 3px 1px; text-align: right; font-size: 8.5px; font-weight: normal; border-bottom: 1px solid #999999;">
+                        <td style="padding: 4.5px 2px; text-align: right; font-size: 10px; font-weight: 500; color: #000000; border: 1px solid #000000;">
                             ${Number(it.price).toFixed(0)}
                         </td>
-                        <td style="padding: 3px 1px; text-align: right; font-size: 8.5px; font-weight: normal; color: #555; border-bottom: 1px solid #999999;">
+                        <td style="padding: 4.5px 2px; text-align: right; font-size: 10px; font-weight: 500; color: #000000; border: 1px solid #000000;">
                             ${itDiscount > 0 ? `${itDiscount.toFixed(0)}` : '0'}
                         </td>
-                        <td style="padding: 3px 4px 3px 1px; text-align: right; font-size: 8.5px; font-weight: normal; border-bottom: 1px solid #999999;">
+                        <td style="padding: 4.5px 3px; text-align: right; font-size: 10.5px; font-weight: bold; color: #000000; border: 1px solid #000000;">
                             ${Number(it.total).toFixed(0)}
                         </td>
                     </tr>
@@ -443,81 +446,81 @@ export function generateThermalReceiptHtml(inv, settings = {}, cashierName = '',
         </table>
     </div>
 
-    <!-- 4. CURRENT BILL FINANCIAL TOTALS -->
-    <div style="padding: 2px 0; border-bottom: 1px solid #000000;">
-        <table style="width: 100%; border-collapse: collapse; font-size: 9px;">
+    <!-- 4. CURRENT BILL FINANCIAL TOTALS (TABULAR FORMAT, LIGHT 1PX BORDERS) -->
+    <div style="padding: 3px 0;">
+        <table style="width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 10.5px; border: 1px solid #000000;">
             <tr>
-                <td style="text-align: left; font-weight: normal; color: #333;">Gross Amount:</td>
-                <td style="text-align: right; font-weight: normal; padding-right: 4px;">Rs. ${grossVal.toFixed(2)}</td>
+                <td style="width: 52%; text-align: left; font-weight: 500; color: #000000; padding: 3px 4px; border: 1px solid #000000;">Gross Amount:</td>
+                <td style="width: 48%; text-align: right; font-weight: 600; color: #000000; padding: 3px 4px; border: 1px solid #000000;">Rs. ${grossVal.toFixed(2)}</td>
             </tr>
             ${discVal > 0 ? `
             <tr>
-                <td style="text-align: left; font-weight: normal; color: #333;">Less Item Discount:</td>
-                <td style="text-align: right; font-weight: normal; padding-right: 4px;">- Rs. ${discVal.toFixed(2)}</td>
+                <td style="text-align: left; font-weight: 500; color: #000000; padding: 3px 4px; border: 1px solid #000000;">Less Item Discount:</td>
+                <td style="text-align: right; font-weight: 600; color: #000000; padding: 3px 4px; border: 1px solid #000000;">- Rs. ${discVal.toFixed(2)}</td>
             </tr>` : ''}
             ${specialDiscVal > 0 ? `
             <tr>
-                <td style="text-align: left; font-weight: normal; color: #333;">Less Special Discount:</td>
-                <td style="text-align: right; font-weight: normal; padding-right: 4px;">- Rs. ${specialDiscVal.toFixed(2)}</td>
+                <td style="text-align: left; font-weight: 500; color: #000000; padding: 3px 4px; border: 1px solid #000000;">Less Special Discount:</td>
+                <td style="text-align: right; font-weight: 600; color: #000000; padding: 3px 4px; border: 1px solid #000000;">- Rs. ${specialDiscVal.toFixed(2)}</td>
             </tr>` : ''}
             ${chargesVal > 0 ? `
             <tr>
-                <td style="text-align: left; font-weight: normal; color: #333;">Add Charges:</td>
-                <td style="text-align: right; font-weight: normal; padding-right: 4px;">+ Rs. ${chargesVal.toFixed(2)}</td>
+                <td style="text-align: left; font-weight: 500; color: #000000; padding: 3px 4px; border: 1px solid #000000;">Add Charges:</td>
+                <td style="text-align: right; font-weight: 600; color: #000000; padding: 3px 4px; border: 1px solid #000000;">+ Rs. ${chargesVal.toFixed(2)}</td>
             </tr>` : ''}
-            <tr style="border-top: 1px solid #000000; border-bottom: 1px solid #000000; font-size: 11px; font-weight: bold;">
-                <td style="padding: 2.5px 0; text-align: left;">CURRENT BILL:</td>
-                <td style="padding: 2.5px 4px 2.5px 0; text-align: right;">Rs. ${netVal.toFixed(2)}</td>
+            <tr>
+                <td style="text-align: left; font-weight: bold; font-size: 12.5px; color: #000000; padding: 4px 4px; border: 1px solid #000000;">CURRENT BILL:</td>
+                <td style="text-align: right; font-weight: bold; font-size: 12.5px; color: #000000; padding: 4px 4px; border: 1px solid #000000;">Rs. ${netVal.toFixed(2)}</td>
             </tr>
             <tr>
-                <td style="padding-top: 2px; text-align: left; font-weight: normal; color: #333;">Paid on Bill:</td>
-                <td style="padding-top: 2px; text-align: right; font-weight: normal; padding-right: 4px;">Rs. ${paidVal.toFixed(2)}</td>
+                <td style="text-align: left; font-weight: 500; color: #000000; padding: 3px 4px; border: 1px solid #000000;">Paid on Bill:</td>
+                <td style="text-align: right; font-weight: 600; color: #000000; padding: 3px 4px; border: 1px solid #000000;">Rs. ${paidVal.toFixed(2)}</td>
             </tr>
             ${!hasLedger ? `
             <tr>
-                <td style="padding-top: 1px; text-align: left; font-weight: normal; color: #333;">${dueVal > 0 ? 'Bill Balance Due:' : 'Change Return:'}</td>
-                <td style="padding-top: 1px; text-align: right; font-weight: normal; padding-right: 4px;">Rs. ${Math.abs(dueVal).toFixed(2)}</td>
+                <td style="text-align: left; font-weight: bold; font-size: 11px; color: #000000; padding: 3px 4px; border: 1px solid #000000;">${dueVal > 0 ? 'Bill Balance Due:' : 'Change Return:'}</td>
+                <td style="text-align: right; font-weight: bold; font-size: 11px; color: #000000; padding: 3px 4px; border: 1px solid #000000;">Rs. ${Math.abs(dueVal).toFixed(2)}</td>
             </tr>` : ''}
         </table>
     </div>
 
-    <!-- 5. CUSTOMER LEDGER STATEMENT (CLEAR, MATHEMATICALLY VERIFIABLE) -->
+    <!-- 5. CUSTOMER LEDGER STATEMENT (TABULAR FORMAT, LIGHT 1PX BORDERS) -->
     ${hasLedger ? `
-    <div style="padding: 2px 0; border-bottom: 1px solid #000000; font-size: 9px;">
-        <div style="text-align: center; font-weight: normal; font-size: 8px; letter-spacing: 0.5px; color: #555; border-bottom: 1px dashed #888888; padding-bottom: 1px; margin-bottom: 2px;">
+    <div style="padding: 3px 0;">
+        <div style="text-align: center; font-weight: bold; font-size: 10.5px; letter-spacing: 0.5px; color: #000000; border: 1px solid #000000; border-bottom: none; padding: 3px; margin-bottom: 0;">
             *** CUSTOMER LEDGER STATEMENT ***
         </div>
-        <table style="width: 100%; border-collapse: collapse; font-size: 9px;">
+        <table style="width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 10.5px; border: 1px solid #000000;">
             <tr>
-                <td style="text-align: left; font-weight: bold; color: #000000;">Previous Balance:</td>
-                <td style="text-align: right; font-weight: bold; padding-right: 4px; color: #000000;">Rs. ${pBal.toFixed(2)}</td>
-            </tr>
-            <tr>
-                <td style="text-align: left; font-weight: 600; color: #000000;">+ Current Bill:</td>
-                <td style="text-align: right; font-weight: 600; padding-right: 4px; color: #000000;">+ Rs. ${netVal.toFixed(2)}</td>
-            </tr>
-            <tr style="border-top: 1px solid #999999;">
-                <td style="text-align: left; font-weight: 600; color: #000000;">Total Payable:</td>
-                <td style="text-align: right; font-weight: 600; padding-right: 4px; color: #000000;">Rs. ${totalPayable.toFixed(2)}</td>
+                <td style="width: 52%; text-align: left; font-weight: bold; color: #000000; padding: 3px 4px; border: 1px solid #000000;">Previous Balance:</td>
+                <td style="width: 48%; text-align: right; font-weight: bold; color: #000000; padding: 3px 4px; border: 1px solid #000000;">Rs. ${pBal.toFixed(2)}</td>
             </tr>
             <tr>
-                <td style="text-align: left; font-weight: 600; color: #000000;">- Paid Today:</td>
-                <td style="text-align: right; font-weight: 600; padding-right: 4px; color: #000000;">- Rs. ${paidVal.toFixed(2)}</td>
+                <td style="text-align: left; font-weight: 600; color: #000000; padding: 3px 4px; border: 1px solid #000000;">+ Current Bill:</td>
+                <td style="text-align: right; font-weight: 600; color: #000000; padding: 3px 4px; border: 1px solid #000000;">+ Rs. ${netVal.toFixed(2)}</td>
             </tr>
-            <tr style="border-top: 1px solid #000000; border-bottom: 1px solid #000000; font-size: 11px; font-weight: bold;">
-                <td style="padding: 2.5px 0; text-align: left;">NEW BALANCE:</td>
-                <td style="padding: 2.5px 4px 2.5px 0; text-align: right;">Rs. ${finalBal.toFixed(2)}</td>
+            <tr>
+                <td style="text-align: left; font-weight: 600; color: #000000; padding: 3px 4px; border: 1px solid #000000;">Total Payable:</td>
+                <td style="text-align: right; font-weight: 600; color: #000000; padding: 3px 4px; border: 1px solid #000000;">Rs. ${totalPayable.toFixed(2)}</td>
+            </tr>
+            <tr>
+                <td style="text-align: left; font-weight: 600; color: #000000; padding: 3px 4px; border: 1px solid #000000;">- Paid Today:</td>
+                <td style="text-align: right; font-weight: 600; color: #000000; padding: 3px 4px; border: 1px solid #000000;">- Rs. ${paidVal.toFixed(2)}</td>
+            </tr>
+            <tr>
+                <td style="text-align: left; font-weight: bold; font-size: 12.5px; color: #000000; padding: 4px 4px; border: 1px solid #000000;">NEW BALANCE:</td>
+                <td style="text-align: right; font-weight: bold; font-size: 12.5px; color: #000000; padding: 4px 4px; border: 1px solid #000000;">Rs. ${finalBal.toFixed(2)}</td>
             </tr>
         </table>
     </div>
     ` : ''}
 
     <!-- 6. FOOTER -->
-    <div style="padding-top: 3px; font-size: 8.5px; text-align: center; font-weight: normal;">
-        <div style="font-weight: normal; margin-top: 1px;">
+    <div style="padding-top: 5px; text-align: center;">
+        <div style="font-weight: bold; font-size: 10.5px; letter-spacing: 0.5px;">
             *** THANK YOU FOR YOUR BUSINESS! ***
         </div>
-        <div style="font-size: 7.5px; margin-top: 1px; color: #555;">
+        <div style="font-size: 9px; font-weight: normal; margin-top: 2px;">
             No return without original invoice
         </div>
     </div>
@@ -550,8 +553,8 @@ export function generateWholesaleInvoiceA4Html(inv, settings = {}, prevBal = 0, 
     const customerName = (inv.customer_name || inv.walkin_name || 'Walk-in Customer').trim();
     const businessName = (inv.business_name || inv.customer_business || '').trim();
     const fullCustomerTitle = businessName ? `${customerName} (${businessName})` : customerName;
-    const customerPhone = (inv.customer_phone || inv.customer_mobile || inv.walkin_phone || inv.phone || '0945123456').trim();
-    const customerAddress = (inv.customer_address || inv.walkin_address || inv.address || 'Main Market, Timergara').trim();
+    const customerPhone = (inv.customer_phone || inv.customer_mobile || inv.walkin_phone || inv.phone || '').trim();
+    const customerAddress = (inv.customer_address || inv.walkin_address || inv.address || '').trim();
     const remarks = (inv.remarks || '').trim();
 
     // Formatted date
@@ -750,8 +753,8 @@ export function generateWholesaleInvoiceA4Html(inv, settings = {}, prevBal = 0, 
                         <div style="font-weight: 800; color: #111827; text-transform: uppercase; margin-bottom: 2px;">
                             BILLED TO (${fullCustomerTitle})
                         </div>
-                        <div><strong style="color: #4b5563;">Mobile / Phone: </strong><span style="font-family: monospace;">${customerPhone}</span></div>
-                        <div><strong style="color: #4b5563;">Address: </strong><span>${customerAddress}</span></div>
+                        <div><strong style="color: #4b5563;">Mobile / Phone: </strong><span style="font-family: monospace;">${customerPhone || '—'}</span></div>
+                        <div><strong style="color: #4b5563;">Address: </strong><span>${customerAddress || '—'}</span></div>
                         ${remarks ? `<div><strong style="color: #4b5563;">Remarks: </strong><span style="font-style: italic; color: #4b5563;">${remarks}</span></div>` : ''}
                     </div>
                 </td>

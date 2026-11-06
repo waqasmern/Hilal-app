@@ -63,7 +63,7 @@ export default function ExpensesPage() {
                 </div>
                 <button
                     onClick={() => setAddModalOpen(true)}
-                    className="px-4 py-2.5 gold-gradient text-white rounded-xl font-bold text-xs shadow-md flex items-center gap-1.5"
+                    className="px-4 py-2.5 bg-[#16A34A] hover:bg-[#15803D] text-white rounded-xl font-bold text-xs shadow-md flex items-center gap-1.5 transition-colors"
                 >
                     <IconPlus className="w-4 h-4" />
                     <span>Record Shop Expense</span>
@@ -85,7 +85,7 @@ export default function ExpensesPage() {
                         {expenses.map((e) => (
                             <tr key={e.id} className="hover:bg-gray-50/50">
                                 <td className="p-3 text-gray-600">{new Date(e.created_at).toLocaleDateString()}</td>
-                                <td className="p-3 font-bold text-[#B8860B]">{e.category}</td>
+                                <td className="p-3 font-bold text-[#0B3B7B]">{e.category}</td>
                                 <td className="p-3 font-semibold text-gray-800">{e.description}</td>
                                 <td className="p-3 text-right font-extrabold text-rose-600">Rs. {e.amount.toLocaleString()}</td>
                                 <td className="p-3 uppercase font-bold text-gray-500">{e.payment_method}</td>
@@ -143,10 +143,10 @@ export default function ExpensesPage() {
                         </div>
 
                         <div className="flex gap-3 pt-2">
-                            <button type="button" onClick={() => setAddModalOpen(false)} className="flex-1 py-2 border rounded-xl font-bold text-xs">
+                            <button type="button" onClick={() => setAddModalOpen(false)} className="flex-1 py-2 border border-gray-300 text-gray-700 hover:bg-gray-100 rounded-xl font-bold text-xs transition-colors">
                                 Cancel
                             </button>
-                            <button type="submit" className="flex-1 py-2 gold-gradient text-white rounded-xl font-bold text-xs shadow-md">
+                            <button type="submit" className="flex-1 py-2 bg-[#16A34A] hover:bg-[#15803D] text-white rounded-xl font-bold text-xs shadow-md transition-colors">
                                 Save Expense
                             </button>
                         </div>

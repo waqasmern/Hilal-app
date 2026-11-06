@@ -68,17 +68,20 @@
   --color-brand-900: #5C3D03;
   --color-brand-950: #382402;
 
-  --color-brand:       #D4AF37;
-  --color-brand-light: #F3E5AB;
-  --color-brand-dark:  #B8860B;
+  --color-brand:       #0B3B7B;
+  --color-brand-light: #DBEAFE;
+  --color-brand-dark:  #072B5C;
+  --color-brand-navy:  #0B3B7B;
+  --color-brand-amber: #F59E0B;
+  --color-brand-green: #16A34A;
 
   --font-outfit: "Outfit", sans-serif;
 }
 
 body {
   font-family: var(--font-outfit);
-  background-color: #FAFAFA;
-  color: #1F2937;
+  background-color: #F1F5F9;
+  color: #0F172A;
   letter-spacing: 0.01em;
   line-height: 1.5;
   font-weight: 400;
@@ -103,32 +106,33 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .gold-gradient, .brand-gradient {
-  background: linear-gradient(135deg, #D4AF37 0%, #B8860B 100%);
+  background: #F59E0B;
 }
 
 .gold-gradient-soft, .brand-gradient-soft {
-  background: linear-gradient(135deg, #FEF9E7 0%, #FFFFFF 100%);
+  background: #FEF3C7;
 }
 
 .gold-shadow, .brand-shadow {
-  box-shadow: 0 4px 14px 0 rgba(212, 175, 55, 0.25);
+  box-shadow: 0 4px 14px 0 rgba(245, 158, 11, 0.25);
 }
 
 .glass-white {
-  background: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(212, 175, 55, 0.2);
+  border: 1px solid rgba(226, 232, 240, 0.8);
 }
 
-/* Sidebar Active Link Class */
+/* Sidebar Active Link Class (Deep Royal Navy #0B3B7B) */
 .sidebar-link.active,
 .sidebar-link[data-active="true"] {
-  background: linear-gradient(135deg, #D4AF37 0%, #B8860B 100%) !important;
+  background: #0B3B7B !important;
   color: #ffffff !important;
   font-weight: 700 !important;
-  box-shadow: 0 4px 12px rgba(212, 175, 55, 0.35) !important;
-  border: 1px solid #D4AF37 !important;
+  box-shadow: 0 2px 6px rgba(11, 59, 123, 0.3) !important;
+  border: 1px solid #072B5C !important;
+  border-radius: 0.75rem !important;
 }
 
 .sidebar-link.active *,
@@ -140,6 +144,22 @@ h1, h2, h3, h4, h5, h6 {
 .sidebar-link[data-active="true"] svg {
   stroke: #ffffff !important;
   color: #ffffff !important;
+}
+
+/* Inactive Sidebar Links with Vivid Blue Icons per Client Image */
+.sidebar-link:not(.active):not([data-active="true"]) {
+  color: #1E293B !important;
+  font-weight: 600 !important;
+}
+
+.sidebar-link:not(.active):not([data-active="true"]) svg {
+  color: #1E40AF !important;
+  stroke: #1E40AF !important;
+}
+
+.sidebar-link:not(.active):not([data-active="true"]):hover {
+  background-color: #EFF6FF !important;
+  color: #0B3B7B !important;
 }
 
 @media print {

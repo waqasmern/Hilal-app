@@ -31,7 +31,8 @@ const authSlice = createSlice({
 });
 
 function recalculateItem(item) {
-    const qty = Math.max(0.01, parseFloat(item.quantity) || 1);
+    const rawQty = parseFloat(item.quantity);
+    const qty = isNaN(rawQty) ? 0 : Math.max(0, rawQty);
     const price = Math.max(0, parseFloat(item.price) || 0);
     const lineGross = qty * price;
     const type = item.discount_type || 'direct';
@@ -44,7 +45,9 @@ function recalculateItem(item) {
         calculatedDisc = Math.min(lineGross, val);
     }
 
-    item.quantity = qty;
+    if (typeof item.quantity === 'number') {
+        item.quantity = qty;
+    }
     item.price = price;
     item.discount_type = type;
     item.discount_value = val;
@@ -52,21 +55,81 @@ function recalculateItem(item) {
     item.total = Math.max(0, lineGross - calculatedDisc);
 }
 
+function mapSaleToCartState(sale) {
+    if (!sale || !sale.id) return null;
+    return {
+        editingSaleId: sale.id,
+        editingInvoiceNo: sale.invoice_no,
+        customer: sale.customer_id ? {
+            id: sale.customer_id,
+            name: sale.customer_name,
+            business_name: sale.business_name,
+            phone: sale.customer_phone,
+            balance: sale.current_customer_balance || 0
+        } : null,
+        items: (sale.items || []).map(it => {
+            const qty = parseFloat(it.quantity) || 1;
+            const price = parseFloat(it.price) || 0;
+            const disc = parseFloat(it.discount) || 0;
+            return {
+                variant_id: it.variant_id,
+                packaging_type_id: it.packaging_type_id,
+                product_name: it.product_name,
+                variant_name: it.variant_name,
+                unit_name: it.unit_name || it.base_unit || 'pcs',
+                base_unit: it.base_unit || 'pcs',
+                packaging_name: it.packaging_name,
+                conversion_factor: parseFloat(it.conversion_factor) || 1,
+                quantity: qty,
+                price: price,
+                discount_type: 'direct',
+                discount_value: disc,
+                discount: disc,
+                total: parseFloat(it.total) || ((qty * price) - disc)
+            };
+        }),
+        discount: parseFloat(sale.discount) || 0,
+        special_discount: parseFloat(sale.special_discount) || 0,
+        additional_charges: parseFloat(sale.additional_charges) || 0,
+        amount_paid: parseFloat(sale.amount_paid) || 0,
+        payment_method: sale.payment_method || 'cash',
+        remarks: sale.remarks || ''
+    };
+}
+
+const defaultCartState = {
+    editingSaleId: null,
+    editingInvoiceNo: null,
+    customer: null,
+    items: [],
+    discount: 0,
+    special_discount: 0,
+    additional_charges: 0,
+    amount_paid: 0,
+    payment_method: 'cash',
+    remarks: ''
+};
+
+function getInitialCartState() {
+    if (typeof window !== 'undefined') {
+        try {
+            const saved = localStorage.getItem('hws_editing_sale');
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                const mapped = mapSaleToCartState(parsed);
+                if (mapped) return mapped;
+            }
+        } catch (e) {
+            console.warn('[Redux] Failed to rehydrate editing sale:', e);
+        }
+    }
+    return defaultCartState;
+}
+
 // Wholesale Cart Slice
 const cartSlice = createSlice({
     name: 'cart',
-    initialState: {
-        editingSaleId: null,
-        editingInvoiceNo: null,
-        customer: null, // party object: { type: 'customer' | 'walkin' | 'supplier', id, name, ... }
-        items: [],
-        discount: 0,
-        special_discount: 0,
-        additional_charges: 0,
-        amount_paid: 0,
-        payment_method: 'cash',
-        remarks: ''
-    },
+    initialState: getInitialCartState(),
     reducers: {
         setCustomer: (state, action) => {
             state.customer = action.payload;
@@ -97,6 +160,10 @@ const cartSlice = createSlice({
         updateItemQty: (state, action) => {
             const { index, quantity } = action.payload;
             if (state.items[index]) {
+                if (typeof quantity === 'number' && quantity <= 0) {
+                    state.items.splice(index, 1);
+                    return;
+                }
                 state.items[index].quantity = quantity;
                 recalculateItem(state.items[index]);
             }
@@ -129,54 +196,27 @@ const cartSlice = createSlice({
         },
         loadSaleForEdit: (state, action) => {
             const sale = action.payload;
-            state.editingSaleId = sale.id;
-            state.editingInvoiceNo = sale.invoice_no;
-            state.customer = sale.customer_id ? {
-                id: sale.customer_id,
-                name: sale.customer_name,
-                business_name: sale.business_name,
-                phone: sale.customer_phone,
-                balance: sale.current_customer_balance || 0
-            } : null;
-            state.items = (sale.items || []).map(it => {
-                const qty = parseFloat(it.quantity) || 1;
-                const price = parseFloat(it.price) || 0;
-                const disc = parseFloat(it.discount) || 0;
-                return {
-                    variant_id: it.variant_id,
-                    packaging_type_id: it.packaging_type_id,
-                    product_name: it.product_name,
-                    variant_name: it.variant_name,
-                    unit_name: it.unit_name || it.base_unit || 'pcs',
-                    base_unit: it.base_unit || 'pcs',
-                    packaging_name: it.packaging_name,
-                    conversion_factor: parseFloat(it.conversion_factor) || 1,
-                    quantity: qty,
-                    price: price,
-                    discount_type: 'direct',
-                    discount_value: disc,
-                    discount: disc,
-                    total: parseFloat(it.total) || ((qty * price) - disc)
-                };
-            });
-            state.discount = parseFloat(sale.discount) || 0;
-            state.special_discount = parseFloat(sale.special_discount) || 0;
-            state.additional_charges = parseFloat(sale.additional_charges) || 0;
-            state.amount_paid = parseFloat(sale.amount_paid) || 0;
-            state.payment_method = sale.payment_method || 'cash';
-            state.remarks = sale.remarks || '';
+            const mapped = mapSaleToCartState(sale);
+            if (mapped) {
+                Object.assign(state, mapped);
+                if (typeof window !== 'undefined') {
+                    try {
+                        localStorage.setItem('hws_editing_sale', JSON.stringify(sale));
+                    } catch (e) {
+                        console.warn('[Redux] Failed to persist editing sale:', e);
+                    }
+                }
+            }
         },
         clearCart: (state) => {
-            state.editingSaleId = null;
-            state.editingInvoiceNo = null;
-            state.customer = null;
-            state.items = [];
-            state.discount = 0;
-            state.special_discount = 0;
-            state.additional_charges = 0;
-            state.amount_paid = 0;
-            state.payment_method = 'cash';
-            state.remarks = '';
+            Object.assign(state, defaultCartState);
+            if (typeof window !== 'undefined') {
+                try {
+                    localStorage.removeItem('hws_editing_sale');
+                } catch (e) {
+                    console.warn('[Redux] Failed to clear editing sale from localStorage:', e);
+                }
+            }
         }
     }
 });
@@ -209,6 +249,7 @@ const syncSlice = createSlice({
 // Settings Slice
 const initialSettings = {
     shop_name: 'Hilal Wholesaler Shop',
+    shop_tagline: 'Wholesale & Retail Distribution',
     shop_address: 'Main Bazaar, Timergara, KP, Pakistan',
     shop_phone: '+92 300 1234567',
     shop_email: 'hilalwholesaler@gmail.com',

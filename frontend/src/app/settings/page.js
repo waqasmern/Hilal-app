@@ -17,6 +17,7 @@ export default function SettingsPage() {
 
     const [settings, setSettings] = useState({
         shop_name: 'Hilal Wholesaler Shop',
+        shop_tagline: 'Wholesale & Retail Distribution',
         shop_address: 'Main Bazaar, Timergara, KP, Pakistan',
         shop_phone: '+92 300 1234567',
         shop_email: 'hilalwholesaler@gmail.com',
@@ -433,8 +434,11 @@ export default function SettingsPage() {
         setSendingPdf(true);
         try {
             const token = localStorage.getItem('token');
+            const now = new Date();
+            const pad = (n) => String(n).padStart(2, '0');
+            const timestamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
             const cleanName = (customer.name || 'Customer').replace(/[^a-zA-Z0-9]/g, '_');
-            const fileName = `${cleanName}_Dues_Statement.pdf`;
+            const fileName = `${cleanName}_Dues_Statement_${timestamp}.pdf`;
 
             // Call backend PDF generator and dispatcher
             const res = await fetch('http://localhost:5000/api/whatsapp/send-pdf', {
@@ -697,6 +701,19 @@ export default function SettingsPage() {
                                     className="w-full p-2 border border-gray-300 rounded-lg font-bold text-xs focus:ring-1 focus:ring-gray-900 outline-none"
                                 />
                             </div>
+                        </div>
+
+                        <div>
+                            <label className="block font-bold text-gray-700 mb-1">
+                                Shop Subtitle / Tagline <span className="text-gray-400 font-normal">(Navbar &amp; Wholesale Invoices)</span>
+                            </label>
+                            <input
+                                type="text"
+                                placeholder="e.g. Wholesale & Retail Distribution"
+                                value={settings.shop_tagline !== undefined ? settings.shop_tagline : ''}
+                                onChange={(e) => setSettings({ ...settings, shop_tagline: e.target.value })}
+                                className="w-full p-2 border border-gray-300 rounded-lg font-semibold text-xs focus:ring-1 focus:ring-gray-900 outline-none"
+                            />
                         </div>
 
                         <div>
@@ -965,10 +982,10 @@ export default function SettingsPage() {
                                     className="w-full p-2 border border-gray-300 rounded-lg text-xs font-semibold focus:ring-1 focus:ring-gray-900 outline-none"
                                 >
                                     <option value="">-- Choose Customer --</option>
-                                    {customers.map(c => {
+                                    {customers.map((c, idx) => {
                                         const due = parseFloat(c.balance) || 0;
                                         return (
-                                            <option key={c.id} value={c.id}>
+                                            <option key={`set-cust-${c.id ?? idx}-${idx}`} value={c.id}>
                                                 {c.name} {c.phone ? `(${c.phone})` : '(No Phone)'} — Dues: Rs. {Math.round(due).toLocaleString()}
                                             </option>
                                         );

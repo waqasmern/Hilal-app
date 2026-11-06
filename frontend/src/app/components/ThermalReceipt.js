@@ -1,5 +1,6 @@
 'use client';
 import React from 'react';
+import { IconReceipt, IconPrinter, IconClose } from './Icons';
 
 /**
  * Helper to shorten packaging unit names for thermal slip width
@@ -16,16 +17,116 @@ function formatPackShort(name) {
 }
 
 /**
+ * Reusable 80mm Thermal Receipt Modal Component
+ * 
+ * Provides the complete preview dialog with pinned header, print action,
+ * scrollable thermal receipt preview, and footer actions (View A4 Bill / Print Receipt).
+ */
+export function ThermalReceiptModal({
+    isOpen,
+    onClose,
+    invoice,
+    settings = {},
+    cashierName = '',
+    prevBalance = 0,
+    newBalance = null,
+    onOpenA4,
+    onPrint,
+    elemId = 'printable-invoice-thermal'
+}) {
+    if (!isOpen || !invoice) return null;
+
+    return (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-2 sm:p-4 overflow-hidden animate-in fade-in duration-150">
+            <div className="bg-white rounded-2xl sm:rounded-3xl max-w-sm w-full shadow-2xl border border-gray-200 flex flex-col max-h-[85vh] sm:max-h-[88vh] overflow-hidden">
+                {/* Header (Pinned) */}
+                <div className="shrink-0 flex justify-between items-center px-4 py-3 border-b border-gray-100 bg-white">
+                    <div className="flex items-center gap-1.5">
+                        <IconReceipt className="w-4 h-4 text-black" />
+                        <h3 className="font-extrabold text-gray-900 text-sm">Thermal Receipt Preview</h3>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                        {onPrint && (
+                            <button
+                                type="button"
+                                onClick={onPrint}
+                                style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
+                                className="btn-black !bg-black !text-white px-3 py-1 rounded-xl font-bold text-xs shadow-xs flex items-center gap-1 hover:opacity-90 active:scale-95 transition-all cursor-pointer"
+                            >
+                                <IconPrinter className="w-3.5 h-3.5 text-white" />
+                                <span>Print</span>
+                            </button>
+                        )}
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="p-1 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-all cursor-pointer"
+                        >
+                            <IconClose className="w-4 h-4" />
+                        </button>
+                    </div>
+                </div>
+
+                {/* Scrollable Thermal Slip Container */}
+                <div className="flex-1 min-h-0 overflow-y-auto p-3 bg-gray-100/70">
+                    <div className="w-full flex justify-center items-start min-h-full py-1">
+                        <ThermalReceiptSlip
+                            invoice={invoice}
+                            settings={settings}
+                            cashierName={cashierName}
+                            prevBalance={prevBalance}
+                            newBalance={newBalance}
+                            elemId={elemId}
+                        />
+                    </div>
+                </div>
+
+                {/* Bottom Actions (Pinned) */}
+                <div className="shrink-0 flex gap-2 p-3 sm:px-4 sm:py-3 border-t border-gray-100 bg-white">
+                    {onOpenA4 && (
+                        <button
+                            type="button"
+                            onClick={onOpenA4}
+                            style={{ backgroundColor: '#ffffff', color: '#000000', border: '1px solid #d1d5db' }}
+                            className="flex-1 py-2 rounded-xl font-bold text-xs hover:bg-gray-100 transition-all cursor-pointer text-center"
+                        >
+                            View Full A4 Bill
+                        </button>
+                    )}
+                    {onPrint && (
+                        <button
+                            type="button"
+                            onClick={onPrint}
+                            style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
+                            className="btn-black !bg-black !text-white flex-1 py-2 rounded-xl font-bold text-xs shadow-xs hover:opacity-90 active:scale-95 transition-all cursor-pointer text-center flex items-center justify-center gap-1.5"
+                        >
+                            <IconPrinter className="w-3.5 h-3.5 text-white" />
+                            <span>Print Receipt</span>
+                        </button>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+/**
  * Reusable 80mm Thermal Receipt Component
  * 
  * Used across POS, Sales History, and Modals for previewing and printing.
- * Key Features:
- * - NO bank details on thermal receipt (clean, lightweight)
- * - Clear, mathematically transparent Ledger & Balance calculation
- * - High-contrast black (#000000) typography for thermal printer heads
- * - Solid divider lines (prevents rasterization dots on ESC/POS printers)
+ * If `isOpen` is passed, it automatically renders the complete modal dialog!
  */
-export default function ThermalReceipt({
+export default function ThermalReceipt(props) {
+    if (props.isOpen !== undefined) {
+        return <ThermalReceiptModal {...props} />;
+    }
+    return <ThermalReceiptSlip {...props} />;
+}
+
+/**
+ * Inner 80mm Thermal Receipt Printable Slip
+ */
+export function ThermalReceiptSlip({
     invoice,
     settings = {},
     cashierName = '',
@@ -88,82 +189,94 @@ export default function ThermalReceipt({
     return (
         <div
             id={elemId}
-            className="bg-white p-2.5 border border-gray-300 rounded-lg text-black font-sans text-[9.5px] leading-tight shadow-none mx-auto print:border-none print:p-0"
-            style={{ width: '100%', maxWidth: '305px', color: '#000000', backgroundColor: '#ffffff' }}
+            className="bg-white p-3 border border-gray-400 rounded-lg text-black font-sans shadow-sm mx-auto print:border-none print:p-0 print:shadow-none h-auto shrink-0 self-start"
+            style={{
+                width: '100%',
+                maxWidth: '315px',
+                color: '#000000',
+                backgroundColor: '#ffffff',
+                fontFamily: 'Arial, "Helvetica Neue", Helvetica, sans-serif',
+                fontSize: '11px',
+                lineHeight: 1.3,
+                height: 'auto',
+                minHeight: 'fit-content'
+            }}
         >
-            {/* 1. SHOP HEADER (NO BANK DETAILS) */}
-            <div className="text-center pb-2 border-b border-black">
+            {/* 1. SHOP HEADER */}
+            <div style={{ textAlign: 'center', paddingBottom: '5px', borderBottom: '1px solid #000000' }}>
                 {shopLogo && (
-                    <div className="flex justify-center mb-1">
+                    <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '3px' }}>
                         <img
                             src={shopLogo}
                             alt="Shop Logo"
-                            className="h-9 max-h-9 w-auto max-w-[120px] object-contain filter grayscale contrast-125"
+                            style={{ maxHeight: '40px', maxWidth: '130px', objectFit: 'contain' }}
                         />
                     </div>
                 )}
-                <div className="font-bold text-[13px] tracking-wide uppercase text-black leading-tight">
+                <div style={{ fontWeight: 'bold', fontSize: '13.5px', letterSpacing: '0.5px', textTransform: 'uppercase', color: '#000000', lineHeight: 1.2 }}>
                     {shopName}
                 </div>
                 {shopAddress && (
-                    <div className="text-[9px] text-gray-700 leading-tight mt-0.5 font-normal">
+                    <div style={{ fontSize: '10px', fontWeight: 'normal', color: '#000000', lineHeight: 1.2, marginTop: '2px' }}>
                         {shopAddress}
                     </div>
                 )}
-                <div className="text-[8.5px] text-gray-700 font-normal mt-0.5 flex items-center justify-center gap-1.5 flex-wrap">
+                <div style={{ fontSize: '9.5px', fontWeight: 'normal', color: '#000000', marginTop: '2px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', flexWrap: 'wrap' }}>
                     {shopPhone && <span>Tel: {shopPhone}</span>}
-                    {shopPhone && shopNtn && <span className="text-gray-400">|</span>}
+                    {shopPhone && shopNtn && <span>|</span>}
                     {shopNtn && <span>NTN: {shopNtn}</span>}
                 </div>
             </div>
 
-            {/* 2. INVOICE & CUSTOMER METADATA */}
-            <div className="py-1.5 text-[9px] border-b border-black font-normal">
-                <table className="w-full border-collapse">
+            {/* 2. INVOICE & CUSTOMER METADATA (TABULAR FORMAT, SOLID BORDER) */}
+            <div style={{ padding: '3px 0', borderBottom: '1px solid #000000' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: '10.5px' }}>
                     <tbody>
                         <tr>
-                            <td className="text-black font-bold py-0.5 w-[35%]">Invoice #:</td>
-                            <td className="text-black font-mono font-bold text-right py-0.5 pr-1">{invoice.invoice_no || invoice.id}</td>
+                            <td style={{ width: '35%', fontWeight: 'bold', color: '#000000', textAlign: 'left', padding: '1.5px 0' }}>Invoice #:</td>
+                            <td style={{ width: '65%', textAlign: 'right', fontWeight: 'bold', fontFamily: 'monospace', fontSize: '11px', padding: '1.5px 0', color: '#000000' }}>
+                                {invoice.invoice_no || invoice.id}
+                            </td>
                         </tr>
                         <tr>
-                            <td className="text-gray-700 font-normal py-0.5">Date &amp; Time:</td>
-                            <td className="text-black font-mono font-normal text-right py-0.5 pr-1">{formattedDate}</td>
+                            <td style={{ textAlign: 'left', fontWeight: '600', color: '#000000', padding: '1.5px 0' }}>Date &amp; Time:</td>
+                            <td style={{ textAlign: 'right', fontWeight: 'normal', color: '#000000', padding: '1.5px 0' }}>{formattedDate}</td>
                         </tr>
                         <tr>
-                            <td className="text-gray-700 font-normal py-0.5">Cashier:</td>
-                            <td className="text-black font-normal text-right py-0.5 pr-1">{cashier}</td>
+                            <td style={{ textAlign: 'left', fontWeight: '600', color: '#000000', padding: '1.5px 0' }}>Cashier:</td>
+                            <td style={{ textAlign: 'right', fontWeight: 'normal', color: '#000000', padding: '1.5px 0' }}>{cashier}</td>
                         </tr>
-                        <tr className="border-t border-dashed border-gray-400">
-                            <td className="text-gray-700 font-normal pt-1">Billed To:</td>
-                            <td className="text-black font-semibold text-right pt-1 pr-1 break-words max-w-[170px]">{customerName}</td>
+                        <tr style={{ borderTop: '1px solid #000000' }}>
+                            <td style={{ textAlign: 'left', fontWeight: '600', color: '#000000', padding: '2.5px 0 1.5px 0' }}>Billed To:</td>
+                            <td style={{ textAlign: 'right', fontWeight: 'bold', color: '#000000', padding: '2.5px 0 1.5px 0', wordBreak: 'break-word' }}>{customerName}</td>
                         </tr>
                         {customerPhone && (
                             <tr>
-                                <td className="text-gray-700 font-normal py-0.5">Mobile / Tel:</td>
-                                <td className="text-black font-mono font-normal text-right py-0.5 pr-1">{customerPhone}</td>
+                                <td style={{ textAlign: 'left', fontWeight: '600', color: '#000000', padding: '1.5px 0' }}>Mobile / Tel:</td>
+                                <td style={{ textAlign: 'right', fontWeight: 'normal', color: '#000000', padding: '1.5px 0' }}>{customerPhone}</td>
                             </tr>
                         )}
                         {customerAddress && (
                             <tr>
-                                <td className="text-gray-700 font-normal py-0.5">Address:</td>
-                                <td className="text-black font-normal text-right py-0.5 pr-1 break-words max-w-[170px]">{customerAddress}</td>
+                                <td style={{ textAlign: 'left', verticalAlign: 'top', fontWeight: '600', color: '#000000', padding: '1.5px 0' }}>Address:</td>
+                                <td style={{ textAlign: 'right', fontWeight: 'normal', color: '#000000', padding: '1.5px 0', wordBreak: 'break-word' }}>{customerAddress}</td>
                             </tr>
                         )}
                     </tbody>
                 </table>
             </div>
 
-            {/* 3. ITEMS TABLE */}
-            <div className="py-1 border-b border-black">
-                <table className="w-full text-[8.5px] border-collapse table-fixed">
+            {/* 3. ITEMS TABLE (TABULAR FORMAT, LIGHT 1PX BORDERS FOR ROWS & COLUMNS) */}
+            <div style={{ padding: '3px 0' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: '10px', border: '1px solid #000000' }}>
                     <thead>
-                        <tr className="border-b border-black font-semibold text-[8.5px] uppercase tracking-wider">
-                            <th className="text-center py-1 w-[8%] text-black font-semibold">#</th>
-                            <th className="text-left py-1 w-[38%] text-black font-semibold">Item Description</th>
-                            <th className="text-center py-1 w-[12%] text-black font-semibold">Qty</th>
-                            <th className="text-right py-1 w-[14%] text-black font-semibold">Rate</th>
-                            <th className="text-right py-1 w-[12%] text-black font-semibold">Disc</th>
-                            <th className="text-right py-1 w-[16%] pr-1 text-black font-semibold">Net</th>
+                        <tr style={{ textTransform: 'uppercase' }}>
+                            <th style={{ textAlign: 'center', width: '7%', padding: '3.5px 1px', fontWeight: 'bold', color: '#000000', border: '1px solid #000000' }}>#</th>
+                            <th style={{ textAlign: 'left', width: '41%', padding: '3.5px 3px', fontWeight: 'bold', color: '#000000', border: '1px solid #000000' }}>Item</th>
+                            <th style={{ textAlign: 'center', width: '14%', padding: '3.5px 1px', fontWeight: 'bold', color: '#000000', border: '1px solid #000000' }}>Qty</th>
+                            <th style={{ textAlign: 'right', width: '13%', padding: '3.5px 2px', fontWeight: 'bold', color: '#000000', border: '1px solid #000000' }}>Rate</th>
+                            <th style={{ textAlign: 'right', width: '10%', padding: '3.5px 2px', fontWeight: 'bold', color: '#000000', border: '1px solid #000000' }}>Disc</th>
+                            <th style={{ textAlign: 'right', width: '15%', padding: '3.5px 3px', fontWeight: 'bold', color: '#000000', border: '1px solid #000000' }}>Net</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -174,34 +287,37 @@ export default function ThermalReceipt({
                             const packName = item.packaging_name || (isBulk ? 'Bulk' : uSymbol);
                             const qty = parseFloat(item.quantity) || 0;
                             const looseQty = isBulk ? (qty * factor) : qty;
+                            const qtyCol = isBulk ? `${qty} ${formatPackShort(packName)}` : `${looseQty} ${uSymbol}`;
+                            const variantText = item.variant_name && item.variant_name !== 'Standard' ? `(${item.variant_name}) ` : '';
+                            const packageDetail = isBulk ? `Pack: ${qty} ${packName} (${looseQty} ${uSymbol})` : '';
+                            const hasSub = variantText || packageDetail;
                             const itDiscount = parseFloat(item.discount) || 0;
 
                             return (
-                                <tr key={idx} className="align-top" style={{ borderBottom: '1px solid #9ca3af' }}>
-                                    <td className="py-1.5 text-center font-normal text-[8.5px] text-gray-600" style={{ borderBottom: '1px solid #9ca3af' }}>
+                                <tr key={idx} style={{ verticalAlign: 'top' }}>
+                                    <td style={{ padding: '4.5px 1px', textAlign: 'center', fontSize: '10px', fontWeight: '500', color: '#000000', border: '1px solid #000000' }}>
                                         {idx + 1}
                                     </td>
-                                    <td className="py-1.5 text-left pr-1" style={{ borderBottom: '1px solid #9ca3af' }}>
-                                        <div className="font-normal text-[8.5px] leading-tight break-words text-black">
+                                    <td style={{ padding: '4.5px 3px', textAlign: 'left', border: '1px solid #000000' }}>
+                                        <div style={{ fontSize: '10px', fontWeight: 'bold', lineHeight: 1.2, wordBreak: 'break-word', color: '#000000' }}>
                                             {item.product_name}
                                         </div>
-                                        <div className="text-[7.5px] text-gray-500 leading-tight">
-                                            {item.variant_name && item.variant_name !== 'Standard' && (
-                                                <span>({item.variant_name}) </span>
-                                            )}
-                                            <span>{isBulk ? `${qty} ${packName} (${looseQty} ${uSymbol})` : `${looseQty} ${uSymbol}`}</span>
-                                        </div>
+                                        {hasSub && (
+                                            <div style={{ fontSize: '8.5px', fontWeight: 'normal', color: '#000000', lineHeight: 1.15, marginTop: '1.5px' }}>
+                                                {variantText}{packageDetail}
+                                            </div>
+                                        )}
                                     </td>
-                                    <td className="py-1.5 text-center font-normal text-[8.5px] text-black" style={{ borderBottom: '1px solid #9ca3af' }}>
-                                        {isBulk ? `${qty} ${formatPackShort(packName)}` : `${looseQty}`}
+                                    <td style={{ padding: '4.5px 1px', textAlign: 'center', fontSize: '10px', fontWeight: 'bold', color: '#000000', whiteSpace: 'nowrap', border: '1px solid #000000' }}>
+                                        {qtyCol}
                                     </td>
-                                    <td className="py-1.5 text-right font-mono font-normal text-[8.5px] text-black" style={{ borderBottom: '1px solid #9ca3af' }}>
+                                    <td style={{ padding: '4.5px 2px', textAlign: 'right', fontSize: '10px', fontWeight: '500', color: '#000000', border: '1px solid #000000' }}>
                                         {Number(item.price).toFixed(0)}
                                     </td>
-                                    <td className="py-1.5 text-right font-mono font-normal text-[8.5px] text-gray-600" style={{ borderBottom: '1px solid #9ca3af' }}>
+                                    <td style={{ padding: '4.5px 2px', textAlign: 'right', fontSize: '10px', fontWeight: '500', color: '#000000', border: '1px solid #000000' }}>
                                         {itDiscount > 0 ? `${itDiscount.toFixed(0)}` : '0'}
                                     </td>
-                                    <td className="py-1.5 text-right font-mono font-normal text-[8.5px] pr-1 text-black" style={{ borderBottom: '1px solid #9ca3af' }}>
+                                    <td style={{ padding: '4.5px 3px', textAlign: 'right', fontSize: '10.5px', fontWeight: 'bold', color: '#000000', border: '1px solid #000000' }}>
                                         {Number(item.total).toFixed(0)}
                                     </td>
                                 </tr>
@@ -211,81 +327,93 @@ export default function ThermalReceipt({
                 </table>
             </div>
 
-            {/* 4. CURRENT BILL FINANCIAL TOTALS */}
-            <div className="py-1.5 text-[9px] space-y-0.5 border-b border-black text-black font-normal">
-                <div className="flex justify-between">
-                    <span className="text-gray-700 font-normal">Gross Amount:</span>
-                    <span className="font-mono font-normal text-black pr-1">Rs. {grossVal.toFixed(2)}</span>
-                </div>
-                {discVal > 0 && (
-                    <div className="flex justify-between">
-                        <span className="text-gray-700 font-normal">Less Item Discount:</span>
-                        <span className="font-mono font-normal text-black pr-1">- Rs. {discVal.toFixed(2)}</span>
-                    </div>
-                )}
-                {specialDiscVal > 0 && (
-                    <div className="flex justify-between">
-                        <span className="text-gray-700 font-normal">Less Special Discount:</span>
-                        <span className="font-mono font-normal text-black pr-1">- Rs. {specialDiscVal.toFixed(2)}</span>
-                    </div>
-                )}
-                {chargesVal > 0 && (
-                    <div className="flex justify-between">
-                        <span className="text-gray-700 font-normal">Add Charges:</span>
-                        <span className="font-mono font-normal text-black pr-1">+ Rs. {chargesVal.toFixed(2)}</span>
-                    </div>
-                )}
-                <div className="flex justify-between font-bold text-[11px] pt-1 border-t border-b border-black my-1 text-black">
-                    <span>CURRENT BILL:</span>
-                    <span className="pr-1 font-mono">Rs. {netVal.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between pt-0.5 font-normal">
-                    <span className="text-gray-700 font-normal">Paid on Bill:</span>
-                    <span className="font-mono font-normal text-black pr-1">Rs. {paidVal.toFixed(2)}</span>
-                </div>
-                {!hasLedger && (
-                    <div className="flex justify-between pt-0.5 font-normal">
-                        <span className="text-gray-700 font-normal">{dueVal > 0 ? 'Bill Balance Due:' : 'Change Return:'}</span>
-                        <span className="font-mono font-normal pr-1">Rs. {Math.abs(dueVal).toFixed(2)}</span>
-                    </div>
-                )}
+            {/* 4. CURRENT BILL FINANCIAL TOTALS (TABULAR FORMAT, LIGHT 1PX BORDERS) */}
+            <div style={{ padding: '3px 0' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: '10.5px', border: '1px solid #000000' }}>
+                    <tbody>
+                        <tr>
+                            <td style={{ width: '52%', textAlign: 'left', fontWeight: '500', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>Gross Amount:</td>
+                            <td style={{ width: '48%', textAlign: 'right', fontWeight: '600', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>Rs. {grossVal.toFixed(2)}</td>
+                        </tr>
+                        {discVal > 0 && (
+                            <tr>
+                                <td style={{ textAlign: 'left', fontWeight: '500', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>Less Item Discount:</td>
+                                <td style={{ textAlign: 'right', fontWeight: '600', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>- Rs. {discVal.toFixed(2)}</td>
+                            </tr>
+                        )}
+                        {specialDiscVal > 0 && (
+                            <tr>
+                                <td style={{ textAlign: 'left', fontWeight: '500', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>Less Special Discount:</td>
+                                <td style={{ textAlign: 'right', fontWeight: '600', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>- Rs. {specialDiscVal.toFixed(2)}</td>
+                            </tr>
+                        )}
+                        {chargesVal > 0 && (
+                            <tr>
+                                <td style={{ textAlign: 'left', fontWeight: '500', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>Add Charges:</td>
+                                <td style={{ textAlign: 'right', fontWeight: '600', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>+ Rs. {chargesVal.toFixed(2)}</td>
+                            </tr>
+                        )}
+                        <tr>
+                            <td style={{ textAlign: 'left', fontWeight: 'bold', fontSize: '12.5px', color: '#000000', padding: '4px 4px', border: '1px solid #000000' }}>CURRENT BILL:</td>
+                            <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '12.5px', color: '#000000', padding: '4px 4px', border: '1px solid #000000' }}>Rs. {netVal.toFixed(2)}</td>
+                        </tr>
+                        <tr>
+                            <td style={{ textAlign: 'left', fontWeight: '500', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>Paid on Bill:</td>
+                            <td style={{ textAlign: 'right', fontWeight: '600', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>Rs. {paidVal.toFixed(2)}</td>
+                        </tr>
+                        {!hasLedger && (
+                            <tr>
+                                <td style={{ textAlign: 'left', fontWeight: 'bold', fontSize: '11px', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>
+                                    {dueVal > 0 ? 'Bill Balance Due:' : 'Change Return:'}
+                                </td>
+                                <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '11px', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>
+                                    Rs. {Math.abs(dueVal).toFixed(2)}
+                                </td>
+                            </tr>
+                        )}
+                    </tbody>
+                </table>
             </div>
 
-            {/* 5. CUSTOMER LEDGER STATEMENT (CLEAR, MATHEMATICALLY VERIFIABLE) */}
+            {/* 5. CUSTOMER LEDGER STATEMENT (TABULAR FORMAT, LIGHT 1PX BORDERS) */}
             {hasLedger && (
-                <div className="py-1.5 text-[9px] space-y-0.5 border-b border-black text-black font-normal">
-                    <div className="text-center font-normal text-[8px] tracking-wide text-gray-500 border-b border-dashed border-gray-300 pb-0.5 mb-1">
-                        *** CUSTOMER LEDGER ACCOUNT ***
+                <div style={{ padding: '3px 0' }}>
+                    <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '10.5px', letterSpacing: '0.5px', color: '#000000', border: '1px solid #000000', borderBottom: 'none', padding: '3px', marginBottom: 0 }}>
+                        *** CUSTOMER LEDGER STATEMENT ***
                     </div>
-                    <div className="flex justify-between font-bold text-black">
-                        <span className="text-black font-bold">Previous Balance:</span>
-                        <span className="font-bold text-black pr-1">Rs. {pBal.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between font-semibold">
-                        <span className="text-black font-semibold">+ Current Bill:</span>
-                        <span className="font-mono font-semibold text-black pr-1">+ Rs. {netVal.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between pt-0.5 border-t border-gray-400 font-semibold">
-                        <span className="text-black font-semibold">Total Payable:</span>
-                        <span className="font-mono font-semibold text-black pr-1">Rs. {totalPayable.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between font-semibold">
-                        <span className="text-black font-semibold">- Paid Today:</span>
-                        <span className="font-mono font-semibold text-black pr-1">- Rs. {paidVal.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between font-bold text-[11px] border-t border-b border-black py-0.5 mt-1 text-black">
-                        <span>NEW BALANCE:</span>
-                        <span className="font-mono pr-1">Rs. {finalBal.toFixed(2)}</span>
-                    </div>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: '10.5px', border: '1px solid #000000' }}>
+                        <tbody>
+                            <tr>
+                                <td style={{ width: '52%', textAlign: 'left', fontWeight: 'bold', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>Previous Balance:</td>
+                                <td style={{ width: '48%', textAlign: 'right', fontWeight: 'bold', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>Rs. {pBal.toFixed(2)}</td>
+                            </tr>
+                            <tr>
+                                <td style={{ textAlign: 'left', fontWeight: '600', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>+ Current Bill:</td>
+                                <td style={{ textAlign: 'right', fontWeight: '600', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>+ Rs. {netVal.toFixed(2)}</td>
+                            </tr>
+                            <tr>
+                                <td style={{ textAlign: 'left', fontWeight: '600', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>Total Payable:</td>
+                                <td style={{ textAlign: 'right', fontWeight: '600', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>Rs. {totalPayable.toFixed(2)}</td>
+                            </tr>
+                            <tr>
+                                <td style={{ textAlign: 'left', fontWeight: '600', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>- Paid Today:</td>
+                                <td style={{ textAlign: 'right', fontWeight: '600', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>- Rs. {paidVal.toFixed(2)}</td>
+                            </tr>
+                            <tr>
+                                <td style={{ textAlign: 'left', fontWeight: 'bold', fontSize: '12.5px', color: '#000000', padding: '4px 4px', border: '1px solid #000000' }}>NEW BALANCE:</td>
+                                <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '12.5px', color: '#000000', padding: '4px 4px', border: '1px solid #000000' }}>Rs. {finalBal.toFixed(2)}</td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             )}
 
             {/* 6. FOOTER */}
-            <div className="pt-1.5 text-center text-black font-normal">
-                <div className="font-normal text-[8.5px] tracking-wide text-black">
+            <div style={{ paddingTop: '5px', textAlign: 'center', color: '#000000' }}>
+                <div style={{ fontWeight: 'bold', fontSize: '10.5px', letterSpacing: '0.5px', color: '#000000' }}>
                     *** THANK YOU FOR YOUR BUSINESS! ***
                 </div>
-                <div className="text-[7.5px] mt-0.5 text-gray-500 font-normal">
+                <div style={{ fontSize: '9px', marginTop: '2px', fontWeight: 'normal', color: '#000000' }}>
                     No return without original invoice
                 </div>
             </div>

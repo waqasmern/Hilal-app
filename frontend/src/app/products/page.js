@@ -330,7 +330,7 @@ export default function CategoriesPackagingPage() {
             {/* Page Header with Compact Navigation Tabs and Quick Add */}
             <div className="bg-white p-3.5 rounded-xl border border-gray-200 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-3">
                 <div className="flex items-center gap-2.5">
-                    <span className="w-8 h-8 rounded-lg gold-gradient text-white flex items-center justify-center font-bold shadow-2xs shrink-0">
+                    <span className="w-8 h-8 rounded-lg bg-[#0B3B7B] text-white flex items-center justify-center font-bold shadow-2xs shrink-0">
                         <IconProducts className="w-4 h-4 text-white" />
                     </span>
                     <div>
@@ -351,13 +351,13 @@ export default function CategoriesPackagingPage() {
                             onClick={() => setActiveTab('categories')}
                             className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 cursor-pointer text-xs ${
                                 activeTab === 'categories'
-                                    ? 'bg-white text-gray-900 shadow-2xs font-bold'
+                                    ? 'bg-[#0B3B7B] text-white shadow-2xs font-bold'
                                     : 'text-gray-600 hover:text-gray-900'
                             }`}
                         >
                             <IconProducts className="w-3.5 h-3.5" />
                             <span>Categories</span>
-                            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-gray-200 text-gray-700 font-bold">
+                            <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${activeTab === 'categories' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-700'}`}>
                                 {categories.length}
                             </span>
                         </button>
@@ -366,13 +366,13 @@ export default function CategoriesPackagingPage() {
                             onClick={() => setActiveTab('units')}
                             className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 cursor-pointer text-xs ${
                                 activeTab === 'units'
-                                    ? 'bg-white text-gray-900 shadow-2xs font-bold'
+                                    ? 'bg-[#0B3B7B] text-white shadow-2xs font-bold'
                                     : 'text-gray-600 hover:text-gray-900'
                             }`}
                         >
-                            <IconScale className="w-3.5 h-3.5 text-amber-600" />
+                            <IconScale className={`w-3.5 h-3.5 ${activeTab === 'units' ? 'text-white' : 'text-blue-700'}`} />
                             <span>Base Units</span>
-                            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-100 text-amber-800 font-bold">
+                            <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${activeTab === 'units' ? 'bg-white/20 text-white' : 'bg-blue-100 text-blue-800'}`}>
                                 {units.length}
                             </span>
                         </button>
@@ -381,13 +381,13 @@ export default function CategoriesPackagingPage() {
                             onClick={() => setActiveTab('packaging')}
                             className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 cursor-pointer text-xs ${
                                 activeTab === 'packaging'
-                                    ? 'bg-white text-gray-900 shadow-2xs font-bold'
+                                    ? 'bg-[#0B3B7B] text-white shadow-2xs font-bold'
                                     : 'text-gray-600 hover:text-gray-900'
                             }`}
                         >
                             <IconBox className="w-3.5 h-3.5" />
                             <span>Packaging Types</span>
-                            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-gray-200 text-gray-700 font-bold">
+                            <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${activeTab === 'packaging' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-700'}`}>
                                 {packagingTypes.length}
                             </span>
                         </button>
@@ -398,7 +398,7 @@ export default function CategoriesPackagingPage() {
                         <button
                             type="button"
                             onClick={() => handleOpenAddCategory()}
-                            className="px-3 py-1.5 bg-black hover:bg-gray-800 text-white rounded-lg text-xs font-bold shadow-2xs transition-all flex items-center gap-1 cursor-pointer shrink-0"
+                            className="px-3.5 py-1.5 bg-[#16A34A] hover:bg-[#15803D] text-white rounded-xl text-xs font-bold shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
                         >
                             <IconPlus className="w-3.5 h-3.5 text-white" />
                             <span>+ Add Category</span>
@@ -408,7 +408,7 @@ export default function CategoriesPackagingPage() {
                         <button
                             type="button"
                             onClick={() => handleOpenAddUnit()}
-                            className="px-3 py-1.5 bg-black hover:bg-gray-800 text-white rounded-lg text-xs font-bold shadow-2xs transition-all flex items-center gap-1 cursor-pointer shrink-0"
+                            className="px-3.5 py-1.5 bg-[#0B3B7B] hover:bg-[#072B5C] text-white rounded-xl text-xs font-bold shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
                         >
                             <IconPlus className="w-3.5 h-3.5 text-white" />
                             <span>+ Add Base Unit</span>
@@ -418,7 +418,7 @@ export default function CategoriesPackagingPage() {
                         <button
                             type="button"
                             onClick={() => handleOpenAddPackaging()}
-                            className="px-3 py-1.5 bg-black hover:bg-gray-800 text-white rounded-lg text-xs font-bold shadow-2xs transition-all flex items-center gap-1 cursor-pointer shrink-0"
+                            className="px-3.5 py-1.5 bg-[#0B3B7B] hover:bg-[#072B5C] text-white rounded-xl text-xs font-bold shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
                         >
                             <IconPlus className="w-3.5 h-3.5 text-white" />
                             <span>+ Add Packaging Type</span>
@@ -524,7 +524,7 @@ export default function CategoriesPackagingPage() {
                         <button
                             type="button"
                             onClick={() => handleOpenAddCategory()}
-                            className="px-3 py-1.5 bg-gray-900 hover:bg-black text-white rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer shrink-0"
+                            className="px-3.5 py-1.5 bg-[#16A34A] hover:bg-[#15803D] text-white rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer shrink-0 transition-all shadow-2xs"
                         >
                             <IconPlus className="w-3.5 h-3.5" />
                             <span>Add Main</span>
@@ -545,13 +545,13 @@ export default function CategoriesPackagingPage() {
                                 return (
                                     <div
                                         key={cat.id}
-                                        className="bg-white rounded-xl border border-gray-200 hover:border-gray-300 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between overflow-hidden"
+                                        className="bg-white rounded-xl border border-gray-200 hover:border-blue-200 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between overflow-hidden"
                                     >
                                         {/* Main Category Header Card */}
-                                        <div className="p-3 bg-gray-50/80 border-b border-gray-100 flex items-start justify-between gap-2">
+                                        <div className="p-3 bg-slate-50/80 border-b border-gray-100 flex items-start justify-between gap-2">
                                             <div className="min-w-0 flex-1">
                                                 <div className="flex items-center gap-1.5">
-                                                    <span className="w-2 h-2 rounded-full gold-gradient shrink-0" />
+                                                    <span className="w-2 h-2 rounded-full bg-[#0B3B7B] shrink-0" />
                                                     <h3 className="text-xs font-bold text-gray-900 truncate" title={cat.name}>
                                                         {cat.name}
                                                     </h3>
@@ -718,7 +718,7 @@ export default function CategoriesPackagingPage() {
                         <button
                             type="button"
                             onClick={() => handleOpenAddUnit()}
-                            className="px-3 py-1.5 bg-gray-900 hover:bg-black text-white rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer shrink-0"
+                            className="px-3.5 py-1.5 bg-[#0B3B7B] hover:bg-[#072B5C] text-white rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer shrink-0 transition-all shadow-2xs"
                         >
                             <IconPlus className="w-3.5 h-3.5" />
                             <span>Add Base Unit</span>
@@ -728,12 +728,12 @@ export default function CategoriesPackagingPage() {
                     {/* Measurement Units Cards Grid */}
                     {filteredUnits.length === 0 ? (
                         <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-400">
-                            <IconScale className="w-8 h-8 mx-auto text-amber-500/70 mb-2" />
+                            <IconScale className="w-8 h-8 mx-auto text-blue-500/70 mb-2" />
                             <div className="text-xs font-medium">No measurement units found matching your search.</div>
                             <button
                                 type="button"
                                 onClick={() => handleOpenAddUnit()}
-                                className="mt-3 inline-flex items-center gap-1 px-3 py-1.5 bg-black text-white rounded-lg text-xs font-bold"
+                                className="mt-3 inline-flex items-center gap-1 px-3.5 py-1.5 bg-[#0B3B7B] hover:bg-[#072B5C] text-white rounded-xl text-xs font-bold"
                             >
                                 <IconPlus className="w-3 h-3" />
                                 <span>Add New Unit</span>
@@ -747,7 +747,7 @@ export default function CategoriesPackagingPage() {
                                 return (
                                     <div
                                         key={u.id}
-                                        className="bg-white rounded-xl border border-gray-200 hover:border-amber-300 p-3 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between"
+                                        className="bg-white rounded-xl border border-gray-200 hover:border-blue-300 p-3 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between"
                                     >
                                         <div>
                                             {/* Card Top: Unit Name & Action Buttons */}
@@ -757,7 +757,7 @@ export default function CategoriesPackagingPage() {
                                                         <h3 className="text-xs font-bold text-gray-900 truncate" title={u.name}>
                                                             {u.name}
                                                         </h3>
-                                                        <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-[#FEF9E7] text-[#B8860B] border border-[#D4AF37]/30 shrink-0">
+                                                        <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-50 text-[#0B3B7B] border border-blue-200 shrink-0">
                                                             {u.symbol || u.name.slice(0, 3).toUpperCase()}
                                                         </span>
                                                     </div>
@@ -849,7 +849,7 @@ export default function CategoriesPackagingPage() {
                         <button
                             type="button"
                             onClick={() => handleOpenAddPackaging()}
-                            className="px-3 py-1.5 bg-gray-900 hover:bg-black text-white rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer shrink-0"
+                            className="px-3.5 py-1.5 bg-[#0B3B7B] hover:bg-[#072B5C] text-white rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer shrink-0 transition-all shadow-2xs"
                         >
                             <IconPlus className="w-3.5 h-3.5" />
                             <span>Add Unit</span>
@@ -917,7 +917,7 @@ export default function CategoriesPackagingPage() {
                         {/* Modal Header */}
                         <div className="p-3.5 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                                <span className="w-7 h-7 rounded-lg gold-gradient text-white flex items-center justify-center font-bold">
+                                <span className="w-7 h-7 rounded-lg bg-[#0B3B7B] text-white flex items-center justify-center font-bold">
                                     <IconProducts className="w-3.5 h-3.5 text-white" />
                                 </span>
                                 <div>
@@ -952,7 +952,7 @@ export default function CategoriesPackagingPage() {
                                     placeholder="e.g. Cooking Oil, Spices, Ghee, Basmati Rice..."
                                     value={categoryName}
                                     onChange={(e) => setCategoryName(e.target.value)}
-                                    className="w-full p-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-900 bg-white focus:outline-none focus:ring-1 focus:ring-amber-400"
+                                    className="w-full p-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-900 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
                                 />
                             </div>
 
@@ -967,7 +967,7 @@ export default function CategoriesPackagingPage() {
                                 <select
                                     value={parentCategoryId}
                                     onChange={(e) => setParentCategoryId(e.target.value)}
-                                    className="w-full p-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-900 bg-white focus:outline-none focus:ring-1 focus:ring-amber-400 cursor-pointer"
+                                    className="w-full p-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-900 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
                                 >
                                     <option value="">None (Top-Level Main Category)</option>
                                     {mainCategories
@@ -998,7 +998,7 @@ export default function CategoriesPackagingPage() {
                                 </button>
                                 <button
                                     type="submit"
-                                    className="px-4 py-1.5 bg-black hover:bg-gray-800 text-white rounded-lg font-bold shadow-2xs transition-all flex items-center gap-1 cursor-pointer text-xs"
+                                    className="px-4 py-1.5 bg-[#16A34A] hover:bg-[#15803D] text-white rounded-lg font-bold shadow-2xs transition-all flex items-center gap-1 cursor-pointer text-xs"
                                 >
                                     <IconPlus className="w-3.5 h-3.5 text-white" />
                                     <span>{editingCategory ? 'Save Changes' : 'Save Category'}</span>
@@ -1018,7 +1018,7 @@ export default function CategoriesPackagingPage() {
                         {/* Modal Header */}
                         <div className="p-3.5 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                                <span className="w-7 h-7 rounded-lg gold-gradient text-white flex items-center justify-center font-bold">
+                                <span className="w-7 h-7 rounded-lg bg-[#0B3B7B] text-white flex items-center justify-center font-bold">
                                     <IconInventory className="w-3.5 h-3.5 text-white" />
                                 </span>
                                 <div>
@@ -1053,7 +1053,7 @@ export default function CategoriesPackagingPage() {
                                     placeholder="e.g. Carton, Sack, Tray, Drum, Jar, Box, Gallon..."
                                     value={packagingName}
                                     onChange={(e) => setPackagingName(e.target.value)}
-                                    className="w-full p-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-900 bg-white focus:outline-none focus:ring-1 focus:ring-amber-400"
+                                    className="w-full p-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-900 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
                                 />
                             </div>
 
@@ -1067,7 +1067,7 @@ export default function CategoriesPackagingPage() {
                                     placeholder="e.g. Standard wholesale bulk carton or 40kg bag"
                                     value={packagingDescription}
                                     onChange={(e) => setPackagingDescription(e.target.value)}
-                                    className="w-full p-2 border border-gray-300 rounded-lg text-xs font-medium text-gray-900 bg-white focus:outline-none focus:ring-1 focus:ring-amber-400"
+                                    className="w-full p-2 border border-gray-300 rounded-lg text-xs font-medium text-gray-900 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
                                 />
                             </div>
 
@@ -1082,7 +1082,7 @@ export default function CategoriesPackagingPage() {
                                 </button>
                                 <button
                                     type="submit"
-                                    className="px-4 py-1.5 bg-black hover:bg-gray-800 text-white rounded-lg font-bold shadow-2xs transition-all flex items-center gap-1 cursor-pointer text-xs"
+                                    className="px-4 py-1.5 bg-[#0B3B7B] hover:bg-[#072B5C] text-white rounded-lg font-bold shadow-2xs transition-all flex items-center gap-1 cursor-pointer text-xs"
                                 >
                                     <IconPlus className="w-3.5 h-3.5 text-white" />
                                     <span>{editingPackaging ? 'Save Changes' : 'Save Packaging Unit'}</span>
@@ -1102,7 +1102,7 @@ export default function CategoriesPackagingPage() {
                         {/* Modal Header */}
                         <div className="p-3.5 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                                <span className="w-7 h-7 rounded-lg gold-gradient text-white flex items-center justify-center font-bold">
+                                <span className="w-7 h-7 rounded-lg bg-[#0B3B7B] text-white flex items-center justify-center font-bold">
                                     <IconScale className="w-3.5 h-3.5 text-white" />
                                 </span>
                                 <div>
@@ -1137,7 +1137,7 @@ export default function CategoriesPackagingPage() {
                                     placeholder="e.g. Pieces, Kilogram, Meter, Liter, Dozen, Gram..."
                                     value={unitName}
                                     onChange={(e) => setUnitName(e.target.value)}
-                                    className="w-full p-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-900 bg-white focus:outline-none focus:ring-1 focus:ring-amber-400"
+                                    className="w-full p-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-900 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
                                 />
                             </div>
 
@@ -1155,7 +1155,7 @@ export default function CategoriesPackagingPage() {
                                     placeholder="e.g. PCS, KG, M, L, DOZ, GM, BDL..."
                                     value={unitSymbol}
                                     onChange={(e) => setUnitSymbol(e.target.value.toUpperCase())}
-                                    className="w-full p-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-900 bg-white focus:outline-none focus:ring-1 focus:ring-amber-400 font-mono uppercase"
+                                    className="w-full p-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-900 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono uppercase"
                                 />
                                 <p className="text-[10px] text-gray-500 mt-1">
                                     Shown on invoices, receipts, and inventory stock tags.
@@ -1172,13 +1172,13 @@ export default function CategoriesPackagingPage() {
                                     placeholder="e.g. Standard piece count for individual retail packages"
                                     value={unitDescription}
                                     onChange={(e) => setUnitDescription(e.target.value)}
-                                    className="w-full p-2 border border-gray-300 rounded-lg text-xs font-medium text-gray-900 bg-white focus:outline-none focus:ring-1 focus:ring-amber-400"
+                                    className="w-full p-2 border border-gray-300 rounded-lg text-xs font-medium text-gray-900 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
                                 />
                             </div>
 
                             {/* Info Banner */}
-                            <div className="p-2.5 rounded-lg bg-amber-50/80 border border-amber-200/60 text-[10.5px] text-amber-900 leading-relaxed">
-                                <span className="font-bold inline-flex items-center gap-1"><IconSparkles className="w-3.5 h-3.5 text-amber-600 inline shrink-0" /> Live Integration:</span> Once saved, this unit immediately becomes selectable in the <span className="font-bold">"Base Measurement Unit *"</span> dropdown across Inventory, Product creation, and POS.
+                            <div className="p-2.5 rounded-lg bg-blue-50/80 border border-blue-200/60 text-[10.5px] text-[#0B3B7B] leading-relaxed">
+                                <span className="font-bold inline-flex items-center gap-1"><IconSparkles className="w-3.5 h-3.5 text-blue-600 inline shrink-0" /> Live Integration:</span> Once saved, this unit immediately becomes selectable in the <span className="font-bold">"Base Measurement Unit *"</span> dropdown across Inventory, Product creation, and POS.
                             </div>
 
                             {/* Modal Footer Actions */}
@@ -1192,7 +1192,7 @@ export default function CategoriesPackagingPage() {
                                 </button>
                                 <button
                                     type="submit"
-                                    className="px-4 py-1.5 bg-black hover:bg-gray-800 text-white rounded-lg font-bold shadow-2xs transition-all flex items-center gap-1 cursor-pointer text-xs"
+                                    className="px-4 py-1.5 bg-[#0B3B7B] hover:bg-[#072B5C] text-white rounded-lg font-bold shadow-2xs transition-all flex items-center gap-1 cursor-pointer text-xs"
                                 >
                                     <IconPlus className="w-3.5 h-3.5 text-white" />
                                     <span>{editingUnit ? 'Save Changes' : 'Create Base Unit'}</span>

@@ -436,15 +436,15 @@ export default function PaymentsPage() {
         } else {
             // Standard A4 Voucher format
             const a4Html = `
-                <div style="font-family: Arial, sans-serif; font-size: 13px; color: #000; max-width: 200mm; margin: 0 auto; padding: 15mm; border: 2px solid #D4AF37; border-radius: 8px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #D4AF37; padding-bottom: 12px; margin-bottom: 16px;">
+                <div style="font-family: Arial, sans-serif; font-size: 13px; color: #000; max-width: 200mm; margin: 0 auto; padding: 15mm; border: 2px solid #0B3B7B; border-radius: 8px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0B3B7B; padding-bottom: 12px; margin-bottom: 16px;">
                         <div>
                             <h1 style="font-size: 24px; font-weight: 900; color: #111; margin: 0; text-transform: uppercase;">${shopName}</h1>
                             <div style="font-size: 11px; color: #555; margin-top: 3px;">${shopAddress}</div>
                             <div style="font-size: 11px; font-weight: bold; color: #333;">Phone: ${shopPhone}</div>
                         </div>
                         <div style="text-align: right;">
-                            <div style="display: inline-block; background: #D4AF37; color: #fff; font-size: 12px; font-weight: 900; padding: 4px 12px; border-radius: 4px; text-transform: uppercase;">
+                            <div style="display: inline-block; background: #0B3B7B; color: #fff; font-size: 12px; font-weight: 900; padding: 4px 12px; border-radius: 4px; text-transform: uppercase;">
                                 ${title}
                             </div>
                             <div style="font-size: 12px; font-weight: bold; margin-top: 6px;">Voucher #: <span style="font-family: monospace;">${voucherNo}</span></div>
@@ -452,15 +452,15 @@ export default function PaymentsPage() {
                         </div>
                     </div>
 
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; background: #FEF9E7; border: 1px solid #F3E5AB; padding: 12px 16px; border-radius: 6px; margin-bottom: 20px;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; background: #F8FAFC; border: 1px solid #E2E8F0; padding: 12px 16px; border-radius: 6px; margin-bottom: 20px;">
                         <div>
-                            <div style="font-size: 10px; font-weight: bold; color: #B8860B; text-transform: uppercase;">Party Details</div>
+                            <div style="font-size: 10px; font-weight: bold; color: #0B3B7B; text-transform: uppercase;">Party Details</div>
                             <div style="font-size: 15px; font-weight: 900; margin-top: 2px;">${voucher.party_name || 'N/A'}</div>
                             ${voucher.party_business ? `<div style="font-size: 12px; font-weight: 600; color: #444;">${voucher.party_business}</div>` : ''}
                             ${voucher.party_phone ? `<div style="font-size: 11px; color: #555;">Contact: ${voucher.party_phone}</div>` : ''}
                         </div>
                         <div>
-                            <div style="font-size: 10px; font-weight: bold; color: #B8860B; text-transform: uppercase;">Payment Summary</div>
+                            <div style="font-size: 10px; font-weight: bold; color: #0B3B7B; text-transform: uppercase;">Payment Summary</div>
                             <div style="font-size: 12px; margin-top: 2px;">Method: <strong style="text-transform: uppercase;">${voucher.payment_method || 'Cash'}</strong></div>
                             ${voucher.reference_no ? `<div style="font-size: 12px;">Reference: <strong>${voucher.reference_no}</strong></div>` : ''}
                             <div style="font-size: 11px; color: #666;">Cashier: ${voucher.cashier_name || 'Counter'}</div>
@@ -480,7 +480,7 @@ export default function PaymentsPage() {
                     </div>
 
                     ${voucher.notes ? `
-                        <div style="border-left: 3px solid #D4AF37; padding-left: 10px; margin-bottom: 24px;">
+                        <div style="border-left: 3px solid #0B3B7B; padding-left: 10px; margin-bottom: 24px;">
                             <div style="font-size: 10px; font-weight: bold; color: #666; text-transform: uppercase;">Notes & Description</div>
                             <div style="font-size: 12px; color: #222; margin-top: 2px;">${voucher.notes}</div>
                         </div>
@@ -534,7 +534,7 @@ export default function PaymentsPage() {
                     <div className="flex items-center gap-2">
                         <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
                         <h1 className="text-base sm:text-lg font-black text-gray-900 tracking-tight flex items-center gap-2">
-                            <IconPayments className="w-5 h-5 text-[#B8860B]" />
+                            <IconPayments className="w-5 h-5 text-[#0B3B7B]" />
                             <span>Payment Vouchers & Cash Flow</span>
                         </h1>
                     </div>
@@ -550,7 +550,7 @@ export default function PaymentsPage() {
                         className="p-2 border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-xl transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer text-xs font-semibold"
                         title="Refresh data from server"
                     >
-                        <IconRefresh className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-[#B8860B]' : ''}`} />
+                        <IconRefresh className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-[#0B3B7B]' : ''}`} />
                         <span className="hidden sm:inline">Refresh</span>
                     </button>
 
@@ -564,7 +564,7 @@ export default function PaymentsPage() {
                             setPaymentDate(getTodayString());
                             setAddModalOpen(true);
                         }}
-                        className="flex-1 sm:flex-none px-4 py-2 gold-gradient text-white rounded-xl font-bold text-xs shadow-xs hover:shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                        className="flex-1 sm:flex-none px-4 py-2 bg-[#16A34A] hover:bg-[#15803D] text-white rounded-xl font-bold text-xs shadow-xs hover:shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                     >
                         <IconPlus className="w-4 h-4 text-white" />
                         <span>Record Payment Voucher</span>
@@ -629,10 +629,10 @@ export default function PaymentsPage() {
                 </div>
 
                 {/* KPI 4: Channel Breakdown */}
-                <div className="bg-white p-3 rounded-xl border border-amber-100 hover:border-amber-300 shadow-2xs transition-all flex flex-col justify-between">
+                <div className="bg-white p-3 rounded-xl border border-blue-100 hover:border-blue-300 shadow-2xs transition-all flex flex-col justify-between">
                     <div className="flex items-center justify-between">
                         <span className="text-[9.5px] font-bold uppercase tracking-wider text-gray-500">Channel Breakdown</span>
-                        <div className="w-6 h-6 rounded-md bg-amber-50 text-[#B8860B] flex items-center justify-center shrink-0">
+                        <div className="w-6 h-6 rounded-md bg-blue-50 text-[#0B3B7B] flex items-center justify-center shrink-0">
                             <IconBank className="w-3.5 h-3.5" />
                         </div>
                     </div>
@@ -696,7 +696,7 @@ export default function PaymentsPage() {
                             placeholder="Search Voucher #, Party Name, Phone, TRX ID..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full pl-8 pr-8 py-1.5 rounded-xl border border-gray-200 text-xs font-semibold focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37]/30 bg-gray-50/50 focus:bg-white transition-all shadow-2xs"
+                            className="w-full pl-8 pr-8 py-1.5 rounded-xl border border-gray-200 text-xs font-semibold focus:outline-none focus:border-[#0B3B7B] focus:ring-1 focus:ring-[#0B3B7B]/20 bg-gray-50/50 focus:bg-white transition-all shadow-2xs"
                         />
                         <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
                             <IconSearch className="w-3.5 h-3.5" />
@@ -730,7 +730,7 @@ export default function PaymentsPage() {
                                 type="button"
                                 onClick={() => handleFilterChange(setDateFilter, df.id)}
                                 className={`px-2.5 py-1 rounded-lg text-[10.5px] font-bold transition-all cursor-pointer whitespace-nowrap ${dateFilter === df.id
-                                    ? 'gold-gradient text-white shadow-2xs'
+                                    ? 'bg-[#0B3B7B] text-white shadow-2xs'
                                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                                     }`}
                             >
@@ -741,7 +741,7 @@ export default function PaymentsPage() {
 
                     {/* Custom Date Range Inputs (Visible when Custom is selected) */}
                     {dateFilter === 'custom' && (
-                        <div className="flex items-center gap-1.5 bg-[#FEF9E7] border border-[#F3E5AB] p-1 rounded-xl">
+                        <div className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 p-1 rounded-xl">
                             <input
                                 type="date"
                                 value={customStartDate}
@@ -770,7 +770,7 @@ export default function PaymentsPage() {
                         <select
                             value={paymentMethodFilter}
                             onChange={(e) => handleFilterChange(setPaymentMethodFilter, e.target.value)}
-                            className="px-2.5 py-1 rounded-lg border border-gray-200 text-xs font-semibold bg-white focus:outline-none focus:border-[#D4AF37] cursor-pointer"
+                            className="px-2.5 py-1 rounded-lg border border-gray-200 text-xs font-semibold bg-white focus:outline-none focus:border-[#0B3B7B] cursor-pointer"
                         >
                             <option value="ALL">All Methods</option>
                             <option value="cash">Cash Only</option>
@@ -804,7 +804,7 @@ export default function PaymentsPage() {
                                 <tr>
                                     <td colSpan={8} className="p-12 text-center text-gray-400">
                                         <div className="flex flex-col items-center justify-center gap-2">
-                                            <IconSpinner className="w-6 h-6 animate-spin text-[#B8860B]" />
+                                            <IconSpinner className="w-6 h-6 animate-spin text-[#0B3B7B]" />
                                             <span className="text-xs font-semibold">Loading vouchers from server...</span>
                                         </div>
                                     </td>
@@ -831,7 +831,7 @@ export default function PaymentsPage() {
                                     const timeStr = p.created_at ? p.created_at.split(' ')[1] : '';
 
                                     return (
-                                        <tr key={p.id} className="hover:bg-amber-50/20 transition-colors">
+                                        <tr key={p.id} className="hover:bg-slate-50 transition-colors">
                                             {/* Voucher # & Date */}
                                             <td className="p-3">
                                                 <div className="font-mono font-bold text-gray-900 text-[11px]">
@@ -888,8 +888,8 @@ export default function PaymentsPage() {
 
                                             {/* Channel / Method */}
                                             <td className="p-3">
-                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase bg-amber-50 text-[#B8860B] border border-[#F3E5AB]">
-                                                    <IconBank className="w-3 h-3 text-[#B8860B]" />
+                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase bg-blue-50 text-[#0B3B7B] border border-blue-200">
+                                                    <IconBank className="w-3 h-3 text-[#0B3B7B]" />
                                                     <span>{p.payment_method || 'cash'}</span>
                                                 </span>
                                             </td>
@@ -917,7 +917,7 @@ export default function PaymentsPage() {
                                                             setSelectedVoucher(p);
                                                             setVoucherModalOpen(true);
                                                         }}
-                                                        className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-[#B8860B] border border-[#F3E5AB] rounded-lg font-bold text-[11px] transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                                                        className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-[#0B3B7B] border border-blue-200 rounded-lg font-bold text-[11px] transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
                                                         title="Open Receipt Voucher Preview & Print"
                                                     >
                                                         <IconPrinter className="w-3.5 h-3.5" />
@@ -961,7 +961,7 @@ export default function PaymentsPage() {
                                 setPageSize(parseInt(e.target.value));
                                 setCurrentPage(1);
                             }}
-                            className="px-2 py-1 rounded-lg border border-gray-300 bg-white font-bold text-xs focus:outline-none focus:border-[#D4AF37] cursor-pointer"
+                            className="px-2 py-1 rounded-lg border border-gray-300 bg-white font-bold text-xs focus:outline-none focus:border-[#0B3B7B] cursor-pointer"
                         >
                             <option value={10}>10 / page</option>
                             <option value={25}>25 / page</option>
@@ -1008,7 +1008,7 @@ export default function PaymentsPage() {
                                         onClick={() => setCurrentPage(pageNum)}
                                         disabled={loading}
                                         className={`w-7 h-7 rounded-lg text-xs font-bold transition-all cursor-pointer ${isCurrent
-                                            ? 'gold-gradient text-white shadow-2xs font-black'
+                                            ? 'bg-[#0B3B7B] text-white shadow-2xs font-black'
                                             : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-100'
                                             }`}
                                     >
@@ -1047,7 +1047,7 @@ export default function PaymentsPage() {
                         {/* Header */}
                         <div className="flex justify-between items-center border-b border-gray-100 pb-3">
                             <div className="flex items-center gap-2">
-                                <IconPayments className="w-5 h-5 text-[#B8860B]" />
+                                <IconPayments className="w-5 h-5 text-[#0B3B7B]" />
                                 <h3 className="font-extrabold text-gray-900 text-base">Record Payment Voucher</h3>
                             </div>
                             <button
@@ -1100,18 +1100,18 @@ export default function PaymentsPage() {
                             <select
                                 value={partyId}
                                 onChange={(e) => setPartyId(e.target.value)}
-                                className="w-full p-2.5 border border-gray-300 rounded-xl font-bold text-xs bg-white focus:outline-none focus:border-[#D4AF37] cursor-pointer"
+                                className="w-full p-2.5 border border-gray-300 rounded-xl font-bold text-xs bg-white focus:outline-none focus:border-[#0B3B7B] cursor-pointer"
                                 required
                             >
                                 {partyType === 'customer' ? (
-                                    customers.map(c => (
-                                        <option key={c.id} value={c.id}>
+                                    customers.map((c, idx) => (
+                                        <option key={`pay-cust-${c.id ?? idx}-${idx}`} value={c.id}>
                                             {c.name} {c.business_name ? `(${c.business_name})` : ''} — Due: Rs. {Number(c.balance || 0).toLocaleString()}
                                         </option>
                                     ))
                                 ) : (
-                                    suppliers.map(s => (
-                                        <option key={s.id} value={s.id}>
+                                    suppliers.map((s, idx) => (
+                                        <option key={`pay-supp-${s.id ?? idx}-${idx}`} value={s.id}>
                                             {s.name} {s.company_name ? `(${s.company_name})` : ''} — Payable: Rs. {Number(s.balance || 0).toLocaleString()}
                                         </option>
                                     ))
@@ -1121,9 +1121,9 @@ export default function PaymentsPage() {
 
                         {/* Live Balance Card */}
                         {selectedParty && (
-                            <div className="bg-[#FEF9E7] border border-[#F3E5AB] rounded-xl p-3 flex items-center justify-between text-xs shadow-2xs">
+                            <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-center justify-between text-xs shadow-2xs">
                                 <div>
-                                    <div className="text-[10px] font-bold text-[#B8860B] uppercase">Current Balance</div>
+                                    <div className="text-[10px] font-bold text-[#0B3B7B] uppercase">Current Balance</div>
                                     <div className="text-sm font-black font-mono text-gray-900 mt-0.5">
                                         Rs. {currentBalance.toLocaleString()}
                                     </div>
@@ -1146,7 +1146,7 @@ export default function PaymentsPage() {
                                         <button
                                             type="button"
                                             onClick={() => setAmount(String(currentBalance))}
-                                            className="text-[9.5px] font-bold text-[#B8860B] hover:underline cursor-pointer"
+                                            className="text-[9.5px] font-bold text-[#0B3B7B] hover:underline cursor-pointer"
                                         >
                                             Pay Full
                                         </button>
@@ -1160,7 +1160,7 @@ export default function PaymentsPage() {
                                     placeholder="Enter amount in Rs."
                                     value={amount}
                                     onChange={(e) => setAmount(e.target.value)}
-                                    className="w-full p-2.5 border border-gray-300 rounded-xl font-black text-sm text-emerald-700 focus:outline-none focus:border-[#D4AF37]"
+                                    className="w-full p-2.5 border border-gray-300 rounded-xl font-black text-sm text-emerald-700 focus:outline-none focus:border-[#0B3B7B]"
                                     autoFocus
                                 />
                                 {amount && (
@@ -1175,7 +1175,7 @@ export default function PaymentsPage() {
                                 <select
                                     value={paymentMethod}
                                     onChange={(e) => setPaymentMethod(e.target.value)}
-                                    className="w-full p-2.5 border border-gray-300 rounded-xl font-bold text-xs bg-white focus:outline-none focus:border-[#D4AF37] cursor-pointer"
+                                    className="w-full p-2.5 border border-gray-300 rounded-xl font-bold text-xs bg-white focus:outline-none focus:border-[#0B3B7B] cursor-pointer"
                                 >
                                     <option value="cash">Cash in Hand</option>
                                     <option value="bank">Bank Transfer</option>
@@ -1194,7 +1194,7 @@ export default function PaymentsPage() {
                                     type="date"
                                     value={paymentDate}
                                     onChange={(e) => setPaymentDate(e.target.value)}
-                                    className="w-full p-2 border border-gray-300 rounded-xl font-semibold text-xs bg-white focus:outline-none focus:border-[#D4AF37]"
+                                    className="w-full p-2 border border-gray-300 rounded-xl font-semibold text-xs bg-white focus:outline-none focus:border-[#0B3B7B]"
                                 />
                             </div>
 
@@ -1205,7 +1205,7 @@ export default function PaymentsPage() {
                                     placeholder="Cheque # / Bank Slip / TRX ID"
                                     value={referenceNo}
                                     onChange={(e) => setReferenceNo(e.target.value)}
-                                    className="w-full p-2 border border-gray-300 rounded-xl font-semibold text-xs focus:outline-none focus:border-[#D4AF37]"
+                                    className="w-full p-2 border border-gray-300 rounded-xl font-semibold text-xs focus:outline-none focus:border-[#0B3B7B]"
                                 />
                             </div>
                         </div>
@@ -1218,7 +1218,7 @@ export default function PaymentsPage() {
                                 placeholder="Optional description or invoice references..."
                                 value={notes}
                                 onChange={(e) => setNotes(e.target.value)}
-                                className="w-full p-2 border border-gray-300 rounded-xl font-medium text-xs focus:outline-none focus:border-[#D4AF37]"
+                                className="w-full p-2 border border-gray-300 rounded-xl font-medium text-xs focus:outline-none focus:border-[#0B3B7B]"
                             />
                         </div>
 
@@ -1234,7 +1234,7 @@ export default function PaymentsPage() {
                             <button
                                 type="submit"
                                 disabled={isSubmitting}
-                                className="flex-1 py-2.5 gold-gradient text-white rounded-xl font-bold text-xs shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                                className="flex-1 py-2.5 bg-[#16A34A] hover:bg-[#15803D] text-white rounded-xl font-bold text-xs shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
                             >
                                 {isSubmitting ? (
                                     <>
@@ -1260,7 +1260,7 @@ export default function PaymentsPage() {
                         {/* Modal Header */}
                         <div className="flex justify-between items-center px-5 py-3.5 border-b border-gray-100 bg-gray-50/70 shrink-0">
                             <div className="flex items-center gap-2">
-                                <div className="w-7 h-7 rounded-lg bg-amber-100 text-[#B8860B] flex items-center justify-center">
+                                <div className="w-7 h-7 rounded-lg bg-blue-50 text-[#0B3B7B] flex items-center justify-center">
                                     <IconPrinter className="w-4 h-4" />
                                 </div>
                                 <div>
@@ -1283,9 +1283,9 @@ export default function PaymentsPage() {
 
                         {/* Modal Body: Voucher Paper Preview */}
                         <div className="p-5 overflow-y-auto space-y-4">
-                            <div className="bg-[#FEFDF9] border-2 border-[#EADBB6] rounded-xl p-4 shadow-xs space-y-3 font-sans">
+                            <div className="bg-slate-50/50 border-2 border-gray-200 rounded-xl p-4 shadow-xs space-y-3 font-sans">
                                 {/* Shop Title */}
-                                <div className="text-center border-b border-[#EADBB6] pb-3">
+                                <div className="text-center border-b border-gray-200 pb-3">
                                     <h2 className="text-base font-black text-gray-900 uppercase tracking-tight">
                                         {settings?.shop_name || 'Hilal Wholesaler Shop'}
                                     </h2>
@@ -1295,7 +1295,7 @@ export default function PaymentsPage() {
                                     <div className="text-[11px] font-bold text-gray-700 mt-0.5">
                                         Phone: {settings?.shop_phone || '0300-1234567'}
                                     </div>
-                                    <div className="mt-2 inline-block px-3 py-1 bg-[#D4AF37] text-white rounded-md text-[10px] font-black uppercase tracking-wider">
+                                    <div className="mt-2 inline-block px-3 py-1 bg-[#0B3B7B] text-white rounded-md text-[10px] font-black uppercase tracking-wider">
                                         {selectedVoucher.party_type === 'customer' ? 'Cash Receipt Voucher (Wasooli)' : 'Payment Disbursement Voucher'}
                                     </div>
                                 </div>
@@ -1322,8 +1322,8 @@ export default function PaymentsPage() {
                                 </div>
 
                                 {/* Party Box */}
-                                <div className="bg-white border border-[#EADBB6] rounded-lg p-3 text-xs space-y-1">
-                                    <div className="text-[10px] uppercase font-bold text-[#B8860B]">
+                                <div className="bg-white border border-gray-200 rounded-lg p-3 text-xs space-y-1">
+                                    <div className="text-[10px] uppercase font-bold text-[#0B3B7B]">
                                         Party Information ({selectedVoucher.party_type})
                                     </div>
                                     <div className="text-sm font-black text-gray-900">
@@ -1429,7 +1429,7 @@ export default function PaymentsPage() {
                                 <button
                                     type="button"
                                     onClick={() => handlePrintVoucher(selectedVoucher, 'thermal')}
-                                    className="px-4 py-2 gold-gradient text-white rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer shadow-sm hover:shadow-md"
+                                    className="px-4 py-2 bg-[#0B3B7B] hover:bg-[#072B5C] text-white rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer shadow-sm hover:shadow-md"
                                     title="Print Thermal 80mm Receipt"
                                 >
                                     <IconPrinter className="w-4 h-4 text-white" />

@@ -86,61 +86,73 @@ export default function Navbar() {
                     <img 
                         src={settings.shop_logo} 
                         alt={settings.shop_name || 'Shop Logo'} 
-                        className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl object-contain border border-gray-200 bg-white shadow-xs p-0.5 shrink-0" 
+                        className="w-10 h-10 rounded-xl object-contain border border-blue-200 bg-white shadow-xs p-0.5 shrink-0" 
                     />
                 ) : (
-                    <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl gold-gradient flex items-center justify-center text-white font-bold text-lg sm:text-xl shadow-xs shrink-0">
-                        {((mounted ? settings?.shop_name : null) || 'Hilal').charAt(0).toUpperCase()}
+                    <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-blue-700 to-[#0B3B7B] flex flex-col items-center justify-center text-white shadow-xs shrink-0 border border-blue-400/40 p-1">
+                        <span className="text-[8px] font-black tracking-tighter leading-none">HILAL</span>
+                        <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 00-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.7 2.84-7.228a1.125 1.125 0 00-.97-1.472H5.106M7.5 14.25l-.893-3.351M16.5 19.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zm-7.5 0a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" />
+                        </svg>
                     </div>
                 )}
                 <div className="min-w-0">
-                    <h1 className="font-bold text-gray-900 leading-tight text-sm sm:text-lg truncate">
+                    <h1 className="font-black text-[#0B3B7B] leading-tight text-base sm:text-xl truncate tracking-tight uppercase">
                         {(mounted ? settings?.shop_name : null) || 'Hilal Wholesaler Shop'}
                     </h1>
-                    <p className="text-[10px] sm:text-xs text-[#B8860B] font-semibold tracking-wide truncate hidden sm:block">
-                        Inventory + POS + Ledger &amp; Accounting
+                    <p className="text-[11px] sm:text-xs text-[#3B5B82] font-bold tracking-wide truncate hidden sm:block">
+                        {(mounted ? (settings?.shop_tagline || settings?.shop_subtitle) : null) || 'Wholesale & Retail Distribution'}
                     </p>
                 </div>
             </div>
 
-            {/* Right: Network status badge & Profile */}
-            <div className="flex items-center gap-2 sm:gap-4 shrink-0">
-                {/* Sync Badge */}
-                <div className="flex items-center gap-1.5 sm:gap-2 bg-gray-50 border border-gray-200 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs font-medium">
-                    {isSyncing ? (
-                        <span className="flex items-center gap-1 sm:gap-1.5 text-amber-700 font-bold">
-                            <IconSpinner className="w-3.5 h-3.5 text-amber-600" />
-                            <span className="hidden sm:inline">Syncing...</span>
-                        </span>
-                    ) : isOnline ? (
-                        <span className="flex items-center gap-1 sm:gap-1.5 text-emerald-700 font-bold">
-                            <IconWifi className="w-3.5 h-3.5 text-emerald-600" />
-                            <span className="hidden sm:inline">Online</span>
-                        </span>
-                    ) : (
-                        <span className="flex items-center gap-1 sm:gap-1.5 text-rose-700 font-bold">
-                            <IconWifiOff className="w-3.5 h-3.5 text-rose-600" />
-                            <span className="hidden sm:inline">Offline</span>
-                        </span>
-                    )}
+            {/* Right: Network status badge & Contact info */}
+            <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+                {/* Online / Offline status */}
+                {isSyncing ? (
+                    <div className="flex items-center gap-1.5 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-xl text-xs font-bold text-amber-700 shadow-2xs">
+                        <IconSpinner className="w-3.5 h-3.5 text-amber-600 animate-spin" />
+                        <span>Syncing...</span>
+                    </div>
+                ) : isOnline ? (
+                    <div className="flex items-center gap-1.5 bg-[#ECFDF5] border border-[#A7F3D0] px-2.5 py-1 rounded-xl text-xs font-bold text-[#059669] shadow-2xs">
+                        <span className="w-2 h-2 rounded-full bg-[#10B981] animate-pulse" />
+                        <span>Online</span>
+                    </div>
+                ) : (
+                    <div className="flex items-center gap-1.5 bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-xl text-xs font-bold text-rose-700 shadow-2xs">
+                        <IconWifiOff className="w-3.5 h-3.5 text-rose-600" />
+                        <span>Offline</span>
+                    </div>
+                )}
 
-                    <span className="text-gray-400 hidden sm:inline">|</span>
-                    <span className={`font-semibold hidden sm:inline text-xs transition-all ${pendingCount > 0 ? 'text-amber-800 bg-amber-100 px-2 py-0.5 rounded-md border border-amber-300 font-bold' : 'text-gray-600'}`}>
-                        Pending: {pendingCount}
-                    </span>
-
-                    <button 
-                        onClick={handleSyncNow}
-                        disabled={isSyncing}
-                        className="ml-0.5 sm:ml-1 text-[11px] sm:text-xs font-bold text-[#B8860B] hover:text-[#AA7C11] underline disabled:opacity-50 flex items-center gap-1 cursor-pointer"
-                        title="Sync with cloud"
-                    >
-                        <IconRefresh className={`w-3 h-3 inline ${isSyncing ? 'animate-spin' : ''}`} />
-                        <span className="hidden sm:inline">
-                            {isSyncing ? 'Syncing...' : syncSuccess ? '✓ Synced!' : 'Sync Now'}
-                        </span>
-                    </button>
+                {/* Pending Orders Count Badge */}
+                <div className="hidden sm:flex items-center bg-white border border-gray-200 px-2.5 py-1 rounded-xl text-xs font-bold text-gray-700 shadow-2xs">
+                    Pending: <span className="ml-1 text-gray-900 font-mono">{pendingCount}</span>
                 </div>
+
+                {/* Sync Now Button in warm amber pill */}
+                <button 
+                    onClick={handleSyncNow}
+                    disabled={isSyncing}
+                    className="bg-[#FFFBEB] hover:bg-[#FEF3C7] border border-[#FDE68A] text-[#D97706] px-3 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs disabled:opacity-50"
+                    title="Sync with cloud"
+                >
+                    <IconRefresh className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                    <span>{isSyncing ? 'Syncing...' : syncSuccess ? '✓ Synced!' : 'Sync Now'}</span>
+                </button>
+
+                {/* Contact phone on the right (Address removed per request) */}
+                {settings?.shop_phone && (
+                    <div className="hidden lg:flex items-center text-right text-xs font-bold text-[#0B3B7B] leading-tight pl-2 border-l border-gray-200">
+                        <span className="flex items-center justify-end gap-1.5">
+                            <svg className="w-3.5 h-3.5 text-[#0B3B7B] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-.282.376-.769.542-1.21.38a12.035 12.035 0 01-7.143-7.143c-.162-.441.004-.928.38-1.21l1.293-.97c.363-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z"/>
+                            </svg>
+                            <span className="font-mono">{settings.shop_phone}</span>
+                        </span>
+                    </div>
+                )}
             </div>
         </header>
     );

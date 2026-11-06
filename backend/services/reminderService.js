@@ -28,10 +28,10 @@ async function sendCustomerDuesReminder(customerId, customMessage, directPhone =
     return new Promise((resolve, reject) => {
         db.get(`SELECT id, name, phone, mobile, balance FROM customers WHERE id = ?`, [customerId], async (err, customer) => {
             if (err || !customer) return reject(new Error('Customer not found'));
-            
+
             const cleanPhone = (directPhone && String(directPhone).trim()) ||
-                               (customer.phone && String(customer.phone).trim()) ||
-                               (customer.mobile && String(customer.mobile).trim());
+                (customer.phone && String(customer.phone).trim()) ||
+                (customer.mobile && String(customer.mobile).trim());
 
             if (!cleanPhone) return reject(new Error('Customer has no phone number saved'));
 
@@ -56,14 +56,14 @@ async function sendCustomerDuesReminder(customerId, customMessage, directPhone =
 
                 try {
                     await sendMessage(cleanPhone, messageText);
-                    
+
                     db.run(`INSERT INTO whatsapp_reminders (customer_id, phone, amount, message, has_pdf, status, sent_at) VALUES (?, ?, ?, ?, 0, 'sent', datetime('now', 'localtime'))`,
-                        [customer.id, cleanPhone, customer.balance || 0, messageText], () => {});
+                        [customer.id, cleanPhone, customer.balance || 0, messageText], () => { });
 
                     resolve({ success: true, message: `WhatsApp message successfully sent to ${customer.name} (${cleanPhone})` });
                 } catch (sendErr) {
                     db.run(`INSERT INTO whatsapp_reminders (customer_id, phone, amount, message, has_pdf, status, sent_at) VALUES (?, ?, ?, ?, 0, 'failed', datetime('now', 'localtime'))`,
-                        [customer.id, cleanPhone, customer.balance || 0, messageText], () => {});
+                        [customer.id, cleanPhone, customer.balance || 0, messageText], () => { });
                     reject(sendErr);
                 }
             });
@@ -74,7 +74,83 @@ async function sendCustomerDuesReminder(customerId, customMessage, directPhone =
 /**
  * Generate a standalone standard A4 PDF Statement for customer dues / ledger
  */
-function generateCustomerLedgerPdf(shopName, customer, ledgerEntries, bankAccounts = []) {
+function formatPdfDate(dateInput) {
+    if (!dateInput) return '-';
+    const s = String(dateInput).trim();
+    const d = new Date(s.includes('T') ? s : s.replace(' ', 'T'));
+    if (isNaN(d.getTime())) {
+        const match = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (match) {
+            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            const y = match[1];
+            const m = parseInt(match[2], 10) - 1;
+            const day = match[3];
+            return `${day} ${months[m] || match[2]} ${y}`;
+        }
+        return s.substring(0, 10);
+    }
+    const day = String(d.getDate()).padStart(2, '0');
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const month = months[d.getMonth()] || '';
+    const year = d.getFullYear();
+    return `${day} ${month} ${year}`;
+}
+
+function formatMoney(num) {
+    if (num === null || num === undefined || isNaN(num)) return '0.00';
+    return Number(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function getStringWidth(str, font, size) {
+    if (!str) return 0;
+    const s = String(str);
+    const isBold = font === '/F2' || (typeof font === 'string' && font.toLowerCase().includes('bold'));
+    let totalUnits = 0;
+    for (let i = 0; i < s.length; i++) {
+        const c = s[i];
+        if (c === ' ') totalUnits += 278;
+        else if (c >= '0' && c <= '9') totalUnits += 556;
+        else if (c >= 'A' && c <= 'Z') {
+            if (isBold) {
+                if (c === 'W') totalUnits += 1000;
+                else if (c === 'M') totalUnits += 833;
+                else if (c === 'I') totalUnits += 278;
+                else if (c === 'J') totalUnits += 556;
+                else if (c === 'F' || c === 'Z' || c === 'T') totalUnits += 611;
+                else if (c === 'E' || c === 'P' || c === 'S' || c === 'X' || c === 'Y') totalUnits += 667;
+                else if (c === 'G' || c === 'O' || c === 'Q') totalUnits += 778;
+                else totalUnits += 722;
+            } else {
+                if (c === 'W') totalUnits += 944;
+                else if (c === 'M') totalUnits += 833;
+                else if (c === 'I') totalUnits += 278;
+                else if (c === 'J') totalUnits += 500;
+                else if (c === 'F' || c === 'Z' || c === 'T' || c === 'L') totalUnits += 556;
+                else if (c === 'E' || c === 'P' || c === 'S' || c === 'X' || c === 'Y' || c === 'A' || c === 'B' || c === 'K' || c === 'V') totalUnits += 667;
+                else if (c === 'G' || c === 'O' || c === 'Q') totalUnits += 778;
+                else totalUnits += 722;
+            }
+        } else if (c >= 'a' && c <= 'z') {
+            if (isBold) {
+                if (c === 'm' || c === 'w') totalUnits += 833;
+                else if (c === 'i' || c === 'l') totalUnits += 278;
+                else if (c === 'f' || c === 't' || c === 'j' || c === 'r') totalUnits += 389;
+                else totalUnits += 556;
+            } else {
+                if (c === 'm' || c === 'w') totalUnits += 778;
+                else if (c === 'i' || c === 'l') totalUnits += 222;
+                else if (c === 'f' || c === 't' || c === 'j' || c === 'r') totalUnits += 333;
+                else totalUnits += 500;
+            }
+        } else if (c === '.' || c === ',' || c === ':' || c === ';') totalUnits += 278;
+        else if (c === '-' || c === '/') totalUnits += 333;
+        else if (c === '(' || c === ')') totalUnits += 333;
+        else totalUnits += 500;
+    }
+    return (totalUnits / 1000) * (size || 8);
+}
+
+function generateCustomerLedgerPdf(shopName, customer, ledgerEntries, bankAccounts = [], shopDetails = {}) {
     let content = '';
 
     const drawLine = (x1, y1, x2, y2, gray, lineWidth) => {
@@ -89,53 +165,12 @@ function generateCustomerLedgerPdf(shopName, customer, ledgerEntries, bankAccoun
         content += `BT ${font || '/F1'} ${size || 9} Tf ${r !== undefined ? r : 0.1} ${g !== undefined ? g : 0.1} ${b !== undefined ? b : 0.1} rg ${x} ${y} Td (${escapePdf(str)}) Tj ET\n`;
     };
 
-    let y = 800;
-
-    // Header Accent Bar
-    drawRect(40, y - 6, 515, 34, 0.98, 0.97, 0.94);
-    text(48, y + 12, (shopName || 'Hilal Wholesaler Shop').toUpperCase(), '/F2', 13, 0.72, 0.53, 0.04);
-    text(48, y - 1, 'Customer Account Ledger & Dues Statement', '/F2', 10, 0.2, 0.2, 0.2);
-
-    const todayStr = new Date().toLocaleDateString('en-GB');
-    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    text(370, y + 8, `Statement Date: ${todayStr}`, '/F2', 9, 0.1, 0.1, 0.1);
-    text(370, y - 2, `Generated: ${timeStr}`, '/F1', 8.5, 0.4, 0.4, 0.4);
-
-    y -= 20;
-    drawLine(40, y, 555, y, 0.75, 1);
-    y -= 14;
-
-    const leftX = 45;
-    const rightX = 360;
-    const infoY = y;
-
-    const cleanPhone = (customer.mobile && String(customer.mobile).trim()) || (customer.phone && String(customer.phone).trim()) || 'N/A';
-
-    text(leftX, infoY, 'Customer Name: ', '/F2', 9);
-    text(leftX + 85, infoY, customer.name || 'N/A', '/F2', 9);
-
-    text(leftX, infoY - 14, 'Business / Shop: ', '/F2', 9);
-    text(leftX + 85, infoY - 14, customer.business_name || customer.name || 'N/A', '/F1', 9);
-
-    text(leftX, infoY - 28, 'Mobile / Phone: ', '/F2', 9);
-    text(leftX + 85, infoY - 28, cleanPhone, '/F1', 9);
-
-    text(leftX, infoY - 42, 'Address: ', '/F2', 9);
-    text(leftX + 85, infoY - 42, customer.address || 'Timergara', '/F1', 9);
-
-    text(rightX, infoY, 'Account ID: ', '/F2', 9);
-    text(rightX + 80, infoY, `CUST-${String(customer.id || '1').padStart(4, '0')}`, '/F2', 9);
-
-    text(rightX, infoY - 14, 'Credit Limit: ', '/F2', 9);
-    text(rightX + 80, infoY - 14, `Rs. ${Number(customer.credit_limit || 0).toLocaleString()}`, '/F1', 9);
-
-    const curBal = Number(customer.balance || 0);
-    text(rightX, infoY - 28, 'Current Due: ', '/F2', 9.5);
-    text(rightX + 80, infoY - 28, `Rs. ${curBal.toLocaleString()}`, '/F2', 10, curBal > 0 ? 0.8 : 0.1, curBal > 0 ? 0.1 : 0.5, 0.1);
-
-    y = infoY - 55;
-    drawLine(40, y, 555, y, 0.8, 1);
-    y -= 10;
+    const textRight = (rightX, y, str, font, size, r, g, b) => {
+        const s = String(str || '');
+        const w = getStringWidth(s, font || '/F1', size || 8);
+        const startX = Math.round(rightX - w);
+        text(startX, y, s, font, size, r, g, b);
+    };
 
     // Calculate Summary Metrics
     let totalBilled = 0;
@@ -145,7 +180,7 @@ function generateCustomerLedgerPdf(shopName, customer, ledgerEntries, bankAccoun
     (ledgerEntries || []).forEach(row => {
         const amt = parseFloat(row.amount) || 0;
         const isCashRefund = row.is_cash_refund !== undefined ? row.is_cash_refund : (row.type === 'return' && (row.payment_method === 'cash' || (row.description && row.description.includes('Cash Refund'))));
-        if (row.type === 'charge') totalBilled += amt;
+        if (row.type === 'charge' || row.type === 'opening_balance') totalBilled += amt;
         else if (row.type === 'payment') paymentsReceived += amt;
         else if (row.type === 'return') {
             if (isCashRefund) cashRefunds += amt;
@@ -153,107 +188,175 @@ function generateCustomerLedgerPdf(shopName, customer, ledgerEntries, bankAccoun
         }
     });
 
-    const totalPaid = Math.max(0, (paymentsReceived - cashRefunds) + khataReturns);
     const totalCreditsApplied = paymentsReceived + khataReturns;
+    const curBal = Number(customer.balance || 0);
 
-    // 3 KPI Highlights
-    drawRect(40, y - 4, 165, 24, 0.96, 0.96, 0.97);
-    text(45, y + 8, 'TOTAL BILLED INVOICES', '/F2', 7.5, 0.4, 0.4, 0.4);
-    text(45, y - 1, `Rs. ${Math.round(totalBilled).toLocaleString()}`, '/F2', 9.5, 0.1, 0.1, 0.1);
+    const todayStr = formatPdfDate(new Date());
 
-    drawRect(215, y - 4, 165, 24, 0.94, 0.98, 0.94);
-    text(220, y + 8, 'TOTAL PAID & RETURNS', '/F2', 7.5, 0.1, 0.5, 0.2);
-    text(220, y - 1, `Rs. ${Math.round(totalPaid).toLocaleString()}`, '/F2', 9.5, 0.1, 0.5, 0.2);
+    // Page boundaries: A4 [0 0 595 842]. Margins: Left=36, Right=559, Width=523.
+    let y = 806;
 
-    drawRect(390, y - 4, 165, 24, 0.99, 0.95, 0.95);
-    text(395, y + 8, 'OUTSTANDING BALANCE DUE', '/F2', 7.5, 0.7, 0.2, 0.2);
-    text(395, y - 1, `Rs. ${Math.round(curBal).toLocaleString()}`, '/F2', 9.5, 0.8, 0.1, 0.1);
+    // 1. TOP HEADER: LEFT SIDE = CUSTOMER "To:", RIGHT SIDE = SHOP INFO
+    const customerName = (customer.name || 'Customer').trim();
+    const businessName = (customer.business_name || '').trim();
+    const cleanPhone = (customer.mobile && String(customer.mobile).trim()) || (customer.phone && String(customer.phone).trim()) || '';
+    const cleanAddress = (customer.address && String(customer.address).trim()) || 'Timergara';
 
-    y -= 32;
+    // LEFT SIDE: TO [CUSTOMER] (NO CREDIT LIMIT)
+    text(40, y - 10, 'To:', '/F2', 10, 0.35, 0.35, 0.35);
+    const mainCustomerTitle = (businessName || customerName).toUpperCase();
+    text(40, y - 26, mainCustomerTitle, '/F2', 12, 0.1, 0.1, 0.1);
 
-    // Table Header
-    drawRect(40, y - 5, 515, 18, 0.94, 0.94, 0.95);
-    drawLine(40, y - 5, 555, y - 5, 0.7, 0.8);
-    drawLine(40, y + 13, 555, y + 13, 0.7, 0.8);
+    let leftY = y - 39;
+    if (businessName && customerName && businessName.toLowerCase() !== customerName.toLowerCase()) {
+        text(40, leftY, `Attn: ${customerName}`, '/F1', 8.5, 0.35, 0.35, 0.35);
+        leftY -= 12;
+    }
+    if (cleanPhone) {
+        text(40, leftY, `Phone: ${cleanPhone}`, '/F1', 8.5, 0.35, 0.35, 0.35);
+        leftY -= 12;
+    }
+    text(40, leftY, `Address: ${cleanAddress}`, '/F1', 8.5, 0.35, 0.35, 0.35);
 
-    text(45, y, 'Date', '/F2', 8.5);
-    text(110, y, 'Description / Voucher', '/F2', 8.5);
-    text(268, y, 'Type', '/F2', 8.5);
-    text(335, y, 'Purchase (Debit+)', '/F2', 8);
-    text(420, y, 'Payment (Credit-)', '/F2', 8);
-    text(500, y, 'Running Due', '/F2', 8);
+    // RIGHT SIDE: OUR SHOP INFORMATION & STATEMENT META (Clean column alignment)
+    const rightX = 355;
+    text(rightX, y - 10, (shopName || 'Hilal Foods Solutions').toUpperCase(), '/F2', 12, 0.1, 0.1, 0.1);
+    const shopAddr = (shopDetails.shopAddress || 'Main Bazaar, Timergara, KP, Pakistan');
+    const shopPh = (shopDetails.shopPhone || '+92 300 1234567');
+    text(rightX, y - 23, shopAddr, '/F1', 8.5, 0.35, 0.35, 0.35);
+    text(rightX, y - 35, `Phone: ${shopPh}`, '/F1', 8.5, 0.35, 0.35, 0.35);
+    text(rightX, y - 52, 'STATEMENT OF ACCOUNTS', '/F2', 12, 0.1, 0.1, 0.1);
+    text(rightX, y - 66, `Statement Date: ${todayStr}`, '/F2', 8.5, 0.2, 0.2, 0.2);
+    text(rightX, y - 78, `Customer ID: CUST-${String(customer.id || '1').padStart(4, '0')}`, '/F1', 8.5, 0.3, 0.3, 0.3);
 
-    y -= 18;
+    y = Math.min(leftY - 14, y - 90);
 
+    // Clean horizontal divider line
+    drawLine(36, y, 559, y, 0.75, 1);
+    y -= 14;
+
+    // 2. STATEMENT OF ACCOUNT TABLE (Matching the Image)
+    // Dark Header Bar
+    const headerH = 18;
+    drawRect(36, y - headerH, 523, headerH, 0.22, 0.22, 0.22); // Charcoal / Dark Gray as in image
+
+    text(42, y - 12, 'Date', '/F2', 8.5, 1, 1, 1);
+    text(112, y - 12, 'Transactions', '/F2', 8.5, 1, 1, 1);
+    text(195, y - 12, 'Details', '/F2', 8.5, 1, 1, 1);
+    textRight(390, y - 12, 'Amount', '/F2', 8.5, 1, 1, 1);
+    textRight(475, y - 12, 'Payments', '/F2', 8.5, 1, 1, 1);
+    textRight(554, y - 12, 'Balance', '/F2', 8.5, 1, 1, 1);
+
+    y -= headerH;
+
+    // Table Rows
     let runningCalc = 0;
-    (ledgerEntries || []).forEach((row) => {
+    const maxRows = 34;
+    const rowsToRender = (ledgerEntries || []).slice(0, maxRows);
+
+    rowsToRender.forEach((row, idx) => {
         const amt = parseFloat(row.amount) || 0;
         const isCashRefund = row.is_cash_refund !== undefined ? row.is_cash_refund : (row.type === 'return' && (row.payment_method === 'cash' || (row.description && row.description.includes('Cash Refund'))));
-        if (row.type === 'charge') runningCalc += amt;
+        if (row.type === 'charge' || row.type === 'opening_balance') runningCalc += amt;
         else if (row.type === 'payment' || (row.type === 'return' && !isCashRefund)) runningCalc -= amt;
 
-        const dateStr = row.payment_date || (row.created_at ? (row.created_at.includes('T') ? row.created_at.split('T')[0] : row.created_at.split(' ')[0]) : '-');
-        const desc = (row.description || '').substring(0, 30);
-        const typeStr = row.type === 'charge' ? 'Invoice Bill' : (row.type === 'return' ? (isCashRefund ? 'Cash Refund' : 'Return') : 'Payment');
-        const debitStr = row.type === 'charge' ? Number(amt).toFixed(0) : '-';
-        const creditStr = (row.type === 'payment' || (row.type === 'return' && !isCashRefund)) ? Number(amt).toFixed(0) : (isCashRefund ? `${Number(amt).toFixed(0)}*` : '-');
-        const balStr = Number(row.running_balance !== undefined ? row.running_balance : runningCalc).toFixed(0);
+        const rowH = 15.5;
+        // Subtle zebra striping
+        if (idx % 2 === 1) {
+            drawRect(36, y - rowH, 523, rowH, 0.96, 0.96, 0.97);
+        }
 
-        text(45, y, dateStr, '/F1', 8);
-        text(110, y, desc, '/F2', 8);
-        text(268, y, typeStr, '/F1', 7.5, row.type === 'charge' ? 0.7 : (isCashRefund ? 0.1 : 0.4), row.type === 'charge' ? 0.2 : (isCashRefund ? 0.3 : 0.5), isCashRefund ? 0.7 : 0.2);
-        text(345, y, debitStr, '/F1', 8, row.type === 'charge' ? 0.8 : 0.2, 0.1, 0.1);
-        text(435, y, creditStr, '/F1', 8, (row.type === 'payment' || row.type === 'return') ? 0.1 : 0.2, (row.type === 'payment' || row.type === 'return') ? 0.5 : 0.2, 0.2);
-        text(500, y, `Rs. ${balStr}`, '/F2', 8);
+        const dateStr = formatPdfDate(row.payment_date || row.created_at);
+        let transType = 'Invoice';
+        let amountCol = '-';
+        let paymentsCol = '-';
 
-        y -= 3;
-        drawLine(40, y, 555, y, 0.9, 0.4);
-        y -= 13;
+        if (row.type === 'opening_balance') {
+            transType = '***Opening Balance***';
+            amountCol = formatMoney(amt);
+        } else if (row.type === 'charge') {
+            transType = 'Invoice';
+            amountCol = formatMoney(amt);
+        } else if (row.type === 'payment') {
+            transType = 'Payment Received';
+            paymentsCol = formatMoney(amt);
+        } else if (row.type === 'return') {
+            if (isCashRefund) {
+                transType = 'Cash Refund';
+                paymentsCol = `${formatMoney(amt)}*`;
+            } else {
+                transType = 'Credit Note';
+                amountCol = `(${formatMoney(amt)})`;
+            }
+        }
+
+        const desc = (row.description || (row.type === 'charge' ? `Wholesale Invoice #${row.sale_id || ''}` : '')).substring(0, 32);
+        const balVal = row.running_balance !== undefined ? row.running_balance : runningCalc;
+        const balStr = formatMoney(balVal);
+
+        text(42, y - 11, dateStr, '/F1', 8, 0.25, 0.25, 0.25);
+        text(112, y - 11, transType, '/F1', 8, 0.15, 0.15, 0.15);
+        text(195, y - 11, desc, '/F1', 7.5, 0.35, 0.35, 0.35);
+
+        textRight(390, y - 11, amountCol, '/F1', 8, 0.15, 0.15, 0.15);
+        textRight(475, y - 11, paymentsCol, '/F1', 8, 0.15, 0.15, 0.15);
+        textRight(554, y - 11, balStr, '/F2', 8, 0.1, 0.1, 0.1);
+
+        drawLine(36, y - rowH, 559, y - rowH, 0.90, 0.3);
+        y -= rowH;
     });
 
-    y -= 2;
-    // Total Account Summary Row
-    drawRect(40, y - 4, 515, 18, 0.97, 0.97, 0.97);
-    drawLine(40, y - 4, 555, y - 4, 0.8, 0.6);
-    drawLine(40, y + 14, 555, y + 14, 0.8, 0.6);
-
-    text(45, y, 'TOTAL ACCOUNT SUMMARY', '/F2', 8.5);
-    text(340, y, `Rs. ${Math.round(totalBilled).toLocaleString()}`, '/F2', 8.5, 0.8, 0.1, 0.1);
-    text(430, y, `Rs. ${Math.round(totalCreditsApplied).toLocaleString()}`, '/F2', 8.5, 0.1, 0.5, 0.2);
-    text(500, y, `Rs. ${Math.round(curBal).toLocaleString()}`, '/F2', 9, 0.1, 0.1, 0.1);
-
-    y -= 25;
-
-    // Amount in Words
-    text(45, y, 'Outstanding Balance In Words: ', '/F2', 9);
-    text(200, y, (curBal > 0 ? numberToWords(curBal) : 'Account Fully Settled (Zero Dues)'), '/F2', 9);
-
-    if (Array.isArray(bankAccounts) && bankAccounts.length > 0) {
-        y -= 14;
-        drawLine(40, y, 555, y, 0.85, 0.5);
-        y -= 10;
-        text(45, y, 'BANK DETAILS FOR ONLINE TRANSFER / PAYMENT:', '/F2', 8, 0.72, 0.53, 0.04);
-        const colW = Math.min(160, Math.floor(510 / bankAccounts.length));
-        y -= 12;
-        const bY = y;
-        bankAccounts.slice(0, 3).forEach((acc, i) => {
-            const bx = 45 + (i * colW);
-            drawRect(bx, bY - 24, colW - 8, 32, 0.97, 0.97, 0.98);
-            text(bx + 4, bY + 2, acc.bank_name || 'Bank', '/F2', 8, 0.1, 0.1, 0.1);
-            if (acc.account_title) text(bx + 4, bY - 7, `Title: ${acc.account_title}`, '/F1', 7, 0.3, 0.3, 0.3);
-            text(bx + 4, bY - 15, `A/C: ${acc.account_number || ''}`, '/F2', 7.5, 0.1, 0.1, 0.1);
-            if (acc.iban) text(bx + 4, bY - 22, `IBAN: ${acc.iban}`, '/F1', 6.5, 0.4, 0.4, 0.4);
-        });
-        y -= 26;
+    if (ledgerEntries.length === 0) {
+        drawRect(36, y - 24, 523, 24, 0.99, 0.99, 0.99);
+        text(210, y - 15, 'No transactions recorded for this account.', '/F1', 8, 0.5, 0.5, 0.5);
+        y -= 24;
     }
 
-    y -= 14;
-    drawLine(40, y, 555, y, 0.85, 0.5);
-    y -= 14;
+    // 3. TOTAL SUMMARY ROW (Matching the Image)
+    const summaryH = 18;
+    drawRect(36, y - summaryH, 523, summaryH, 0.95, 0.95, 0.95);
+    drawLine(36, y, 559, y, 0.75, 0.8);
+    drawLine(36, y - summaryH, 559, y - summaryH, 0.75, 0.8);
 
-    text(45, y, 'Note: Please review this statement. In case of any discrepancy, contact shop administration.', '/F1', 7.5, 0.4, 0.4, 0.4);
-    text(45, y - 10, 'Thank you for your valued business and continuous partnership!', '/F2', 8, 0.72, 0.53, 0.04);
-    text(390, y - 10, 'Authorized Signature & Stamp: ________________', '/F1', 7.5, 0.3, 0.3, 0.3);
+    text(42, y - 12, 'Total', '/F2', 8.5, 0.1, 0.1, 0.1);
+    textRight(390, y - 12, formatMoney(totalBilled), '/F2', 8.5, 0.1, 0.1, 0.1);
+    textRight(475, y - 12, formatMoney(totalCreditsApplied), '/F2', 8.5, 0.1, 0.1, 0.1);
+    textRight(554, y - 12, formatMoney(curBal), '/F2', 9, curBal > 0 ? 0.8 : 0.1, curBal > 0 ? 0.1 : 0.5, 0.1);
+
+    y -= (summaryH + 12);
+
+    // 4. BALANCE IN WORDS
+    text(42, y - 10, 'Balance in Words: ', '/F2', 8.5, 0.35, 0.35, 0.35);
+    const wordsText = curBal > 0 ? numberToWords(curBal) : (curBal < 0 ? `${numberToWords(Math.abs(curBal))} (Advance Credit)` : 'Zero Rupees Only (Fully Settled)');
+    text(135, y - 10, wordsText, '/F2', 8.5, 0.1, 0.1, 0.1);
+
+    y -= 20;
+
+    // 5. BANK TRANSFER DETAILS (If configured)
+    if (Array.isArray(bankAccounts) && bankAccounts.length > 0) {
+        text(42, y - 4, 'BANK TRANSFER / PAYMENT DETAILS:', '/F2', 7.5, 0.2, 0.2, 0.2);
+        y -= 8;
+        const colW = Math.min(168, Math.floor(523 / bankAccounts.length));
+        const bH = 34;
+        const bY = y;
+        bankAccounts.slice(0, 3).forEach((acc, i) => {
+            const bx = 36 + (i * colW);
+            drawRect(bx, bY - bH, colW - 6, bH, 0.97, 0.98, 0.99);
+            text(bx + 6, bY - 10, acc.bank_name || 'Bank', '/F2', 7.5, 0.1, 0.15, 0.25);
+            if (acc.account_title) text(bx + 6, bY - 18, `Title: ${acc.account_title}`, '/F1', 6.5, 0.35, 0.35, 0.35);
+            text(bx + 6, bY - 26, `A/C: ${acc.account_number || ''}`, '/F2', 7, 0.15, 0.15, 0.15);
+            if (acc.iban) text(bx + 6, bY - 32, `IBAN: ${acc.iban}`, '/F1', 6, 0.4, 0.4, 0.4);
+        });
+        y -= (bH + 12);
+    }
+
+    // 6. FOOTER & SIGN-OFF
+    drawLine(36, y, 559, y, 0.85, 0.5);
+    y -= 12;
+
+    text(42, y, 'Note: This is a computer-generated statement of account. Please report discrepancies within 7 days.', '/F1', 7, 0.45, 0.45, 0.45);
+    text(42, y - 10, 'Thank you for your business and partnership!', '/F2', 7.5, 0.2, 0.2, 0.2);
+    text(370, y - 10, 'Authorized Signature & Stamp: ________________', '/F1', 7.5, 0.3, 0.3, 0.3);
 
     const contentLen = Buffer.byteLength(content, 'utf8');
 
@@ -302,31 +405,34 @@ async function sendCustomerDuesWithPdf(customerId, pdfBuffer, fileName = 'Custom
     return new Promise((resolve, reject) => {
         db.get(`SELECT id, name, business_name, address, credit_limit, phone, mobile, balance FROM customers WHERE id = ?`, [customerId], async (err, customer) => {
             if (err || !customer) return reject(new Error('Customer not found'));
-            
+
             const cleanPhone = (directPhone && String(directPhone).trim()) ||
-                               (customer.phone && String(customer.phone).trim()) ||
-                               (customer.mobile && String(customer.mobile).trim());
+                (customer.phone && String(customer.phone).trim()) ||
+                (customer.mobile && String(customer.mobile).trim());
 
             if (!cleanPhone) return reject(new Error('Customer has no phone number saved'));
 
             const processPdf = (shopName, waTemplate, ledgerRows, bankAccounts = []) => {
                 const captionText = customMessage || buildReminderMessage(waTemplate, customer.name, customer.balance, shopName);
                 const finalBuffer = pdfBuffer || generateCustomerLedgerPdf(shopName, customer, ledgerRows || [], bankAccounts);
-                const finalFileName = fileName || `${(customer.name || 'Customer').replace(/[^a-zA-Z0-9]/g, '_')}_Statement.pdf`;
+                const now = new Date();
+                const pad = (n) => String(n).padStart(2, '0');
+                const timestamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+                const finalFileName = fileName || `${(customer.name || 'Customer').replace(/[^a-zA-Z0-9]/g, '_')}_Statement_${timestamp}.pdf`;
 
                 sendDocument(cleanPhone, finalBuffer, finalFileName, captionText, 'application/pdf')
                     .then(() => {
                         db.run(`INSERT INTO whatsapp_reminders (customer_id, phone, amount, message, has_pdf, status, sent_at) VALUES (?, ?, ?, ?, 1, 'sent', datetime('now', 'localtime'))`,
-                            [customer.id, cleanPhone, customer.balance, `[Statement PDF] ${finalFileName}`], () => {});
+                            [customer.id, cleanPhone, customer.balance, `[Statement PDF] ${finalFileName}`], () => { });
 
-                        resolve({ 
-                            success: true, 
-                            message: `PDF statement successfully sent via WhatsApp to ${customer.name} (${cleanPhone})` 
+                        resolve({
+                            success: true,
+                            message: `PDF statement successfully sent via WhatsApp to ${customer.name} (${cleanPhone})`
                         });
                     })
                     .catch((sendErr) => {
                         db.run(`INSERT INTO whatsapp_reminders (customer_id, phone, amount, message, has_pdf, status, sent_at) VALUES (?, ?, ?, ?, 1, 'failed', datetime('now', 'localtime'))`,
-                            [customer.id, cleanPhone, customer.balance, `[Statement PDF Failed] ${sendErr.message}`], () => {});
+                            [customer.id, cleanPhone, customer.balance, `[Statement PDF Failed] ${sendErr.message}`], () => { });
                         reject(sendErr);
                     });
             };
@@ -343,7 +449,7 @@ async function sendCustomerDuesWithPdf(customerId, pdfBuffer, fileName = 'Custom
                             try {
                                 const parsed = JSON.parse(r.value);
                                 if (Array.isArray(parsed)) bankAccounts = parsed;
-                            } catch(e) {}
+                            } catch (e) { }
                         }
                     });
                 }
@@ -446,14 +552,14 @@ async function sendBulkDuesReminders(isAutomatedJob = false) {
                         successCount++;
 
                         db.run(`INSERT INTO whatsapp_reminders (customer_id, phone, amount, message, has_pdf, status, sent_at) VALUES (?, ?, ?, ?, 0, 'sent', datetime('now', 'localtime'))`,
-                            [customer.id, cleanPhone, customer.balance, messageText], () => {});
+                            [customer.id, cleanPhone, customer.balance, messageText], () => { });
 
                         // Delay 3 seconds between messages to prevent rate limiting / spam flags
                         await new Promise(r => setTimeout(r, 3000));
                     } catch (e) {
                         failCount++;
                         db.run(`INSERT INTO whatsapp_reminders (customer_id, phone, amount, message, has_pdf, status, sent_at) VALUES (?, ?, ?, ?, 0, 'failed', datetime('now', 'localtime'))`,
-                            [customer.id, cleanPhone, customer.balance, messageText], () => {});
+                            [customer.id, cleanPhone, customer.balance, messageText], () => { });
                         console.error(`[WhatsApp Reminder] Failed to send to ${customer.name}:`, e.message);
                     }
                 }
@@ -602,10 +708,10 @@ function generateSimpleBillPdf(shopData, sale, items, bankAccounts = []) {
     text(rightX + 75, infoY - 46, sale.customer_business || sale.business_name || sale.customer_name || 'Walk-in', '/F1', 8);
 
     text(rightX, infoY - 56, 'Mobile / Phone: ', '/F1', 8);
-    text(rightX + 75, infoY - 56, sale.customer_phone || sale.customer_mobile || sale.phone || '0945123456', '/F1', 8);
+    text(rightX + 75, infoY - 56, sale.customer_phone || sale.customer_mobile || sale.phone || '—', '/F1', 8);
 
     text(rightX, infoY - 66, 'Address: ', '/F1', 8);
-    text(rightX + 75, infoY - 66, sale.customer_address || 'Main Market, Timergara', '/F1', 8);
+    text(rightX + 75, infoY - 66, sale.customer_address || '—', '/F1', 8);
 
     y = Math.min(curLeftY, infoY - 76) - 6;
     drawLine(40, y, 555, y, 0.8, 1);
@@ -778,8 +884,8 @@ async function sendSaleBillReminder(saleId, customMessage, directPhone = '', cus
     return new Promise((resolve, reject) => {
         const processSale = (sale, items, shopName, bankAccounts = []) => {
             const cleanPhone = (directPhone && String(directPhone).trim()) ||
-                               (sale.customer_phone && String(sale.customer_phone).trim()) ||
-                               (sale.customer_mobile && String(sale.customer_mobile).trim());
+                (sale.customer_phone && String(sale.customer_phone).trim()) ||
+                (sale.customer_mobile && String(sale.customer_mobile).trim());
 
             if (!cleanPhone) return reject(new Error('Customer has no phone number on record'));
 
@@ -787,7 +893,7 @@ async function sendSaleBillReminder(saleId, customMessage, directPhone = '', cus
             const formattedPaid = Math.round(sale.amount_paid || 0).toLocaleString();
             const formattedDue = Math.round(sale.remaining_balance || 0).toLocaleString();
 
-            const messageText = customMessage || 
+            const messageText = customMessage ||
                 `السلام علیکم ${sale.customer_name || 'محترم گاہک'} صاحب،\n\nیہ ${shopName} سے آپ کا بل نمبر *${sale.invoice_no}* ہے۔\n\n` +
                 `کل رقم: Rs. ${formattedNet}\n` +
                 `وصول شدہ: Rs. ${formattedPaid}\n` +
@@ -799,13 +905,13 @@ async function sendSaleBillReminder(saleId, customMessage, directPhone = '', cus
             sendDocument(cleanPhone, billPdfBuffer, `Invoice_${sale.invoice_no}.pdf`, messageText, 'application/pdf')
                 .then(() => {
                     db.run(`INSERT INTO whatsapp_reminders (customer_id, phone, amount, message, has_pdf, status, sent_at) VALUES (?, ?, ?, ?, 1, 'sent', datetime('now', 'localtime'))`,
-                        [sale.customer_id, cleanPhone, sale.remaining_balance || sale.net_amount, `[Bill PDF] ${sale.invoice_no}`], () => {});
+                        [sale.customer_id, cleanPhone, sale.remaining_balance || sale.net_amount, `[Bill PDF] ${sale.invoice_no}`], () => { });
 
                     resolve({ success: true, message: `Invoice #${sale.invoice_no} PDF sent to ${sale.customer_name} via WhatsApp!` });
                 })
                 .catch((e) => {
                     db.run(`INSERT INTO whatsapp_reminders (customer_id, phone, amount, message, has_pdf, status, sent_at) VALUES (?, ?, ?, ?, 1, 'failed', datetime('now', 'localtime'))`,
-                        [sale.customer_id, cleanPhone, sale.remaining_balance || sale.net_amount, `[Bill PDF Failed] ${e.message}`], () => {});
+                        [sale.customer_id, cleanPhone, sale.remaining_balance || sale.net_amount, `[Bill PDF Failed] ${e.message}`], () => { });
                     reject(e);
                 });
         };
@@ -828,7 +934,7 @@ async function sendSaleBillReminder(saleId, customMessage, directPhone = '', cus
                         try {
                             const parsed = JSON.parse(r.value);
                             if (Array.isArray(parsed) && parsed.length > 0) bankAccounts = parsed;
-                        } catch(e) {}
+                        } catch (e) { }
                     }
                 });
             }
@@ -1122,8 +1228,8 @@ async function sendCreditNoteWhatsApp(returnId, customMessage = '', directPhone 
                     const fileName = `Credit_Note_${cnNumber}.pdf`;
 
                     const cleanPhone = (directPhone && String(directPhone).trim()) ||
-                                       (retRow.customer_phone && String(retRow.customer_phone).trim()) ||
-                                       (retRow.customer_mobile && String(retRow.customer_mobile).trim());
+                        (retRow.customer_phone && String(retRow.customer_phone).trim()) ||
+                        (retRow.customer_mobile && String(retRow.customer_mobile).trim());
 
                     if (!cleanPhone) return reject(new Error('Customer has no phone number on record'));
 
@@ -1132,12 +1238,12 @@ async function sendCreditNoteWhatsApp(returnId, customMessage = '', directPhone 
                     try {
                         await sendDocument(cleanPhone, pdfBuffer, fileName, caption, 'application/pdf');
                         db.run(`INSERT INTO whatsapp_reminders (customer_id, phone, amount, message, has_pdf, status, sent_at) VALUES (?, ?, ?, ?, 1, 'sent', datetime('now', 'localtime'))`,
-                            [retRow.customer_id, cleanPhone, retRow.total_refund, `[Credit Note PDF] ${fileName}`], () => {});
+                            [retRow.customer_id, cleanPhone, retRow.total_refund, `[Credit Note PDF] ${fileName}`], () => { });
 
                         resolve({ success: true, message: `Credit Note #${cnNumber} sent via WhatsApp to ${retRow.customer_name} (${cleanPhone})` });
                     } catch (sendErr) {
                         db.run(`INSERT INTO whatsapp_reminders (customer_id, phone, amount, message, has_pdf, status, sent_at) VALUES (?, ?, ?, ?, 1, 'failed', datetime('now', 'localtime'))`,
-                            [retRow.customer_id, cleanPhone, retRow.total_refund, `[Credit Note PDF Failed] ${sendErr.message}`], () => {});
+                            [retRow.customer_id, cleanPhone, retRow.total_refund, `[Credit Note PDF Failed] ${sendErr.message}`], () => { });
                         reject(sendErr);
                     }
                 });

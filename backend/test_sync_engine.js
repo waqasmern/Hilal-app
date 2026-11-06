@@ -33,6 +33,12 @@ async function runTests() {
     }
 
     try {
+        // Ensure test fixture rows exist for foreign key checks
+        await new Promise(r => db.run("INSERT OR IGNORE INTO units (id, uuid, name, symbol) VALUES (1, 'unit-1', 'PCS', 'pcs')", [], r));
+        await new Promise(r => db.run("INSERT OR IGNORE INTO categories (id, uuid, name) VALUES (1, 'cat-1', 'Test Cat')", [], r));
+        await new Promise(r => db.run("INSERT OR IGNORE INTO products (id, uuid, category_id, name) VALUES (1, 'prod-1', 1, 'Test Product')", [], r));
+        await new Promise(r => db.run("INSERT OR IGNORE INTO product_variants (id, uuid, product_id, sku, barcode, variant_name, base_unit_id, current_stock) VALUES (1, 'var-1', 1, 'SKU-1', 'BAR-1', 'Standard', 1, 85)", [], r));
+        await new Promise(r => db.run("INSERT OR IGNORE INTO customers (id, uuid, name, phone, balance) VALUES (1, 'cust-1', 'Test Customer', '03001234567', 0)", [], r));
 
     // ─────────────────────────────────────────────────────────────────────────
     // Test 1: Offline sale followed by internet reconnection

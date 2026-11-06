@@ -17,6 +17,7 @@ import {
     IconCalendar
 } from '../components/Icons';
 import CustomModalAlert from '../components/CustomModalAlert';
+import FastProductSearchModal from '../components/FastProductSearchModal';
 
 function parseDate(dateInput) {
     if (!dateInput) return null;
@@ -68,6 +69,10 @@ export default function PurchasesPage() {
     const [billPaymentMethod, setBillPaymentMethod] = useState('cash');
     const [billNotes, setBillNotes] = useState('');
     const [submittingBill, setSubmittingBill] = useState(false);
+
+    // Floating Product Search Modal for Purchase Bill
+    const [productSearchModalOpen, setProductSearchModalOpen] = useState(false);
+    const [productSearchTargetRowIndex, setProductSearchTargetRowIndex] = useState(null);
 
     // View Purchase Bill Details Modal State
     const [viewBillModalOpen, setViewBillModalOpen] = useState(false);
@@ -196,6 +201,44 @@ export default function PurchasesPage() {
         setCreateBillModalOpen(true);
     };
 
+    // Open Floating Search Modal to select or change product for a specific bill item row
+    const handleOpenProductSearchForRow = (rowIndex) => {
+        setProductSearchTargetRowIndex(rowIndex);
+        setProductSearchModalOpen(true);
+    };
+
+    // Callback when user selects a product from the floating search modal
+    const handleSelectProductForBill = (rowIndex, selectedProd) => {
+        if (!selectedProd) return;
+        const defaultPack = (selectedProd.packagings && selectedProd.packagings.length > 0)
+            ? selectedProd.packagings[0]
+            : { packaging_type_id: 1, purchase_price: Number(selectedProd.cost_price) || 0, conversion_factor: 1 };
+
+        const updated = [...billItems];
+        if (rowIndex !== null && rowIndex >= 0 && rowIndex < updated.length) {
+            const row = { ...updated[rowIndex] };
+            row.variant_id = selectedProd.variant_id;
+            row.packaging_type_id = defaultPack.packaging_type_id;
+            row.purchase_price = Number(defaultPack.purchase_price) || Number(selectedProd.cost_price) || 0;
+            row.conversion_factor = defaultPack.conversion_factor || 1;
+            row.quantity = row.quantity || 1;
+            row.total = (parseFloat(row.quantity) || 1) * (parseFloat(row.purchase_price) || 0);
+            updated[rowIndex] = row;
+        } else {
+            updated.push({
+                variant_id: selectedProd.variant_id,
+                packaging_type_id: defaultPack.packaging_type_id,
+                quantity: 1,
+                purchase_price: Number(defaultPack.purchase_price) || Number(selectedProd.cost_price) || 0,
+                conversion_factor: defaultPack.conversion_factor || 1,
+                total: (Number(defaultPack.purchase_price) || Number(selectedProd.cost_price) || 0) * 1
+            });
+        }
+        setBillItems(updated);
+        setProductSearchModalOpen(false);
+        setProductSearchTargetRowIndex(null);
+    };
+
     // Add another item row to purchase bill
     const handleAddBillItemRow = () => {
         if (products.length === 0) return;
@@ -204,6 +247,7 @@ export default function PurchasesPage() {
             ? prod.packagings[0]
             : { packaging_type_id: 1, purchase_price: 100, conversion_factor: 1 };
 
+        const newIdx = billItems.length;
         setBillItems([
             ...billItems,
             {
@@ -215,6 +259,8 @@ export default function PurchasesPage() {
                 total: Number(pack.purchase_price) || 0
             }
         ]);
+        setProductSearchTargetRowIndex(newIdx);
+        setProductSearchModalOpen(true);
     };
 
     // Update item row in purchase bill
@@ -494,9 +540,8 @@ export default function PurchasesPage() {
                 return 'This Month';
             case 'custom':
                 return `Custom Range (${customStartDate || 'Start'} to ${customEndDate || 'End'})`;
-            case 'all':
             default:
-                return 'All Time';
+                return `Today (${todayStr})`;
         }
     }, [dateDuration, customStartDate, customEndDate]);
 
@@ -540,7 +585,7 @@ export default function PurchasesPage() {
                 <div>
                     <div className="flex items-center gap-2">
                         <h1 className="text-xl font-extrabold text-gray-900">Supplier Purchases & Stock Bills</h1>
-                        <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-[#FEF9E7] border border-[#F3E5AB] text-[#B8860B]">
+                        <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-blue-50 border border-blue-200 text-[#0B3B7B]">
                             Inward Stock Manager
                         </span>
                     </div>
@@ -560,51 +605,40 @@ export default function PurchasesPage() {
                     <button
                         type="button"
                         onClick={handleOpenCreateBill}
-                        style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                        className="btn-black !bg-black !text-white px-4 py-2.5 rounded-xl font-bold text-xs shadow-md flex items-center gap-2 cursor-pointer hover:opacity-90 transition-all"
+                        className="bg-[#16A34A] hover:bg-[#15803D] text-white px-4 py-2.5 rounded-xl font-bold text-xs shadow-md flex items-center gap-2 cursor-pointer transition-all"
                     >
-                        <IconPlus className="w-4 h-4" style={{ color: '#ffffff', stroke: '#ffffff' }} />
-                        <span style={{ color: '#ffffff' }}>+ Create Purchase Bill</span>
+                        <IconPlus className="w-4 h-4 text-white" />
+                        <span>+ Create Purchase Bill</span>
                     </button>
                 </div>
             </div>
 
             {/* DYNAMIC DATE DURATION FILTER BAR */}
-            <div className="bg-white p-4 rounded-2xl border border-[#F3E5AB] shadow-xs space-y-3">
-                <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3">
-                    {/* Date Duration Presets */}
-                    <div className="flex flex-wrap items-center gap-1.5 text-xs font-bold">
-                        <span className="text-gray-500 text-[11px] mr-1 flex items-center gap-1.5">
-                            <IconCalendar className="w-4 h-4 text-[#B8860B]" />
+            <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-xs space-y-3">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                    {/* Date Duration Select Dropdown */}
+                    <div className="flex flex-wrap items-center gap-2.5 text-xs">
+                        <span className="text-gray-600 text-xs font-bold flex items-center gap-1.5">
+                            <IconCalendar className="w-4 h-4 text-[#0B3B7B]" />
                             <span>Date Duration:</span>
                         </span>
-                        {[
-                            { id: 'today', label: 'Today (Default)' },
-                            { id: 'yesterday', label: 'Yesterday' },
-                            { id: 'this_week', label: 'This Week' },
-                            { id: 'this_month', label: 'This Month' },
-                            { id: 'all', label: 'All Time' },
-                            { id: 'custom', label: 'Custom Range' }
-                        ].map((tab) => (
-                            <button
-                                key={tab.id}
-                                type="button"
-                                onClick={() => setDateDuration(tab.id)}
-                                className={`px-3.5 py-1.5 rounded-xl transition-all cursor-pointer font-bold ${
-                                    dateDuration === tab.id
-                                        ? 'bg-black text-white shadow-xs'
-                                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                                }`}
-                            >
-                                {tab.label}
-                            </button>
-                        ))}
+                        <select
+                            value={dateDuration}
+                            onChange={(e) => setDateDuration(e.target.value)}
+                            className="py-2 px-3.5 bg-white border border-gray-200 rounded-xl font-bold text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#0B3B7B]/20 focus:border-[#0B3B7B] shadow-xs cursor-pointer"
+                        >
+                            <option value="today">Today (Default)</option>
+                            <option value="yesterday">Yesterday</option>
+                            <option value="this_week">This Week</option>
+                            <option value="this_month">This Month</option>
+                            <option value="custom">Custom Range</option>
+                        </select>
                     </div>
 
                     {/* Active Selected Duration Tag */}
                     <div className="text-xs font-semibold text-gray-500 flex items-center gap-2">
                         <span>Period:</span>
-                        <span className="px-2.5 py-1 rounded-lg bg-[#FEF9E7] border border-[#F3E5AB] font-bold text-[#B8860B]">
+                        <span className="px-2.5 py-1 rounded-lg bg-blue-50 border border-blue-200 font-bold text-[#0B3B7B]">
                             {durationLabel}
                         </span>
                     </div>
@@ -638,7 +672,7 @@ export default function PurchasesPage() {
                                 setCustomStartDate(todayStr);
                                 setCustomEndDate(todayStr);
                             }}
-                            className="text-[11px] font-bold text-[#B8860B] hover:underline cursor-pointer"
+                            className="text-[11px] font-bold text-[#0B3B7B] hover:underline cursor-pointer"
                         >
                             Reset to Today
                         </button>
@@ -655,7 +689,7 @@ export default function PurchasesPage() {
                             Inward Purchases
                         </span>
                         <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-100 text-gray-600">
-                            {dateDuration === 'today' ? 'Today' : dateDuration === 'all' ? 'All Time' : 'Period'}
+                            {dateDuration === 'today' ? 'Today' : 'Period'}
                         </span>
                     </div>
                     <div className="text-xl sm:text-2xl font-black text-gray-900 font-mono">
@@ -685,9 +719,9 @@ export default function PurchasesPage() {
                 </div>
 
                 {/* Pending Due Payable in Selected Duration */}
-                <div className="p-4 rounded-2xl bg-[#FEF9E7] border border-[#F3E5AB] shadow-xs space-y-1">
+                <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200 shadow-xs space-y-1">
                     <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-bold text-[#B8860B] uppercase tracking-wider">
+                        <span className="text-[11px] font-bold text-amber-800 uppercase tracking-wider">
                             Pending Due
                         </span>
                         <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
@@ -733,7 +767,7 @@ export default function PurchasesPage() {
                             placeholder="Search by Invoice #, Supplier Name or Brand..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/30"
+                            className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-[#0B3B7B]/20 focus:border-[#0B3B7B]"
                         />
                     </div>
 
@@ -768,7 +802,7 @@ export default function PurchasesPage() {
             <div className="bg-white rounded-2xl border border-gray-200 shadow-xs overflow-hidden">
                 {loading ? (
                     <div className="py-16 text-center text-gray-400 text-xs flex items-center justify-center gap-2">
-                        <IconSpinner className="w-5 h-5 text-[#B8860B]" />
+                        <IconSpinner className="w-5 h-5 text-[#0B3B7B]" />
                         <span>Loading purchase bills...</span>
                     </div>
                 ) : filteredPurchases.length === 0 ? (
@@ -795,11 +829,10 @@ export default function PurchasesPage() {
                             <button
                                 type="button"
                                 onClick={handleOpenCreateBill}
-                                style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                className="btn-black !bg-black !text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md cursor-pointer inline-flex items-center gap-1.5 hover:opacity-90 transition-all"
+                                className="bg-[#16A34A] hover:bg-[#15803D] text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md cursor-pointer inline-flex items-center gap-1.5 transition-all"
                             >
-                                <IconPlus className="w-3.5 h-3.5" style={{ color: '#ffffff', stroke: '#ffffff' }} />
-                                <span style={{ color: '#ffffff' }}>Create New Purchase Bill</span>
+                                <IconPlus className="w-3.5 h-3.5 text-white" />
+                                <span>Create New Purchase Bill</span>
                             </button>
                         </div>
                     </div>
@@ -825,7 +858,7 @@ export default function PurchasesPage() {
                                     const invoiceDate = p.invoice_date || (p.created_at ? p.created_at.split(' ')[0] : '-');
 
                                     return (
-                                        <tr key={p.id} className="hover:bg-amber-50/20 transition-colors">
+                                        <tr key={p.id} className="hover:bg-blue-50/20 transition-colors">
                                             <td className="p-3 font-semibold text-gray-700 font-mono">
                                                 {invoiceDate}
                                             </td>
@@ -833,7 +866,7 @@ export default function PurchasesPage() {
                                                 {p.supplier_invoice_no || `PUR-${p.id}`}
                                             </td>
                                             <td className="p-3">
-                                                <div className="font-bold text-[#B8860B]">{p.supplier_name}</div>
+                                                <div className="font-bold text-[#0B3B7B]">{p.supplier_name}</div>
                                                 {p.company_name && (
                                                     <div className="text-[10px] text-gray-400">{p.company_name}</div>
                                                 )}
@@ -866,12 +899,11 @@ export default function PurchasesPage() {
                                                     <button
                                                         type="button"
                                                         onClick={() => handleViewPurchaseBill(p.id)}
-                                                        style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                                        className="btn-black !bg-black !text-white px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 shadow-xs cursor-pointer hover:opacity-90 transition-all"
+                                                        className="px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 shadow-2xs cursor-pointer bg-[#0B3B7B] hover:bg-[#072B5C] text-white transition-all"
                                                         title="View bill invoice and printable receipt"
                                                     >
-                                                        <IconEye className="w-3.5 h-3.5" style={{ color: '#ffffff', stroke: '#ffffff' }} />
-                                                        <span style={{ color: '#ffffff' }}>View Bill</span>
+                                                        <IconEye className="w-3.5 h-3.5 text-white" />
+                                                        <span>View Bill</span>
                                                     </button>
                                                     <button
                                                         type="button"
@@ -900,13 +932,13 @@ export default function PurchasesPage() {
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-3 sm:p-4 overflow-y-auto">
                     <form
                         onSubmit={handleSavePurchaseBill}
-                        className="bg-white rounded-3xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-[#F3E5AB] my-auto overflow-hidden"
+                        className="bg-white rounded-3xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-gray-200 my-auto overflow-hidden"
                     >
                         {/* Modal Header */}
                         <div className="p-4 sm:p-5 border-b border-gray-200 bg-gray-50/70 flex justify-between items-center shrink-0">
                             <div>
                                 <h3 className="font-black text-gray-900 text-base sm:text-lg flex items-center gap-2">
-                                    <IconBill className="w-5 h-5 text-[#B8860B]" />
+                                    <IconBill className="w-5 h-5 text-[#0B3B7B]" />
                                     <span>Create Wholesale Purchase Bill</span>
                                 </h3>
                                 <p className="text-xs text-gray-500">
@@ -934,7 +966,7 @@ export default function PurchasesPage() {
                                         value={billSupplierId}
                                         onChange={(e) => setBillSupplierId(e.target.value)}
                                         required
-                                        className="w-full p-2.5 bg-white border border-gray-200 rounded-xl font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/30"
+                                        className="w-full p-2.5 bg-white border border-gray-200 rounded-xl font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#0B3B7B]/20"
                                     >
                                         {suppliers.map(s => (
                                             <option key={s.id} value={s.id}>
@@ -959,7 +991,7 @@ export default function PurchasesPage() {
                                         placeholder="e.g. INV-90214"
                                         value={billInvoiceNo}
                                         onChange={(e) => setBillInvoiceNo(e.target.value)}
-                                        className="w-full p-2.5 bg-white border border-gray-200 rounded-xl font-mono font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/30"
+                                        className="w-full p-2.5 bg-white border border-gray-200 rounded-xl font-mono font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#0B3B7B]/20"
                                     />
                                     <div className="text-[10px] text-gray-400 mt-1">Vendor's printed invoice or slip #</div>
                                 </div>
@@ -988,11 +1020,10 @@ export default function PurchasesPage() {
                                     <button
                                         type="button"
                                         onClick={handleAddBillItemRow}
-                                        style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                        className="btn-black !bg-black !text-white px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1 cursor-pointer shadow-xs hover:opacity-90 transition-all"
+                                        className="px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1 cursor-pointer shadow-xs bg-[#0B3B7B] text-white hover:bg-[#072B5C] transition-all"
                                     >
-                                        <IconPlus className="w-3.5 h-3.5" style={{ color: '#ffffff', stroke: '#ffffff' }} />
-                                        <span style={{ color: '#ffffff' }}>+ Add Item Row</span>
+                                        <IconPlus className="w-3.5 h-3.5 text-white" />
+                                        <span>+ Add Item Row</span>
                                     </button>
                                 </div>
 
@@ -1012,19 +1043,27 @@ export default function PurchasesPage() {
                                             {billItems.map((item, idx) => {
                                                 const prod = products.find(p => p.variant_id === item.variant_id);
                                                 return (
-                                                    <tr key={idx} className="hover:bg-amber-50/20">
+                                                    <tr key={idx} className="hover:bg-slate-50">
                                                         <td className="p-2">
-                                                            <select
-                                                                value={item.variant_id}
-                                                                onChange={(e) => handleUpdateBillItemRow(idx, 'variant_id', e.target.value)}
-                                                                className="w-full p-2 bg-white border border-gray-200 rounded-lg font-bold text-xs text-gray-900 focus:outline-none"
+                                                            <div
+                                                                role="button"
+                                                                tabIndex={0}
+                                                                onClick={() => handleOpenProductSearchForRow(idx)}
+                                                                className="w-full py-1.5 px-2.5 bg-white hover:bg-slate-50 border border-gray-200 hover:border-[#0B3B7B] rounded-lg transition-all cursor-pointer group flex items-center justify-between gap-1.5 shadow-2xs"
+                                                                title="Click to search and change item"
                                                             >
-                                                                {products.map(p => (
-                                                                    <option key={p.variant_id} value={p.variant_id}>
-                                                                        {p.product_name} ({p.variant_name}) — Current Stock: {p.current_stock}
-                                                                    </option>
-                                                                ))}
-                                                            </select>
+                                                                <div className="min-w-0 flex-1">
+                                                                    <div className="font-semibold text-xs text-gray-800 group-hover:text-[#0B3B7B] truncate">
+                                                                        {prod ? `${prod.product_name} (${prod.variant_name || 'Standard'})` : 'Click to select product...'}
+                                                                    </div>
+                                                                    <div className="text-[10px] text-gray-500 font-medium">
+                                                                        {prod ? `Stock: ${prod.current_stock || 0} ${prod.unit_symbol || prod.unit_name || 'pcs'}` : 'Search product catalog'}
+                                                                    </div>
+                                                                </div>
+                                                                <div className="p-1 rounded bg-gray-50 group-hover:bg-blue-50 text-gray-400 group-hover:text-[#0B3B7B] shrink-0 transition-colors">
+                                                                    <IconSearch className="w-3.5 h-3.5" />
+                                                                </div>
+                                                            </div>
                                                         </td>
                                                         <td className="p-2">
                                                             <select
@@ -1112,7 +1151,7 @@ export default function PurchasesPage() {
                                                 <button
                                                     type="button"
                                                     onClick={() => setBillAmountPaid(billNetAmount.toString())}
-                                                    className="text-[10px] text-[#B8860B] hover:underline cursor-pointer font-bold"
+                                                    className="text-[10px] text-[#0B3B7B] hover:underline cursor-pointer font-bold"
                                                 >
                                                     Full Paid
                                                 </button>
@@ -1151,14 +1190,14 @@ export default function PurchasesPage() {
                                 </div>
 
                                 {/* Right: Bill Calculations */}
-                                <div className="p-4 bg-[#FEF9E7] rounded-2xl border border-[#F3E5AB] flex flex-col justify-between space-y-2 font-mono text-xs">
+                                <div className="p-4 bg-slate-50 rounded-2xl border border-gray-200 flex flex-col justify-between space-y-2 font-mono text-xs">
                                     <div className="space-y-1.5">
                                         <div className="flex justify-between text-gray-700">
                                             <span>Subtotal (Gross Amount):</span>
                                             <span className="font-bold text-gray-900">Rs. {billGrossAmount.toLocaleString()}</span>
                                         </div>
 
-                                        <div className="grid grid-cols-2 gap-2 pt-1 border-t border-[#F3E5AB]">
+                                        <div className="grid grid-cols-2 gap-2 pt-1 border-t border-gray-200">
                                             <div>
                                                 <label className="block text-[10px] font-bold text-gray-600 mb-0.5">Discount (Rs.):</label>
                                                 <input
@@ -1181,7 +1220,7 @@ export default function PurchasesPage() {
                                             </div>
                                         </div>
 
-                                        <div className="flex justify-between items-center text-gray-900 font-black text-sm pt-2 border-t border-[#F3E5AB]">
+                                        <div className="flex justify-between items-center text-gray-900 font-black text-sm pt-2 border-t border-gray-200">
                                             <span>Net Bill Total:</span>
                                             <span className="text-base text-gray-900">Rs. {billNetAmount.toLocaleString()}</span>
                                         </div>
@@ -1192,7 +1231,7 @@ export default function PurchasesPage() {
                                         </div>
                                     </div>
 
-                                    <div className="flex justify-between items-center border-t-2 border-[#F3E5AB] pt-2 mt-1">
+                                    <div className="flex justify-between items-center border-t-2 border-gray-200 pt-2 mt-1">
                                         <span className="font-bold text-gray-900 text-xs uppercase">Added to Supplier Due:</span>
                                         <span className={`text-lg font-black ${billRemainingDue > 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
                                             Rs. {billRemainingDue.toLocaleString()}
@@ -1207,26 +1246,24 @@ export default function PurchasesPage() {
                             <button
                                 type="button"
                                 onClick={() => setCreateBillModalOpen(false)}
-                                style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                className="btn-black !bg-black !text-white flex-1 py-2.5 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center hover:opacity-90"
+                                className="flex-1 py-2.5 rounded-xl font-bold text-xs border border-gray-300 text-gray-700 bg-white hover:bg-gray-100 shadow-xs transition-all cursor-pointer flex items-center justify-center"
                             >
-                                <span style={{ color: '#ffffff' }}>Cancel</span>
+                                <span>Cancel</span>
                             </button>
                             <button
                                 type="submit"
                                 disabled={submittingBill}
-                                style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                className="btn-black !bg-black !text-white flex-2 py-2.5 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-50"
+                                className="flex-2 py-2.5 rounded-xl font-bold text-xs bg-[#16A34A] hover:bg-[#15803D] text-white shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
                             >
                                 {submittingBill ? (
                                     <>
                                         <IconSpinner className="w-4 h-4 text-white" />
-                                        <span style={{ color: '#ffffff' }}>Processing Stock Inward...</span>
+                                        <span>Processing Stock Inward...</span>
                                     </>
                                 ) : (
                                     <>
-                                        <IconCheck className="w-4 h-4" style={{ color: '#ffffff', stroke: '#ffffff' }} />
-                                        <span style={{ color: '#ffffff' }}>Save & Inward Stock Bill ({billItems.length} items)</span>
+                                        <IconCheck className="w-4 h-4 text-white" />
+                                        <span>Save & Inward Stock Bill ({billItems.length} items)</span>
                                     </>
                                 )}
                             </button>
@@ -1245,7 +1282,7 @@ export default function PurchasesPage() {
                         <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50 shrink-0">
                             <div>
                                 <h3 className="font-extrabold text-sm text-gray-900 flex items-center gap-2">
-                                    <IconBill className="w-4 h-4 text-[#B8860B]" />
+                                    <IconBill className="w-4 h-4 text-[#0B3B7B]" />
                                     <span>Purchase Bill: {selectedPurchaseDetail?.supplier_invoice_no || `PUR-#${selectedPurchaseDetail?.id}`}</span>
                                 </h3>
                                 <p className="text-[11px] text-gray-500">
@@ -1265,7 +1302,7 @@ export default function PurchasesPage() {
                         <div className="p-4 overflow-y-auto flex-1 space-y-4 text-xs">
                             {loadingPurchaseDetail || !selectedPurchaseDetail ? (
                                 <div className="py-12 text-center text-gray-400 text-xs flex items-center justify-center gap-2">
-                                    <IconSpinner className="w-4 h-4 text-[#B8860B]" />
+                                    <IconSpinner className="w-4 h-4 text-[#0B3B7B]" />
                                     <span>Loading purchase bill details...</span>
                                 </div>
                             ) : (
@@ -1273,7 +1310,7 @@ export default function PurchasesPage() {
                                     {/* Store & Supplier Banner */}
                                     <div className="border border-gray-200 rounded-2xl p-4 bg-gray-50/50 flex flex-col sm:flex-row justify-between gap-3">
                                         <div>
-                                            <div className="font-black text-sm text-[#B8860B]">{(settings?.shop_name || 'HILAL WHOLESALER SHOP').toUpperCase()}</div>
+                                            <div className="font-black text-sm text-[#0B3B7B]">{(settings?.shop_name || 'HILAL WHOLESALER SHOP').toUpperCase()}</div>
                                             <div className="text-[10px] text-gray-500">Stock Inward Voucher & Supplier Bill</div>
                                             <div className="text-[10px] text-gray-500 mt-1">
                                                 Invoice #: <span className="font-bold font-mono text-gray-900">{selectedPurchaseDetail.supplier_invoice_no || `PUR-${selectedPurchaseDetail.id}`}</span>
@@ -1339,7 +1376,7 @@ export default function PurchasesPage() {
                                     </div>
 
                                     {/* Financial Breakdown */}
-                                    <div className="bg-[#FEF9E7] p-3.5 rounded-2xl border border-[#F3E5AB] space-y-1.5 font-mono text-xs">
+                                    <div className="bg-slate-50 p-3.5 rounded-2xl border border-gray-200 space-y-1.5 font-mono text-xs">
                                         <div className="flex justify-between text-gray-700">
                                             <span>Gross Total:</span>
                                             <span className="font-bold">Rs. {Number(selectedPurchaseDetail.gross_amount || 0).toLocaleString()}</span>
@@ -1356,7 +1393,7 @@ export default function PurchasesPage() {
                                                 <span>+Rs. {Number(selectedPurchaseDetail.additional_charges).toLocaleString()}</span>
                                             </div>
                                         )}
-                                        <div className="flex justify-between font-black text-gray-900 text-sm border-t border-[#F3E5AB] pt-1.5">
+                                        <div className="flex justify-between font-black text-gray-900 text-sm border-t border-gray-200 pt-1.5">
                                             <span>Net Bill Value:</span>
                                             <span>Rs. {Number(selectedPurchaseDetail.net_amount || 0).toLocaleString()}</span>
                                         </div>
@@ -1364,7 +1401,7 @@ export default function PurchasesPage() {
                                             <span>Amount Paid ({selectedPurchaseDetail.payment_method || 'cash'}):</span>
                                             <span>Rs. {Number(selectedPurchaseDetail.amount_paid || 0).toLocaleString()}</span>
                                         </div>
-                                        <div className="flex justify-between text-rose-600 font-extrabold border-t border-[#F3E5AB] pt-1">
+                                        <div className="flex justify-between text-rose-600 font-extrabold border-t border-gray-200 pt-1">
                                             <span>Remaining Payable Due:</span>
                                             <span>Rs. {Number(selectedPurchaseDetail.remaining_balance || 0).toLocaleString()}</span>
                                         </div>
@@ -1385,11 +1422,10 @@ export default function PurchasesPage() {
                             <button
                                 type="button"
                                 onClick={() => window.print()}
-                                style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                className="btn-black !bg-black !text-white px-4 py-2 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center gap-1.5 hover:opacity-90"
+                                className="px-4 py-2 rounded-xl font-bold text-xs bg-[#0B3B7B] hover:bg-[#072B5C] text-white shadow-md transition-all cursor-pointer flex items-center gap-1.5"
                             >
-                                <IconPrinter className="w-4 h-4" style={{ color: '#ffffff', stroke: '#ffffff' }} />
-                                <span style={{ color: '#ffffff' }}>Print Bill Voucher</span>
+                                <IconPrinter className="w-4 h-4 text-white" />
+                                <span>Print Bill Voucher</span>
                             </button>
                         </div>
                     </div>
@@ -1511,7 +1547,7 @@ export default function PurchasesPage() {
                                         onClick={() => setReturnRefundMethod('credit')}
                                         className={`p-2.5 rounded-2xl border flex flex-col gap-1 cursor-pointer transition-all ${
                                             returnRefundMethod === 'credit'
-                                                ? 'bg-amber-50/80 border-[#D4AF37] text-gray-900 shadow-xs ring-1 ring-[#D4AF37]'
+                                                ? 'bg-blue-50/80 border-[#0B3B7B] text-gray-900 shadow-xs ring-1 ring-[#0B3B7B]'
                                                 : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
                                         }`}
                                     >
@@ -1522,7 +1558,7 @@ export default function PurchasesPage() {
                                                 value="credit"
                                                 checked={returnRefundMethod === 'credit'}
                                                 onChange={() => setReturnRefundMethod('credit')}
-                                                className="accent-[#B8860B] cursor-pointer"
+                                                className="accent-[#0B3B7B] cursor-pointer"
                                             />
                                             <span className="font-extrabold text-xs text-gray-900">
                                                 Adjust Supplier Khata
@@ -1605,10 +1641,9 @@ export default function PurchasesPage() {
                             <button
                                 type="button"
                                 onClick={() => setReturnModalOpen(false)}
-                                style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                className="btn-black !bg-black !text-white flex-1 py-2.5 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center hover:opacity-90"
+                                className="flex-1 py-2.5 rounded-xl font-bold text-xs border border-gray-300 text-gray-700 bg-white hover:bg-gray-100 shadow-xs transition-all cursor-pointer flex items-center justify-center"
                             >
-                                <span style={{ color: '#ffffff' }}>Cancel</span>
+                                <span>Cancel</span>
                             </button>
                             <button
                                 type="submit"
@@ -1622,6 +1657,19 @@ export default function PurchasesPage() {
                     </form>
                 </div>
             )}
+
+            {/* FLOATING PRODUCT SEARCH MODAL */}
+            <FastProductSearchModal
+                isOpen={productSearchModalOpen}
+                onClose={() => {
+                    setProductSearchModalOpen(false);
+                    setProductSearchTargetRowIndex(null);
+                }}
+                products={products}
+                targetRowIndex={productSearchTargetRowIndex}
+                selectedVariantId={billItems[productSearchTargetRowIndex]?.variant_id}
+                onSelect={(prod) => handleSelectProductForBill(productSearchTargetRowIndex, prod)}
+            />
 
             {/* Custom Non-Blocking Alert & Confirmation Dialog */}
             <CustomModalAlert
