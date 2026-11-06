@@ -30,17 +30,35 @@ export async function POST(request) {
         // 1. Cloud-side Idempotency: Check if UUID was already ingested
         const { data: existingEvent } = await supabase
             .from('ingested_sync_events')
-            .select('uuid')
+            .select('uuid, operation_type, entity_id')
             .eq('uuid', uuid)
-            .single();
+            .maybeSingle();
 
         if (existingEvent) {
-            return NextResponse.json({
-                success: true,
-                idempotent: true,
-                processedUuid: uuid,
-                message: 'Transaction already ingested'
-            });
+            // Self-healing: verify entity actually exists in Supabase table before claiming idempotency
+            let actuallyExists = true;
+            if (operation_type === 'SALE') {
+                const { data: s } = await supabase.from('sales').select('id').eq('uuid', uuid).maybeSingle();
+                if (!s) actuallyExists = false;
+            } else if (operation_type === 'PURCHASE') {
+                const { data: p } = await supabase.from('purchases').select('id').eq('uuid', uuid).maybeSingle();
+                if (!p) actuallyExists = false;
+            } else if (operation_type === 'CUSTOMER' || operation_type === 'CUSTOMER_UPDATE') {
+                const { data: c } = await supabase.from('customers').select('id').eq('uuid', uuid).maybeSingle();
+                if (!c) actuallyExists = false;
+            }
+
+            if (actuallyExists) {
+                return NextResponse.json({
+                    success: true,
+                    idempotent: true,
+                    processedUuid: uuid,
+                    message: 'Transaction already ingested'
+                });
+            }
+
+            // Ghost event cleanup: previous ingest failed partway, allow reprocessing
+            await supabase.from('ingested_sync_events').delete().eq('uuid', uuid);
         }
 
         const parsedPayload = typeof payload === 'string' ? JSON.parse(payload) : (payload || {});
@@ -48,20 +66,42 @@ export async function POST(request) {
         // 2. Process Business Operations
         if (operation_type === 'SALE') {
             const invoiceNo = parsedPayload.invoice_no || `INV-${Date.now().toString().slice(-6)}`;
+            const custId = parsedPayload.customer_id ? parseInt(parsedPayload.customer_id) : null;
+
+            // Pre-provision customer if missing to prevent FK constraint failure
+            if (custId) {
+                const { data: custCheck } = await supabase.from('customers').select('id').eq('id', custId).maybeSingle();
+                if (!custCheck) {
+                    const custName = parsedPayload.customer_name || parsedPayload.walkin_name || `Customer #${custId}`;
+                    await supabase.from('customers').insert([{
+                        id: custId,
+                        uuid: crypto.randomUUID(),
+                        name: custName,
+                        business_name: parsedPayload.business_name || '',
+                        phone: parsedPayload.customer_phone || parsedPayload.phone || '',
+                        mobile: parsedPayload.customer_mobile || parsedPayload.mobile || '',
+                        address: parsedPayload.customer_address || parsedPayload.address || '',
+                        balance: 0,
+                        created_at: toUtcIso(parsedPayload.created_at)
+                    }]);
+                }
+            }
 
             // Check if sale already exists by invoice_no or uuid
             const { data: existingSale } = await supabase
                 .from('sales')
                 .select('id')
                 .or(`uuid.eq.${uuid},invoice_no.eq.${invoiceNo}`)
-                .single();
+                .maybeSingle();
 
             if (!existingSale) {
-                const nextSaleId = await getNextId('sales');
+                const targetSaleId = parsedPayload.id ? parseInt(parsedPayload.id) : await getNextId('sales');
+                const { data: idTaken } = await supabase.from('sales').select('id').eq('id', targetSaleId).maybeSingle();
+                const nextSaleId = idTaken ? await getNextId('sales') : targetSaleId;
+
                 const netAmount = Number(parsedPayload.net_amount) || 0;
                 const paidAmount = Number(parsedPayload.amount_paid) || 0;
-                const remaining = Number(parsedPayload.remaining_balance) || (netAmount - paidAmount);
-                const custId = parsedPayload.customer_id ? parseInt(parsedPayload.customer_id) : null;
+                const remaining = Number(parsedPayload.remaining_balance) !== undefined ? Number(parsedPayload.remaining_balance) : (netAmount - paidAmount);
 
                 const { data: insertedSale, error: sErr } = await supabase
                     .from('sales')
@@ -88,6 +128,11 @@ export async function POST(request) {
                     }])
                     .select()
                     .single();
+
+                if (sErr) {
+                    console.error('Supabase sale insert error:', sErr);
+                    throw new Error(`Failed to insert sale into cloud: ${sErr.message}`);
+                }
 
                 if (!sErr && insertedSale && Array.isArray(parsedPayload.items)) {
                     let nextItemId = await getNextId('sale_items');
@@ -396,6 +441,209 @@ export async function POST(request) {
                             }
                         }
                     }
+                }
+            }
+        } else if (operation_type === 'CUSTOMER' || operation_type === 'CUSTOMER_UPDATE') {
+            const custId = parsedPayload.id ? parseInt(parsedPayload.id) : null;
+            const custUuid = parsedPayload.uuid || uuid;
+            const name = (parsedPayload.name || '').trim();
+
+            if (name) {
+                const { data: existingCust } = await supabase
+                    .from('customers')
+                    .select('id')
+                    .or(`uuid.eq.${custUuid}${custId ? `,id.eq.${custId}` : ''}`)
+                    .limit(1)
+                    .maybeSingle();
+
+                const custData = {
+                    name,
+                    business_name: parsedPayload.business_name || '',
+                    phone: parsedPayload.phone || parsedPayload.mobile || '',
+                    mobile: parsedPayload.mobile || parsedPayload.phone || '',
+                    address: parsedPayload.address || '',
+                    cnic_ntn: parsedPayload.cnic_ntn || '',
+                    credit_limit: Number(parsedPayload.credit_limit) || 0,
+                    opening_balance: Number(parsedPayload.opening_balance) || 0,
+                    balance: Number(parsedPayload.balance) || 0
+                };
+
+                if (existingCust) {
+                    const { error: updErr } = await supabase.from('customers').update(custData).eq('id', existingCust.id);
+                    if (updErr) throw new Error(`Customer update failed: ${updErr.message}`);
+                } else {
+                    const targetId = custId || await getNextId('customers');
+                    const { data: idTaken } = await supabase.from('customers').select('id').eq('id', targetId).maybeSingle();
+                    const finalId = idTaken ? await getNextId('customers') : targetId;
+
+                    const { error: insErr } = await supabase.from('customers').insert([{
+                        id: finalId,
+                        uuid: custUuid,
+                        ...custData,
+                        created_at: toUtcIso(parsedPayload.created_at)
+                    }]);
+                    if (insErr) throw new Error(`Customer insert failed: ${insErr.message}`);
+                }
+            }
+        } else if (operation_type === 'SUPPLIER' || operation_type === 'SUPPLIER_UPDATE') {
+            const suppId = parsedPayload.id ? parseInt(parsedPayload.id) : null;
+            const suppUuid = parsedPayload.uuid || uuid;
+            const name = (parsedPayload.name || '').trim();
+
+            if (name) {
+                const { data: existingSupp } = await supabase
+                    .from('suppliers')
+                    .select('id')
+                    .or(`uuid.eq.${suppUuid}${suppId ? `,id.eq.${suppId}` : ''}`)
+                    .limit(1)
+                    .maybeSingle();
+
+                const suppData = {
+                    name,
+                    company_name: parsedPayload.company_name || '',
+                    phone: parsedPayload.phone || '',
+                    address: parsedPayload.address || '',
+                    opening_balance: Number(parsedPayload.opening_balance) || 0,
+                    balance: Number(parsedPayload.balance) || 0
+                };
+
+                if (existingSupp) {
+                    const { error: updErr } = await supabase.from('suppliers').update(suppData).eq('id', existingSupp.id);
+                    if (updErr) throw new Error(`Supplier update failed: ${updErr.message}`);
+                } else {
+                    const targetId = suppId || await getNextId('suppliers');
+                    const { data: idTaken } = await supabase.from('suppliers').select('id').eq('id', targetId).maybeSingle();
+                    const finalId = idTaken ? await getNextId('suppliers') : targetId;
+
+                    const { error: insErr } = await supabase.from('suppliers').insert([{
+                        id: finalId,
+                        uuid: suppUuid,
+                        ...suppData,
+                        created_at: toUtcIso(parsedPayload.created_at)
+                    }]);
+                    if (insErr) throw new Error(`Supplier insert failed: ${insErr.message}`);
+                }
+            }
+        } else if (operation_type === 'PURCHASE') {
+            const suppInvoiceNo = parsedPayload.supplier_invoice_no || `PINV-${Date.now().toString().slice(-6)}`;
+            const suppId = parsedPayload.supplier_id ? parseInt(parsedPayload.supplier_id) : null;
+
+            if (suppId) {
+                const { data: suppCheck } = await supabase.from('suppliers').select('id').eq('id', suppId).maybeSingle();
+                if (!suppCheck) {
+                    await supabase.from('suppliers').insert([{
+                        id: suppId,
+                        uuid: crypto.randomUUID(),
+                        name: parsedPayload.supplier_name || `Supplier #${suppId}`,
+                        company_name: parsedPayload.company_name || '',
+                        balance: 0,
+                        created_at: toUtcIso(parsedPayload.created_at)
+                    }]);
+                }
+            }
+
+            const { data: existingPurch } = await supabase
+                .from('purchases')
+                .select('id')
+                .or(`uuid.eq.${uuid},supplier_invoice_no.eq.${suppInvoiceNo}`)
+                .maybeSingle();
+
+            if (!existingPurch) {
+                const targetPurchId = parsedPayload.id ? parseInt(parsedPayload.id) : await getNextId('purchases');
+                const { data: idTaken } = await supabase.from('purchases').select('id').eq('id', targetPurchId).maybeSingle();
+                const purchIdToUse = idTaken ? await getNextId('purchases') : targetPurchId;
+
+                const netAmount = Number(parsedPayload.net_amount) || 0;
+                const paidAmount = Number(parsedPayload.amount_paid) || 0;
+
+                const { data: insertedPurch, error: pErr } = await supabase
+                    .from('purchases')
+                    .insert([{
+                        id: purchIdToUse,
+                        uuid: uuid || crypto.randomUUID(),
+                        supplier_id: suppId,
+                        supplier_invoice_no: suppInvoiceNo,
+                        invoice_date: parsedPayload.invoice_date || (parsedPayload.created_at ? toUtcIso(parsedPayload.created_at).slice(0, 10) : new Date().toISOString().slice(0, 10)),
+                        gross_amount: Number(parsedPayload.gross_amount) || netAmount,
+                        discount: Number(parsedPayload.discount) || 0,
+                        additional_charges: Number(parsedPayload.additional_charges) || 0,
+                        net_amount: netAmount,
+                        amount_paid: paidAmount,
+                        payment_method: parsedPayload.payment_method || 'cash',
+                        notes: parsedPayload.notes || '',
+                        status: 'completed',
+                        created_at: toUtcIso(parsedPayload.created_at)
+                    }])
+                    .select()
+                    .single();
+
+                if (pErr) throw new Error(`Purchase insert failed: ${pErr.message}`);
+
+                if (insertedPurch && Array.isArray(parsedPayload.items)) {
+                    let nextItemId = await getNextId('purchase_items');
+                    for (const item of parsedPayload.items) {
+                        const vId = parseInt(item.variant_id);
+                        const qty = Number(item.quantity) || 1;
+                        const factor = Number(item.conversion_factor) || 1;
+                        const price = Number(item.purchase_price || item.price) || 0;
+                        const total = Number(item.total) || (qty * price);
+                        const equivalentQty = qty * factor;
+
+                        await supabase.from('purchase_items').insert([{
+                            id: nextItemId++,
+                            uuid: crypto.randomUUID(),
+                            purchase_id: insertedPurch.id,
+                            variant_id: vId,
+                            packaging_type_id: item.packaging_type_id ? parseInt(item.packaging_type_id) : 1,
+                            quantity: qty,
+                            purchase_price: price,
+                            total
+                        }]);
+
+                        const { data: curV } = await supabase.from('product_variants').select('current_stock').eq('id', vId).single();
+                        if (curV) {
+                            await supabase.from('product_variants').update({ current_stock: Number(curV.current_stock || 0) + equivalentQty }).eq('id', vId);
+                        }
+                    }
+                }
+            }
+        } else if (operation_type === 'PAYMENT') {
+            const partyType = parsedPayload.party_type || 'customer';
+            const partyId = parsedPayload.party_id || parsedPayload.customer_id || parsedPayload.supplier_id;
+            const amount = Number(parsedPayload.amount) || 0;
+
+            const nextPayId = parsedPayload.id ? parseInt(parsedPayload.id) : await getNextId('payments');
+            await supabase.from('payments').insert([{
+                id: nextPayId,
+                uuid: uuid || crypto.randomUUID(),
+                party_type: partyType,
+                party_id: partyId ? parseInt(partyId) : null,
+                amount,
+                payment_method: parsedPayload.payment_method || 'cash',
+                reference_no: parsedPayload.reference_no || '',
+                user_id: 1,
+                device_id: effectiveDeviceId,
+                notes: parsedPayload.notes || '',
+                payment_date: parsedPayload.payment_date || (parsedPayload.created_at ? toUtcIso(parsedPayload.created_at).slice(0, 10) : new Date().toISOString().slice(0, 10)),
+                created_at: toUtcIso(parsedPayload.created_at)
+            }]);
+
+            if (partyType === 'customer' && partyId) {
+                let nextLedgerId = await getNextId('customer_ledger');
+                await supabase.from('customer_ledger').insert([{
+                    id: nextLedgerId,
+                    uuid: crypto.randomUUID(),
+                    customer_id: parseInt(partyId),
+                    amount,
+                    type: 'payment',
+                    description: parsedPayload.notes || `Recovery Wasooli Payment`,
+                    payment_method: parsedPayload.payment_method || 'cash',
+                    created_at: toUtcIso(parsedPayload.created_at)
+                }]);
+
+                const { data: cust } = await supabase.from('customers').select('balance').eq('id', parseInt(partyId)).single();
+                if (cust) {
+                    await supabase.from('customers').update({ balance: Number(cust.balance || 0) - amount }).eq('id', parseInt(partyId));
                 }
             }
         }

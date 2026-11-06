@@ -1235,7 +1235,23 @@ app.post('/api/sales', authenticateToken, (req, res) => {
                     db.run("COMMIT", (err) => {
                         if (err) return res.status(500).json({ error: err.message });
                         logAudit(req.user.id, req.user.username, 'CREATE_SALE', 'sales', saleId, `Created Invoice ${invoiceNo} Total: ${net_amount}`);
-                        syncEngine.enqueueSync('SALE', 'sales', saleId, req.body);
+                        syncEngine.enqueueSync('SALE', 'sales', saleId, {
+                            ...req.body,
+                            id: saleId,
+                            uuid: saleUUID,
+                            invoice_no: invoiceNo,
+                            customer_id: effectiveCustomerId,
+                            gross_amount: typeof gross_amount !== 'undefined' ? gross_amount : net_amount,
+                            discount: discount || 0,
+                            special_discount: special_discount || 0,
+                            additional_charges: additional_charges || 0,
+                            net_amount,
+                            amount_paid,
+                            remaining_balance: remainingBalance,
+                            payment_method: payment_method || 'cash',
+                            status: 'completed',
+                            created_at: getLocalNow()
+                        });
                         res.json({ success: true, saleId, invoiceNo, net_amount, remainingBalance, customer_id: effectiveCustomerId });
                     });
                 }
@@ -2604,6 +2620,18 @@ app.post('/api/suppliers', authenticateToken, (req, res) => {
                     [generateUUID(), supplierId, Math.abs(opBal)]
                 );
             }
+            logAudit(req.user.id, req.user.username, 'CREATE_SUPPLIER', 'suppliers', supplierId, name);
+            syncEngine.enqueueSync('SUPPLIER', 'suppliers', supplierId, {
+                uuid,
+                id: supplierId,
+                name,
+                company_name: company_name || '',
+                phone: phone || '',
+                address: address || '',
+                opening_balance: opBal,
+                balance: opBal,
+                created_at: getLocalNow()
+            });
             res.json({ id: supplierId, uuid, name, balance: opBal });
         }
     );
@@ -2658,6 +2686,15 @@ app.put('/api/suppliers/:id', authenticateToken, (req, res) => {
                 }
 
                 logAudit(req.user.id, req.user.username, 'UPDATE_SUPPLIER', 'suppliers', id, `Updated supplier: ${name} (Opening Bal: ${newOpening}, Delta: ${delta})`);
+                syncEngine.enqueueSync('SUPPLIER_UPDATE', 'suppliers', id, {
+                    id: parseInt(id),
+                    name,
+                    company_name: company_name || '',
+                    phone: phone || '',
+                    address: address || '',
+                    opening_balance: newOpening,
+                    updated_at: getLocalNow()
+                });
                 res.json({ success: true, message: 'Supplier updated successfully' });
             }
         );
@@ -3247,7 +3284,22 @@ app.post('/api/purchases', authenticateToken, (req, res) => {
                 db.run("COMMIT", (err) => {
                     if (err) return res.status(500).json({ error: err.message });
                     logAudit(req.user.id, req.user.username, 'CREATE_PURCHASE', 'purchases', purchaseId, `Net Amount: ${net_amount}`);
-                    syncEngine.enqueueSync('PURCHASE', 'purchases', purchaseId, req.body);
+                    syncEngine.enqueueSync('PURCHASE', 'purchases', purchaseId, {
+                        ...req.body,
+                        id: purchaseId,
+                        uuid: purchaseUUID,
+                        supplier_id,
+                        supplier_invoice_no,
+                        invoice_date: nowDate,
+                        gross_amount: gross_amount || net_amount,
+                        discount: discount || 0,
+                        additional_charges: additional_charges || 0,
+                        net_amount,
+                        amount_paid: amount_paid || 0,
+                        remaining_balance: remainingBalance,
+                        payment_method: payment_method || 'cash',
+                        created_at: getLocalNow()
+                    });
                     res.json({ success: true, purchaseId, net_amount, remainingBalance });
                 });
             }
