@@ -93,14 +93,32 @@ export async function GET(request) {
             saleReturnItems = retItemsData || [];
         }
 
+        // Deduplicate reference dictionaries by LOWER(name) to prevent local SQLite UNIQUE constraint errors
+        const dedupeByName = (list = []) => {
+            const seen = new Set();
+            const result = [];
+            for (const item of list) {
+                const key = (item.name || '').trim().toLowerCase();
+                if (key && !seen.has(key)) {
+                    seen.add(key);
+                    result.push(item);
+                }
+            }
+            return result;
+        };
+
+        const cleanPkgTypes = dedupeByName(pkgTypesRes.data || []);
+        const cleanUnits = dedupeByName(unitsRes.data || []);
+        const cleanCats = dedupeByName(catsRes.data || []);
+
         return NextResponse.json({
             success: true,
             cursor: serverTimestamp,
             serverTimestamp,
             isIncremental: Boolean(isIncremental),
-            categories: catsRes.data || [],
-            units: unitsRes.data || [],
-            packagingTypes: pkgTypesRes.data || [],
+            categories: cleanCats,
+            units: cleanUnits,
+            packagingTypes: cleanPkgTypes,
             products: prodsRes.data || [],
             productVariants: varsRes.data || [],
             productPackagings: pkgsRes.data || [],

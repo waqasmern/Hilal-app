@@ -2,7 +2,9 @@ const { app, BrowserWindow, protocol, ipcMain } = require('electron');
 const path = require('path');
 const http = require('http');
 
-app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
+if (app && app.commandLine) {
+  app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
+}
 
 let mainWindow;
 let _printWindow = null;
