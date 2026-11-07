@@ -4747,30 +4747,92 @@ if (!fs.existsSync(backupDir)) {
 app.post('/api/system/backup', authenticateToken, requireAdmin, (req, res) => {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
     const backupFileName = `wholesale-backup-${timestamp}.db`;
-    const targetPath = path.join(backupDir, backupFileName);
-
-    // Get current SQLite DB path
+    
+    // Support custom target destination folder if specified
+    const destDir = (req.body && req.body.targetFolder) ? req.body.targetFolder : backupDir;
+    if (!fs.existsSync(destDir)) {
+        try { fs.mkdirSync(destDir, { recursive: true }); } catch (e) {}
+    }
+    const targetPath = path.join(destDir, backupFileName);
     const currentDbPath = db.filename || path.join(__dirname, 'wholesale.db');
 
     if (fs.existsSync(currentDbPath)) {
-        fs.copyFile(currentDbPath, targetPath, (err) => {
-            if (err) return res.status(500).json({ error: err.message });
-            logAudit(req.user.id, req.user.username, 'CREATE_BACKUP', 'system', null, backupFileName);
-            res.json({ success: true, backupFileName, path: targetPath });
+        // Safe atomic live snapshot via VACUUM INTO for zero locking and minimum size
+        db.run('VACUUM INTO ?', [targetPath], (vErr) => {
+            if (!vErr && fs.existsSync(targetPath)) {
+                const stats = fs.statSync(targetPath);
+                logAudit(req.user.id, req.user.username, 'CREATE_BACKUP', 'system', null, backupFileName);
+                return res.json({ 
+                    success: true, 
+                    backupFileName, 
+                    path: targetPath,
+                    targetFolder: destDir,
+                    size: stats.size,
+                    sizeFormatted: (stats.size / 1024).toFixed(1) + ' KB'
+                });
+            }
+            // Fallback to copyFile if VACUUM INTO encounters file-system constraints
+            fs.copyFile(currentDbPath, targetPath, (cErr) => {
+                if (cErr) return res.status(500).json({ error: cErr.message });
+                const stats = fs.statSync(targetPath);
+                logAudit(req.user.id, req.user.username, 'CREATE_BACKUP', 'system', null, backupFileName);
+                res.json({ 
+                    success: true, 
+                    backupFileName, 
+                    path: targetPath,
+                    targetFolder: destDir,
+                    size: stats.size,
+                    sizeFormatted: (stats.size / 1024).toFixed(1) + ' KB'
+                });
+            });
         });
     } else {
         res.status(404).json({ error: 'Live database file not found for backup' });
     }
 });
 
+app.post('/api/system/compact', authenticateToken, requireAdmin, (req, res) => {
+    const currentDbPath = db.filename || path.join(__dirname, 'wholesale.db');
+    let sizeBefore = 0;
+    try {
+        if (fs.existsSync(currentDbPath)) sizeBefore = fs.statSync(currentDbPath).size;
+    } catch (e) {}
+
+    if (typeof db.cleanAndCompactDatabase === 'function') {
+        db.cleanAndCompactDatabase((err) => {
+            if (err) return res.status(500).json({ error: err.message });
+            let sizeAfter = 0;
+            try {
+                if (fs.existsSync(currentDbPath)) sizeAfter = fs.statSync(currentDbPath).size;
+            } catch (e) {}
+            const freedBytes = Math.max(0, sizeBefore - sizeAfter);
+            logAudit(req.user.id, req.user.username, 'COMPACT_DATABASE', 'system', null, `Freed: ${(freedBytes / 1024).toFixed(1)} KB`);
+            res.json({
+                success: true,
+                sizeBeforeBytes: sizeBefore,
+                sizeAfterBytes: sizeAfter,
+                sizeBeforeFormatted: (sizeBefore / 1024 / 1024).toFixed(2) + ' MB',
+                sizeAfterFormatted: (sizeAfter / 1024 / 1024).toFixed(2) + ' MB',
+                freedFormatted: (freedBytes / 1024).toFixed(1) + ' KB'
+            });
+        });
+    } else {
+        db.run('VACUUM', (err) => {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ success: true, message: 'Database vacuumed successfully' });
+        });
+    }
+});
+
 app.get('/api/system/backups', authenticateToken, requireAdmin, (req, res) => {
     try {
-        if (!fs.existsSync(backupDir)) return res.json([]);
-        const files = fs.readdirSync(backupDir).filter(f => f.endsWith('.db')).map(f => {
-            const stats = fs.statSync(path.join(backupDir, f));
-            return { fileName: f, size: stats.size, createdAt: stats.birthtime };
+        const folder = req.query.folder || backupDir;
+        if (!fs.existsSync(folder)) return res.json({ files: [], currentFolder: folder, defaultFolder: backupDir });
+        const files = fs.readdirSync(folder).filter(f => f.endsWith('.db')).map(f => {
+            const stats = fs.statSync(path.join(folder, f));
+            return { fileName: f, size: stats.size, createdAt: stats.birthtime, path: path.join(folder, f) };
         });
-        res.json(files);
+        res.json({ files, currentFolder: folder, defaultFolder: backupDir });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

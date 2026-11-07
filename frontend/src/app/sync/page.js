@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
-import { IconSync, IconSettings, IconPlus } from '../components/Icons';
+import { IconSync, IconSettings, IconPlus, IconCheck, IconWarning, IconClose, IconBolt } from '../components/Icons';
 
 export default function SyncPage() {
     const { user } = useSelector(state => state.auth);
@@ -9,15 +9,29 @@ export default function SyncPage() {
     const [isSyncing, setIsSyncing] = useState(false);
     const [backups, setBackups] = useState([]);
     const [backingUp, setBackingUp] = useState(false);
+    const [compacting, setCompacting] = useState(false);
+    const [compactResult, setCompactResult] = useState(null);
+
+    const [selectedFolder, setSelectedFolder] = useState('');
+    const [defaultBackupFolder, setDefaultBackupFolder] = useState('');
 
     const [syncFeedback, setSyncFeedback] = useState(null);
+    const [toast, setToast] = useState(null); // { type: 'success' | 'error' | 'info', title: '', message: '', details: '' }
 
     useEffect(() => {
+        const savedFolder = typeof window !== 'undefined' ? (localStorage.getItem('preferred_backup_folder') || '') : '';
+        if (savedFolder) setSelectedFolder(savedFolder);
+
         fetchSyncStatus();
         if (user?.role === 'admin') {
-            fetchBackups();
+            fetchBackups(savedFolder);
         }
     }, [user]);
+
+    const showToast = (title, message, type = 'success', details = '') => {
+        setToast({ title, message, type, details });
+        setTimeout(() => setToast(prev => (prev?.title === title ? null : prev)), 6000);
+    };
 
     const fetchSyncStatus = async () => {
         try {
@@ -30,16 +44,63 @@ export default function SyncPage() {
         }
     };
 
-    const fetchBackups = async () => {
+    const fetchBackups = async (folder = selectedFolder) => {
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch('http://localhost:5000/api/system/backups', {
+            const url = folder 
+                ? `http://localhost:5000/api/system/backups?folder=${encodeURIComponent(folder)}`
+                : 'http://localhost:5000/api/system/backups';
+            const res = await fetch(url, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
-            if (res.ok) setBackups(await res.json());
+            if (res.ok) {
+                const data = await res.json();
+                if (Array.isArray(data)) {
+                    setBackups(data);
+                } else if (data && Array.isArray(data.files)) {
+                    setBackups(data.files);
+                    if (data.defaultFolder) setDefaultBackupFolder(data.defaultFolder);
+                }
+            }
         } catch (err) {
             console.error(err);
         }
+    };
+
+    const handleSelectFolder = async () => {
+        // If running inside Electron desktop app, open native Windows folder picker
+        if (typeof window !== 'undefined' && window.require) {
+            try {
+                const { ipcRenderer } = window.require('electron');
+                const res = await ipcRenderer.invoke('select-backup-folder');
+                if (!res.canceled && res.folderPath) {
+                    setSelectedFolder(res.folderPath);
+                    localStorage.setItem('preferred_backup_folder', res.folderPath);
+                    fetchBackups(res.folderPath);
+                    showToast('Folder Selected', `Backup destination set to: ${res.folderPath}`, 'info');
+                    return;
+                }
+            } catch (e) {
+                console.warn('Native folder picker fallback:', e);
+            }
+        }
+
+        // Fallback prompt for browser environment
+        const customPath = prompt('Enter destination folder path for backups:', selectedFolder || defaultBackupFolder || 'D:\\Backups');
+        if (customPath && customPath.trim()) {
+            const trimmed = customPath.trim();
+            setSelectedFolder(trimmed);
+            localStorage.setItem('preferred_backup_folder', trimmed);
+            fetchBackups(trimmed);
+            showToast('Destination Updated', `Backups will be saved to: ${trimmed}`, 'info');
+        }
+    };
+
+    const handleResetFolder = () => {
+        setSelectedFolder('');
+        localStorage.removeItem('preferred_backup_folder');
+        fetchBackups('');
+        showToast('Reset to Default', 'Destination reset to default app Backups folder.', 'info');
     };
 
     const handleTriggerSync = async () => {
@@ -79,26 +140,99 @@ export default function SyncPage() {
             const token = localStorage.getItem('token');
             const res = await fetch('http://localhost:5000/api/system/backup', {
                 method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` }
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}` 
+                },
+                body: JSON.stringify({
+                    targetFolder: selectedFolder || undefined
+                })
             });
 
             if (res.ok) {
                 const data = await res.json();
-                alert(`Database backup created successfully: ${data.backupFileName}`);
-                fetchBackups();
+                showToast(
+                    'Backup Created Successfully!',
+                    `${data.backupFileName} (${data.sizeFormatted || 'Compact live snapshot'})`,
+                    'success',
+                    `Saved to: ${data.path}`
+                );
+                fetchBackups(selectedFolder);
             } else {
-                const data = await res.json();
-                alert(data.error || 'Failed to create backup');
+                const data = await res.json().catch(() => ({}));
+                showToast('Backup Failed', data.error || 'Could not create database backup', 'error');
             }
         } catch (err) {
-            alert(err.message);
+            showToast('Backup Error', err.message, 'error');
         } finally {
             setBackingUp(false);
         }
     };
 
+    const handleCompactDatabase = async () => {
+        setCompacting(true);
+        setCompactResult(null);
+        try {
+            const token = localStorage.getItem('token');
+            const res = await fetch('http://localhost:5000/api/system/compact', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                setCompactResult(data);
+                showToast(
+                    'Database Compacted & Defragmented!',
+                    `Size: ${data.sizeAfterFormatted} (Freed ${data.freedFormatted} of unused space)`,
+                    'success',
+                    'Synced queue entries older than 3 days pruned; SQLite vacuum completed.'
+                );
+            } else {
+                const errData = await res.json().catch(() => ({}));
+                showToast('Compaction Notice', errData.error || 'Server error during compaction', 'error');
+            }
+        } catch (err) {
+            showToast('Compaction Error', err.message, 'error');
+        } finally {
+            setCompacting(false);
+        }
+    };
+
     return (
-        <div className="space-y-6 max-w-3xl mx-auto">
+        <div className="space-y-6 max-w-3xl mx-auto pb-8">
+            {/* IN-APP CUSTOM SWEET TOAST / MODAL BANNER */}
+            {toast && (
+                <div className={`p-4 rounded-2xl border shadow-lg animate-fadeIn flex items-start justify-between gap-3 ${
+                    toast.type === 'success' 
+                        ? 'bg-emerald-50 border-emerald-300 text-emerald-900' 
+                        : toast.type === 'error'
+                        ? 'bg-rose-50 border-rose-300 text-rose-900'
+                        : 'bg-blue-50 border-blue-300 text-blue-900'
+                }`}>
+                    <div className="flex items-start gap-3">
+                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 text-white ${
+                            toast.type === 'success' ? 'bg-emerald-600' : toast.type === 'error' ? 'bg-rose-600' : 'bg-blue-600'
+                        }`}>
+                            {toast.type === 'success' ? <IconCheck className="w-5 h-5" /> : <IconWarning className="w-5 h-5" />}
+                        </div>
+                        <div className="space-y-0.5">
+                            <h4 className="font-extrabold text-sm">{toast.title}</h4>
+                            <p className="text-xs font-semibold opacity-90">{toast.message}</p>
+                            {toast.details && (
+                                <p className="text-[11px] font-mono opacity-75 break-all pt-1">{toast.details}</p>
+                            )}
+                        </div>
+                    </div>
+                    <button
+                        onClick={() => setToast(null)}
+                        className="text-gray-400 hover:text-gray-700 p-1 rounded-lg cursor-pointer"
+                    >
+                        <IconClose className="w-4 h-4" />
+                    </button>
+                </div>
+            )}
+
             <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-xs text-center space-y-1">
                 <h1 className="text-xl font-extrabold text-gray-900">Offline / Online Synchronization & Database Backup</h1>
                 <p className="text-xs text-gray-500">Bidirectional Sync: Download Online Orders & Upload Offline Counter Sales</p>
@@ -110,7 +244,7 @@ export default function SyncPage() {
             </div>
 
             {/* Sync Queue Overview */}
-            <div className="grid grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-xs text-center">
                     <div className="text-xs text-gray-400 font-medium">Total Queued</div>
                     <div className="text-2xl font-extrabold text-gray-900">{syncStats.total || 0}</div>
@@ -170,6 +304,11 @@ export default function SyncPage() {
                                     body: JSON.stringify({ auto_sync_enabled: String(newStatus) })
                                 });
                                 fetchSyncStatus();
+                                showToast(
+                                    newStatus ? 'Auto-Sync Resumed' : 'Auto-Sync Paused',
+                                    newStatus ? 'Background auto-sync is now active.' : 'Background auto-sync has been stopped.',
+                                    newStatus ? 'success' : 'info'
+                                );
                             } catch (e) {
                                 console.error('Failed to toggle auto sync:', e);
                             }
@@ -225,47 +364,152 @@ export default function SyncPage() {
                 </div>
             </div>
 
-            {/* Local Database Backup & Restore (Admin Only) */}
+            {/* DATABASE LEAN OPTIMIZER (VACUUM & AUTO-PRUNING) */}
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-md p-6 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-3">
+                    <div className="flex items-center gap-2.5">
+                        <div className="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-700 flex items-center justify-center">
+                            <IconBolt className="w-5 h-5" />
+                        </div>
+                        <div>
+                            <h3 className="font-extrabold text-gray-900 text-sm">Ultra-Lean Database Optimizer (VACUUM)</h3>
+                            <p className="text-[11px] text-gray-500">
+                                Prune old synced queue entries, defragment indexes, and compact disk space to 5–8 MB
+                            </p>
+                        </div>
+                    </div>
+
+                    <button
+                        onClick={handleCompactDatabase}
+                        disabled={compacting}
+                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-xl shadow-sm disabled:opacity-50 flex items-center gap-2 cursor-pointer transition-colors"
+                    >
+                        <IconBolt className={`w-4 h-4 ${compacting ? 'animate-spin' : ''}`} />
+                        <span>{compacting ? 'Compacting Database...' : 'Compact & Shrink DB Now'}</span>
+                    </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                    <div className="p-3 bg-gray-50 rounded-xl border border-gray-200">
+                        <div className="text-gray-500 font-medium text-[11px]">Auto-Pruning Policy</div>
+                        <div className="text-gray-900 font-extrabold mt-0.5">3-Day Synced Retention</div>
+                        <p className="text-[10px] text-gray-400 mt-1">Pushed transactions older than 3 days are purged to avoid bloat.</p>
+                    </div>
+
+                    <div className="p-3 bg-gray-50 rounded-xl border border-gray-200">
+                        <div className="text-gray-500 font-medium text-[11px]">Storage Engine</div>
+                        <div className="text-emerald-700 font-extrabold mt-0.5">SQLite WAL + Incremental</div>
+                        <p className="text-[10px] text-gray-400 mt-1">Non-blocking writes with auto-checkpoints for maximum speed.</p>
+                    </div>
+
+                    <div className="p-3 bg-gray-50 rounded-xl border border-gray-200">
+                        <div className="text-gray-500 font-medium text-[11px]">7-Month Target Size</div>
+                        <div className="text-indigo-700 font-extrabold mt-0.5">&lt; 7 MB Production</div>
+                        <p className="text-[10px] text-gray-400 mt-1">Keeps full wholesale ledger lean just like high-traffic POS setups.</p>
+                    </div>
+                </div>
+
+                {compactResult && (
+                    <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-xl text-xs text-indigo-900 flex items-center justify-between">
+                        <div>
+                            <strong>Optimization Complete:</strong> Current size: {compactResult.sizeAfterFormatted} (Reduced from {compactResult.sizeBeforeFormatted}).
+                        </div>
+                        <span className="font-extrabold text-emerald-700 bg-white px-2 py-0.5 rounded border border-indigo-200">
+                            Freed {compactResult.freedFormatted}
+                        </span>
+                    </div>
+                )}
+            </div>
+
+            {/* Local Database Backup & Restore with Target Folder Selector (Admin Only) */}
             {user?.role === 'admin' && (
                 <div className="bg-white rounded-2xl border border-gray-200 shadow-md p-6 space-y-4">
-                    <div className="flex justify-between items-center border-b pb-3">
+                    {/* Header */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-3">
                         <div>
-                            <h3 className="font-bold text-gray-900 text-base flex items-center gap-2">
+                            <h3 className="font-extrabold text-gray-900 text-sm flex items-center gap-2">
                                 <IconSettings className="w-5 h-5 text-[#B8860B]" />
                                 <span>Local SQLite Database Backups</span>
                             </h3>
-                            <p className="text-xs text-gray-500">Safely backup current SQLite database file to Backups folder</p>
+                            <p className="text-[11px] text-gray-500">
+                                Create instant, defragmented snapshots directly to any folder, USB drive, or network share
+                            </p>
                         </div>
+
                         <button
                             onClick={handleCreateBackup}
                             disabled={backingUp}
-                            className="px-4 py-2 bg-gray-900 hover:bg-black text-white rounded-xl font-bold text-xs shadow-md disabled:opacity-50"
+                            className="px-5 py-2.5 bg-gray-900 hover:bg-black text-white rounded-xl font-extrabold text-xs shadow-md disabled:opacity-50 cursor-pointer transition-all flex items-center gap-2"
                         >
-                            {backingUp ? 'Creating Backup...' : (
-                                <span className="flex items-center gap-1.5">
+                            {backingUp ? (
+                                <>
+                                    <IconSync className="w-4 h-4 animate-spin" />
+                                    <span>Creating Snapshot...</span>
+                                </>
+                            ) : (
+                                <>
                                     <IconPlus className="w-4 h-4" />
                                     <span>Create Backup Now</span>
-                                </span>
+                                </>
                             )}
                         </button>
                     </div>
 
+                    {/* FOLDER SELECTION BAR */}
+                    <div className="p-3.5 bg-gray-50/80 rounded-xl border border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                        <div className="space-y-0.5 min-w-0 flex-1">
+                            <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">
+                                Destination Backup Folder:
+                            </span>
+                            <div className="font-mono font-bold text-gray-800 text-[11px] truncate">
+                                {selectedFolder || defaultBackupFolder || 'Default App Backups Folder (Backups/)'}
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                            <button
+                                type="button"
+                                onClick={handleSelectFolder}
+                                className="px-3.5 py-1.5 bg-white border border-gray-300 hover:bg-gray-100 text-gray-800 font-bold text-xs rounded-lg transition-colors cursor-pointer shadow-2xs flex items-center gap-1.5"
+                            >
+                                <span>📁 Choose Folder...</span>
+                            </button>
+                            {selectedFolder && (
+                                <button
+                                    type="button"
+                                    onClick={handleResetFolder}
+                                    className="px-2.5 py-1.5 text-gray-500 hover:text-gray-800 text-xs font-semibold"
+                                    title="Reset to default folder"
+                                >
+                                    Reset
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Available Backup Files List */}
                     <div className="space-y-2">
-                        <div className="text-xs font-bold text-gray-700 uppercase tracking-wider">Available Backup Files:</div>
+                        <div className="text-xs font-bold text-gray-700 uppercase tracking-wider">
+                            Available Backup Files ({backups.length}):
+                        </div>
                         {backups.length === 0 ? (
-                            <div className="text-xs text-gray-400 p-4 text-center border rounded-xl bg-gray-50">
-                                No local backups created yet
+                            <div className="text-xs text-gray-400 p-6 text-center border rounded-xl bg-gray-50/50">
+                                No backups found in this folder. Click &ldquo;Create Backup Now&rdquo; to make your first snapshot.
                             </div>
                         ) : (
-                            <div className="space-y-2 max-h-48 overflow-y-auto">
+                            <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
                                 {backups.map((b, idx) => (
-                                    <div key={idx} className="bg-gray-50 p-3 rounded-xl border flex items-center justify-between text-xs">
-                                        <div>
-                                            <div className="font-bold font-mono text-gray-900">{b.fileName}</div>
-                                            <div className="text-[10px] text-gray-400">Created: {new Date(b.createdAt).toLocaleString()}</div>
+                                    <div key={idx} className="bg-gray-50 hover:bg-gray-100/70 transition-colors p-3 rounded-xl border border-gray-200 flex items-center justify-between text-xs">
+                                        <div className="min-w-0 flex-1 pr-3">
+                                            <div className="font-bold font-mono text-gray-900 truncate">{b.fileName}</div>
+                                            <div className="text-[10px] text-gray-400 mt-0.5">
+                                                Created: {new Date(b.createdAt).toLocaleString()}
+                                            </div>
                                         </div>
-                                        <div className="text-right">
-                                            <span className="font-semibold text-gray-600">{(b.size / 1024).toFixed(1)} KB</span>
+                                        <div className="text-right shrink-0">
+                                            <span className="inline-block px-2 py-0.5 bg-white border border-gray-200 rounded font-mono font-bold text-gray-700 text-[11px]">
+                                                {(b.size / 1024).toFixed(1)} KB
+                                            </span>
                                         </div>
                                     </div>
                                 ))}

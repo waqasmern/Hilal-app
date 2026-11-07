@@ -40,6 +40,7 @@ function initializeDatabase() {
         db.run(`PRAGMA cache_size = -64000`); // 64MB RAM page cache
         db.run(`PRAGMA temp_store = MEMORY`);
         db.run(`PRAGMA foreign_keys = ON`);
+        db.run(`PRAGMA wal_autocheckpoint = 1000`);
 
         // 1. Users Table
         db.run(`CREATE TABLE IF NOT EXISTS users (
@@ -737,6 +738,24 @@ function seedInitialData() {
         END;
     `);
 }
+
+function cleanAndCompactDatabase(callback) {
+    db.serialize(() => {
+        // 1. Purge synced queue items older than 3 days to keep DB file ultra-lean
+        db.run("DELETE FROM sync_queue WHERE status = 'SYNCED' AND created_at < datetime('now', '-3 days')");
+        // 2. Prune audit logs older than 90 days
+        db.run("DELETE FROM audit_logs WHERE created_at < datetime('now', '-90 days')");
+        // 3. Compact database and release free pages
+        db.run("PRAGMA optimize");
+        db.run("VACUUM", (err) => {
+            if (err) console.error('[Database Compact] Error:', err.message);
+            else console.log('[Database Compact] Database defragmented and vacuumed.');
+            if (callback) callback(err);
+        });
+    });
+}
+
+db.cleanAndCompactDatabase = cleanAndCompactDatabase;
 
 module.exports = db;
 

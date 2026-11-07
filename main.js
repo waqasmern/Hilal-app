@@ -1,4 +1,4 @@
-const { app, BrowserWindow, protocol, ipcMain } = require('electron');
+const { app, BrowserWindow, protocol, ipcMain, dialog } = require('electron');
 const path = require('path');
 const http = require('http');
 
@@ -115,6 +115,24 @@ ipcMain.handle('get-printers', async () => {
   } catch (err) {
     console.error('[IPC get-printers] Error:', err);
     return [];
+  }
+});
+
+// ─── Select Destination Folder for Backups ────────────────────────────────────
+ipcMain.handle('select-backup-folder', async () => {
+  try {
+    const result = await dialog.showOpenDialog(mainWindow || null, {
+      title: 'Select Destination Folder for Database Backup',
+      buttonLabel: 'Select Folder',
+      properties: ['openDirectory', 'createDirectory']
+    });
+    if (result.canceled || !result.filePaths || result.filePaths.length === 0) {
+      return { canceled: true };
+    }
+    return { canceled: false, folderPath: result.filePaths[0] };
+  } catch (err) {
+    console.error('[IPC select-backup-folder] Error:', err);
+    return { canceled: true, error: err.message };
   }
 });
 
