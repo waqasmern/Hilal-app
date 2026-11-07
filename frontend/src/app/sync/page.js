@@ -1,10 +1,11 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSelector } from 'react-redux';
 import { IconSync, IconSettings, IconPlus, IconCheck, IconWarning, IconClose, IconBolt } from '../components/Icons';
 
 export default function SyncPage() {
     const { user } = useSelector(state => state.auth);
+    const fileFolderInputRef = useRef(null);
     const [syncStats, setSyncStats] = useState({ total: 0, pending: 0, syncing: 0, synced: 0, failed: 0 });
     const [isSyncing, setIsSyncing] = useState(false);
     const [backups, setBackups] = useState([]);
@@ -14,6 +15,8 @@ export default function SyncPage() {
 
     const [selectedFolder, setSelectedFolder] = useState('');
     const [defaultBackupFolder, setDefaultBackupFolder] = useState('');
+    const [showFolderModal, setShowFolderModal] = useState(false);
+    const [folderInput, setFolderInput] = useState('');
 
     const [syncFeedback, setSyncFeedback] = useState(null);
     const [toast, setToast] = useState(null); // { type: 'success' | 'error' | 'info', title: '', message: '', details: '' }
@@ -67,33 +70,9 @@ export default function SyncPage() {
         }
     };
 
-    const handleSelectFolder = async () => {
-        // If running inside Electron desktop app, open native Windows folder picker
-        if (typeof window !== 'undefined' && window.require) {
-            try {
-                const { ipcRenderer } = window.require('electron');
-                const res = await ipcRenderer.invoke('select-backup-folder');
-                if (!res.canceled && res.folderPath) {
-                    setSelectedFolder(res.folderPath);
-                    localStorage.setItem('preferred_backup_folder', res.folderPath);
-                    fetchBackups(res.folderPath);
-                    showToast('Folder Selected', `Backup destination set to: ${res.folderPath}`, 'info');
-                    return;
-                }
-            } catch (e) {
-                console.warn('Native folder picker fallback:', e);
-            }
-        }
-
-        // Fallback prompt for browser environment
-        const customPath = prompt('Enter destination folder path for backups:', selectedFolder || defaultBackupFolder || 'D:\\Backups');
-        if (customPath && customPath.trim()) {
-            const trimmed = customPath.trim();
-            setSelectedFolder(trimmed);
-            localStorage.setItem('preferred_backup_folder', trimmed);
-            fetchBackups(trimmed);
-            showToast('Destination Updated', `Backups will be saved to: ${trimmed}`, 'info');
-        }
+    const handleSelectFolder = () => {
+        setFolderInput(selectedFolder || defaultBackupFolder || 'D:\\Backups');
+        setShowFolderModal(true);
     };
 
     const handleResetFolder = () => {
@@ -515,6 +494,148 @@ export default function SyncPage() {
                                 ))}
                             </div>
                         )}
+                    </div>
+                </div>
+            )}
+
+            {/* CUSTOM IN-APP MODAL: SELECT BACKUP FOLDER */}
+            {showFolderModal && (
+                <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+                    <div className="bg-white rounded-3xl shadow-2xl border border-gray-200 max-w-lg w-full p-6 space-y-5">
+                        <div className="flex items-center justify-between border-b pb-3 border-gray-100">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-700 font-bold text-lg">
+                                    📁
+                                </div>
+                                <div>
+                                    <h3 className="font-extrabold text-gray-900 text-base">Select Backup Destination Folder</h3>
+                                    <p className="text-xs text-gray-500">Choose where database backup files will be saved</p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setShowFolderModal(false)}
+                                className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-xl cursor-pointer"
+                            >
+                                <IconClose className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="text-xs font-bold text-gray-700 block">
+                                Folder Path on this Computer / Drive:
+                            </label>
+                            <input
+                                type="text"
+                                value={folderInput}
+                                onChange={(e) => setFolderInput(e.target.value)}
+                                placeholder="e.g. D:\Backups or E:\USB_Backup"
+                                className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:border-[#B8860B] focus:ring-2 focus:ring-[#B8860B]/20 text-xs font-mono font-semibold text-gray-900 outline-none"
+                            />
+                        </div>
+
+                        {/* Quick Presets */}
+                        <div className="space-y-1.5">
+                            <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Quick Presets:</div>
+                            <div className="flex flex-wrap gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setFolderInput(defaultBackupFolder || 'D:\\My WorkSpace\\Hilal Wholesaler shop\\Backups')}
+                                    className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs font-semibold text-gray-700 cursor-pointer"
+                                >
+                                    🏠 App Default (Backups/)
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setFolderInput('D:\\Backups')}
+                                    className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs font-semibold text-gray-700 cursor-pointer"
+                                >
+                                    💾 D:\Backups
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setFolderInput('C:\\HilalBackups')}
+                                    className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs font-semibold text-gray-700 cursor-pointer"
+                                >
+                                    💾 C:\HilalBackups
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setFolderInput('E:\\')}
+                                    className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs font-semibold text-gray-700 cursor-pointer"
+                                >
+                                    🔌 E:\ (USB Drive)
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Hidden Native Directory Selector Input */}
+                        <input
+                            type="file"
+                            ref={fileFolderInputRef}
+                            {...{ webkitdirectory: '', directory: '' }}
+                            style={{ display: 'none' }}
+                            onChange={(e) => {
+                                const files = e.target.files;
+                                if (files && files.length > 0) {
+                                    const firstFile = files[0];
+                                    const fullPath = firstFile.path;
+                                    if (fullPath) {
+                                        const dir = fullPath.substring(0, Math.max(fullPath.lastIndexOf('\\'), fullPath.lastIndexOf('/')));
+                                        if (dir) {
+                                            setFolderInput(dir);
+                                            return;
+                                        }
+                                    }
+                                    if (firstFile.webkitRelativePath) {
+                                        const rootFolder = firstFile.webkitRelativePath.split('/')[0];
+                                        if (rootFolder) setFolderInput(rootFolder);
+                                    }
+                                }
+                            }}
+                        />
+
+                        {/* Native Picker Trigger */}
+                        <div className="p-3 bg-amber-50/60 border border-amber-200/80 rounded-xl flex items-center justify-between text-xs">
+                            <span className="text-amber-900 font-medium">Or pick folder visually from PC:</span>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (fileFolderInputRef.current) {
+                                        fileFolderInputRef.current.click();
+                                    }
+                                }}
+                                className="px-3 py-1.5 bg-white border border-amber-300 hover:bg-amber-100 text-amber-900 font-bold rounded-lg cursor-pointer shadow-2xs flex items-center gap-1.5"
+                            >
+                                <span>🖥️ Browse Computer...</span>
+                            </button>
+                        </div>
+
+                        <div className="flex items-center justify-end gap-3 pt-2 border-t border-gray-100">
+                            <button
+                                type="button"
+                                onClick={() => setShowFolderModal(false)}
+                                className="px-4 py-2 text-xs font-bold text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-xl cursor-pointer"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const trimmed = folderInput.trim();
+                                    if (trimmed) {
+                                        setSelectedFolder(trimmed);
+                                        localStorage.setItem('preferred_backup_folder', trimmed);
+                                        fetchBackups(trimmed);
+                                        showToast('Backup Destination Set', `Backups will now be saved to: ${trimmed}`, 'success');
+                                    }
+                                    setShowFolderModal(false);
+                                }}
+                                className="px-5 py-2.5 gold-gradient text-white text-xs font-extrabold rounded-xl shadow-md hover:opacity-95 cursor-pointer"
+                            >
+                                Confirm & Save Destination
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

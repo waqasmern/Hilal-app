@@ -739,20 +739,106 @@ function seedInitialData() {
     `);
 }
 
-function cleanAndCompactDatabase(callback) {
-    db.serialize(() => {
-        // 1. Purge synced queue items older than 3 days to keep DB file ultra-lean
-        db.run("DELETE FROM sync_queue WHERE status = 'SYNCED' AND created_at < datetime('now', '-3 days')");
-        // 2. Prune audit logs older than 90 days
-        db.run("DELETE FROM audit_logs WHERE created_at < datetime('now', '-90 days')");
-        // 3. Compact database and release free pages
-        db.run("PRAGMA optimize");
-        db.run("VACUUM", (err) => {
-            if (err) console.error('[Database Compact] Error:', err.message);
-            else console.log('[Database Compact] Database defragmented and vacuumed.');
-            if (callback) callback(err);
+function cleanAndCompactDatabase(options = {}, callback) {
+    if (typeof options === 'function') {
+        callback = options;
+        options = {};
+    }
+    const cb = typeof callback === 'function' ? callback : () => {};
+
+    try {
+        // Requirement 7: Prevent compaction from interrupting active cloud sync operations
+        let isSyncActive = false;
+        try {
+            const syncEngine = require('./syncEngine');
+            if (syncEngine && typeof syncEngine.isSyncActive === 'function') {
+                isSyncActive = syncEngine.isSyncActive();
+            }
+        } catch (seErr) {}
+
+        if (isSyncActive) {
+            console.log('[Database Compact] Cloud sync is currently active. Compaction deferred to avoid lock contention.');
+            return cb(null, { success: true, skipped: true, reason: 'Sync in progress' });
+        }
+
+        // Requirement 9: Verify database integrity before proceeding
+        db.get("PRAGMA integrity_check", (chkErr, row) => {
+            if (chkErr) {
+                console.error('[Database Compact] Integrity check error:', chkErr.message);
+                return cb(chkErr);
+            }
+            const integrityStatus = row ? (row.integrity_check || Object.values(row)[0]) : 'unknown';
+            if (integrityStatus !== 'ok') {
+                console.error('[Database Compact] CRITICAL: PRAGMA integrity_check failed:', integrityStatus);
+                return cb(new Error(`Database integrity failure: ${integrityStatus}`));
+            }
+
+            // Requirements 1, 2, 4:
+            // ONLY delete sync_queue records where status = 'SYNCED' AND updated_at < datetime('now', '-3 days')
+            // Real business tables (sales, purchases, customer_ledgers, audit_logs, inventory) are NEVER touched!
+            const pruneSql = "DELETE FROM sync_queue WHERE status = 'SYNCED' AND updated_at < datetime('now', '-3 days')";
+            db.run(pruneSql, function(pruneErr) {
+                if (pruneErr) {
+                    console.error('[Database Compact] Error pruning synced queue:', pruneErr.message);
+                    return cb(pruneErr);
+                }
+                const prunedCount = this.changes || 0;
+                if (prunedCount > 0) {
+                    console.log(`[Database Compact] Pruned ${prunedCount} acknowledged SYNCED queue records older than 3 days.`);
+                }
+
+                // Requirement 6: Check available disk space before running VACUUM
+                const currentDbPath = db.filename || path.join(__dirname, 'wholesale.db');
+                let dbSize = 0;
+                try {
+                    if (fs.existsSync(currentDbPath)) dbSize = fs.statSync(currentDbPath).size;
+                } catch (e) {}
+
+                const executeVacuum = () => {
+                    db.run("PRAGMA optimize", (optErr) => {
+                        if (optErr) console.warn('[Database Compact] PRAGMA optimize note:', optErr.message);
+                        
+                        db.run("VACUUM", (vacErr) => {
+                            if (vacErr) {
+                                console.error('[Database Compact] VACUUM error:', vacErr.message);
+                                return cb(vacErr);
+                            }
+                            console.log('[Database Compact] VACUUM completed successfully. Database defragmented and vacuumed.');
+
+                            // Post-vacuum integrity verification
+                            db.get("PRAGMA integrity_check", (postErr, postRow) => {
+                                const postStatus = postRow ? (postRow.integrity_check || Object.values(postRow)[0]) : 'ok';
+                                if (postStatus !== 'ok') {
+                                    console.error('[Database Compact] Post-vacuum integrity alert:', postStatus);
+                                }
+                                cb(null, { success: true, prunedCount, integrity: postStatus });
+                            });
+                        });
+                    });
+                };
+
+                if (typeof fs.statfs === 'function') {
+                    fs.statfs(path.dirname(currentDbPath), (fsErr, stats) => {
+                        if (!fsErr && stats) {
+                            const freeBytes = (stats.bavail || stats.bfree || 0) * (stats.bsize || 4096);
+                            const requiredBytes = Math.max(50 * 1024 * 1024, dbSize * 3); // Minimum 50MB free space
+                            if (freeBytes < requiredBytes) {
+                                console.warn(`[Database Compact] Low disk space (${(freeBytes/1024/1024).toFixed(1)} MB available). Skipping VACUUM to protect disk.`);
+                                return cb(null, { success: true, prunedCount, vacuumSkipped: true, reason: 'Low disk space' });
+                            }
+                        }
+                        executeVacuum();
+                    });
+                } else {
+                    executeVacuum();
+                }
+            });
         });
-    });
+    } catch (unexpectedErr) {
+        // Requirement 8: Never crash the POS on maintenance error
+        console.error('[Database Compact] Unexpected exception guarded:', unexpectedErr.message);
+        cb(unexpectedErr);
+    }
 }
 
 db.cleanAndCompactDatabase = cleanAndCompactDatabase;

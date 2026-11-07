@@ -4838,6 +4838,19 @@ app.get('/api/system/backups', authenticateToken, requireAdmin, (req, res) => {
     }
 });
 
+// Native Windows Folder Browser helper for Admin Backup configuration
+app.post('/api/system/browse-folder', authenticateToken, requireAdmin, (req, res) => {
+    const { exec } = require('child_process');
+    const psCmd = `powershell -NoProfile -Command "Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.FolderBrowserDialog; $f.Description = 'Select Hilal Shop Database Backup Folder'; $f.ShowNewFolderButton = $true; if ($f.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $f.SelectedPath }"`;
+    
+    exec(psCmd, { windowsHide: false, timeout: 60000 }, (err, stdout) => {
+        if (err || !stdout || !stdout.trim()) {
+            return res.json({ canceled: true });
+        }
+        res.json({ canceled: false, folderPath: stdout.trim() });
+    });
+});
+
 app.listen(PORT, () => {
     console.log(`Hilal Wholesaler Express Server listening on http://localhost:${PORT}`);
     // Initialize WhatsApp & Reminder Scheduler in background
@@ -4861,6 +4874,30 @@ app.listen(PORT, () => {
     syncEngine.restartAutoSyncScheduler().catch(err => {
         console.warn('[SyncEngine Auto] Scheduler init note:', err.message);
     });
+
+    // Startup database optimization (15s after boot)
+    setTimeout(() => {
+        try {
+            db.run("DELETE FROM sync_queue WHERE status = 'SYNCED' AND created_at < datetime('now', '-3 days')");
+            db.run("PRAGMA optimize");
+        } catch (e) {}
+    }, 15000);
+
+    // Daily Automatic Database Compaction & Defragmentation (keeps file size under 5-8 MB)
+    const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+    setInterval(() => {
+        try {
+            console.log('[Database Optimizer] Running scheduled daily auto-compaction...');
+            if (typeof db.cleanAndCompactDatabase === 'function') {
+                db.cleanAndCompactDatabase((err) => {
+                    if (err) console.error('[Database Optimizer] Scheduled compaction error:', err.message);
+                    else console.log('[Database Optimizer] Scheduled compaction finished.');
+                });
+            }
+        } catch (e) {
+            console.error('[Database Optimizer] Daily job error:', e);
+        }
+    }, TWENTY_FOUR_HOURS);
 });
 
 // Process-level unhandled rejection & exception guards

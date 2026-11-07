@@ -842,6 +842,11 @@ async function processTwoWaySync() {
         const pullOk = pullResult && pullResult.status === 'completed';
         const isOverallSuccess = Boolean(pushOk && pullOk);
 
+        // Auto-prune synced queue records older than 3 days to keep database ultra-compact (< 7MB)
+        if (pushOk) {
+            runQuery("DELETE FROM sync_queue WHERE status = 'SYNCED' AND created_at < datetime('now', '-3 days')").catch(() => {});
+        }
+
         const nowIso = new Date().toISOString();
         if (isOverallSuccess) {
             await setSetting('last_full_sync_at', nowIso);
@@ -885,5 +890,6 @@ module.exports = {
     getServerUrl,
     getDeviceId,
     getSetting,
-    setSetting
+    setSetting,
+    isSyncActive: () => isSyncRunning
 };
