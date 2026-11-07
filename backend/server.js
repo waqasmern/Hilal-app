@@ -4063,6 +4063,23 @@ app.post('/api/sync/trigger', async (req, res) => {
     }
 });
 
+app.post('/api/sync/config', authenticateToken, async (req, res) => {
+    try {
+        const { auto_sync_enabled, sync_interval_minutes } = req.body;
+        if (auto_sync_enabled !== undefined) {
+            await syncEngine.setSetting('auto_sync_enabled', String(auto_sync_enabled));
+        }
+        if (sync_interval_minutes !== undefined) {
+            const mins = Math.max(0.5, parseFloat(sync_interval_minutes) || 3);
+            await syncEngine.setSetting('sync_interval_minutes', String(mins));
+        }
+        const state = await syncEngine.restartAutoSyncScheduler();
+        res.json({ success: true, ...state });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 app.get('/api/system/audit-logs', authenticateToken, requireAdmin, (req, res) => {
     db.all("SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 100", [], (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
@@ -4096,6 +4113,10 @@ app.put('/api/settings', authenticateToken, requireAdmin, (req, res) => {
         // Refresh reminder schedule if reminder settings were modified
         if (settingsObj.wa_reminder_enabled !== undefined || settingsObj.wa_reminder_time !== undefined) {
             try { schedulerService.scheduleReminderJob(); } catch(e) {}
+        }
+        // Refresh auto-sync scheduler if auto-sync settings were modified
+        if (settingsObj.auto_sync_enabled !== undefined || settingsObj.sync_interval_minutes !== undefined) {
+            try { syncEngine.restartAutoSyncScheduler(); } catch(e) {}
         }
         res.json({ success: true });
     });
@@ -4774,12 +4795,10 @@ app.listen(PORT, () => {
         });
     }, 4000);
 
-    // Recurring two-way background sync every 3 minutes
-    setInterval(() => {
-        syncEngine.processTwoWaySync().catch(err => {
-            console.warn('[SyncEngine Auto] Background sync note:', err.message);
-        });
-    }, 3 * 60 * 1000);
+    // Recurring two-way background sync based on user settings
+    syncEngine.restartAutoSyncScheduler().catch(err => {
+        console.warn('[SyncEngine Auto] Scheduler init note:', err.message);
+    });
 });
 
 // Process-level unhandled rejection & exception guards

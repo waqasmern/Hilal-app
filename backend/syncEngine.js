@@ -199,13 +199,18 @@ async function getSyncStats() {
         WHERE order_status = 'PENDING' OR status = 'pending'
     `, []);
 
-    const [lastPush, lastPull, lastFull, lastCursor, lastErr] = await Promise.all([
+    const [lastPush, lastPull, lastFull, lastCursor, lastErr, enabledVal, minutesVal] = await Promise.all([
         getSetting('last_push_at'),
         getSetting('last_pull_at'),
         getSetting('last_full_sync_at'),
         getSetting('last_pull_cursor'),
-        getSetting('last_sync_error')
+        getSetting('last_sync_error'),
+        getSetting('auto_sync_enabled', 'true'),
+        getSetting('sync_interval_minutes', '3')
     ]);
+
+    const isAutoSync = enabledVal === 'true' || enabledVal === '1';
+    const intervalMins = parseFloat(minutesVal) || 3;
 
     return {
         total: queueRow?.total || 0,
@@ -219,8 +224,51 @@ async function getSyncStats() {
         lastFullSyncAt: lastFull,
         lastPullCursor: lastCursor,
         lastError: lastErr,
+        autoSyncEnabled: isAutoSync,
+        syncIntervalMinutes: intervalMins,
         isSyncRunning
     };
+}
+
+let autoSyncTimer = null;
+let currentAutoSyncIntervalMinutes = 3;
+let isAutoSyncActive = true;
+
+/**
+ * Configure and (re)start the background recurring auto-sync scheduler.
+ * Reads auto_sync_enabled and sync_interval_minutes from SQLite settings.
+ */
+async function restartAutoSyncScheduler() {
+    if (autoSyncTimer) {
+        clearInterval(autoSyncTimer);
+        autoSyncTimer = null;
+    }
+
+    const enabledVal = await getSetting('auto_sync_enabled', 'true');
+    isAutoSyncActive = enabledVal === 'true' || enabledVal === '1';
+
+    const minutesVal = await getSetting('sync_interval_minutes', '3');
+    let parsedMinutes = parseFloat(minutesVal);
+    if (isNaN(parsedMinutes) || parsedMinutes < 0.5) {
+        parsedMinutes = 3;
+    }
+    currentAutoSyncIntervalMinutes = parsedMinutes;
+
+    if (!isAutoSyncActive) {
+        console.log('[SyncEngine Scheduler] ⏸ Auto-sync is PAUSED / OFF by user settings.');
+        return { enabled: false, intervalMinutes: currentAutoSyncIntervalMinutes };
+    }
+
+    const intervalMs = Math.round(parsedMinutes * 60 * 1000);
+    console.log(`[SyncEngine Scheduler] ▶ Auto-sync is ACTIVE — running every ${parsedMinutes} minute(s) (${intervalMs}ms).`);
+
+    autoSyncTimer = setInterval(() => {
+        processTwoWaySync().catch(err => {
+            console.warn('[SyncEngine Auto] Background sync note:', err.message);
+        });
+    }, intervalMs);
+
+    return { enabled: true, intervalMinutes: currentAutoSyncIntervalMinutes };
 }
 
 /**
@@ -833,6 +881,7 @@ module.exports = {
     processPushSync,
     processPullSync,
     processTwoWaySync,
+    restartAutoSyncScheduler,
     getServerUrl,
     getDeviceId,
     getSetting,

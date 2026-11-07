@@ -7,7 +7,7 @@ import {
     IconSettings, IconWhatsApp, IconUpload, IconPrinter, 
     IconTrash, IconCheckCircle, IconCrossCircle, IconRefresh, 
     IconEye, IconEyeOff, IconBank, IconPlus, IconEdit, IconClose,
-    IconWarning, IconCheck
+    IconWarning, IconCheck, IconSync
 } from '../components/Icons';
 import { getInstalledPrinters, triggerPrintHtml, generateTestPrintHtml, isElectronRenderer } from '../../lib/printHelper';
 
@@ -34,8 +34,10 @@ export default function SettingsPage() {
             }
         ]),
         device_id: 'DEVICE-CASHIER-01',
-        online_sync_enabled: 'false',
-        server_url: 'http://localhost:5000',
+        online_sync_enabled: 'true',
+        auto_sync_enabled: 'true',
+        sync_interval_minutes: '3',
+        server_url: 'https://hilal-app-three.vercel.app',
         wa_reminder_enabled: 'false',
         wa_reminder_time: '10:00 AM',
         wa_reminder_frequency: '1',
@@ -48,6 +50,7 @@ export default function SettingsPage() {
     });
 
     const [saving, setSaving] = useState(false);
+    const [isSyncing, setIsSyncing] = useState(false);
     const [alertState, setAlertState] = useState({ isOpen: false, type: 'info', title: '', message: '' });
 
     // Printer & Silent Print State
@@ -135,6 +138,37 @@ export default function SettingsPage() {
             showAlert('Test Print Failed', err.message, 'error');
         } finally {
             setTestPrinting(false);
+        }
+    };
+
+    const formatMinutesToReadable = (minStr) => {
+        const mins = parseFloat(minStr) || 3;
+        if (mins < 60) {
+            return `${mins} minute${mins === 1 ? '' : 's'}`;
+        }
+        const hours = Math.floor(mins / 60);
+        const remMinutes = mins % 60;
+        if (remMinutes === 0) {
+            return `${hours} hour${hours === 1 ? '' : 's'}`;
+        }
+        return `${hours} hr ${remMinutes} min`;
+    };
+
+    const handleTriggerSync = async () => {
+        setIsSyncing(true);
+        try {
+            const res = await fetch('http://localhost:5000/api/sync/trigger', { method: 'POST' });
+            if (res.ok) {
+                const data = await res.json();
+                showAlert('Sync Completed', `Cloud pull: ${data.pull?.status || 'completed'}, offline push: ${data.push?.status || 'up to date'}.`, 'success');
+            } else {
+                const errData = await res.json().catch(() => ({}));
+                showAlert('Sync Notice', errData.error || 'Server error', 'error');
+            }
+        } catch (err) {
+            showAlert('Sync Failed', err.message, 'error');
+        } finally {
+            setIsSyncing(false);
         }
     };
 
@@ -1227,53 +1261,248 @@ export default function SettingsPage() {
 
             {/* TAB 3: SYSTEM & DESKTOP SYNC OPTIONS */}
             {activeTab === 'system' && (
-                <form onSubmit={handleSaveSettings} className="bg-white rounded-xl border border-gray-200 shadow-2xs p-4 sm:p-5 space-y-4">
-                    <h3 className="font-bold text-gray-900 text-xs border-b border-gray-100 pb-2">
-                        Desktop Station & Cloud Sync Options
-                    </h3>
-
-                    <div className="space-y-3 text-xs">
-                        <div>
-                            <label className="block font-bold text-gray-700 mb-1">Device Identification ID</label>
-                            <input
-                                type="text"
-                                value={settings.device_id}
-                                onChange={(e) => setSettings({ ...settings, device_id: e.target.value })}
-                                className="w-full p-2 border border-gray-300 rounded-lg font-mono font-bold bg-gray-50"
-                            />
+                <form onSubmit={handleSaveSettings} className="bg-white rounded-xl border border-gray-200 shadow-2xs p-4 sm:p-5 space-y-5">
+                    {/* Header */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-3">
+                        <div className="flex items-center gap-2.5">
+                            <div className="w-9 h-9 rounded-xl bg-gray-900 text-white flex items-center justify-center shadow-xs">
+                                <IconSync className="w-5 h-5 text-white" />
+                            </div>
+                            <div>
+                                <h3 className="font-extrabold text-gray-900 text-sm">Cloud Synchronization & Hardware Station</h3>
+                                <p className="text-[11px] text-gray-500">
+                                    Control automatic cloud synchronization, custom interval schedules, and device settings
+                                </p>
+                            </div>
                         </div>
 
-                        <div>
-                            <label className="block font-bold text-gray-700 mb-1">Central Cloud Server URL</label>
-                            <input
-                                type="text"
-                                value={settings.server_url}
-                                onChange={(e) => setSettings({ ...settings, server_url: e.target.value })}
-                                placeholder="http://cloud-server-ip:5000"
-                                className="w-full p-2 border border-gray-300 rounded-lg font-mono font-medium"
-                            />
-                        </div>
-
-                        <div>
-                            <label className="block font-bold text-gray-700 mb-1">Online Cloud Sync Status</label>
-                            <select
-                                value={settings.online_sync_enabled}
-                                onChange={(e) => setSettings({ ...settings, online_sync_enabled: e.target.value })}
-                                className="w-full p-2 border border-gray-300 rounded-lg font-bold"
-                            >
-                                <option value="true">Enabled (Auto-Sync Transactions to Cloud)</option>
-                                <option value="false">Disabled (Standalone Local Offline Mode)</option>
-                            </select>
+                        {/* Status badge */}
+                        <div className="flex items-center gap-2">
+                            {settings.auto_sync_enabled !== 'false' ? (
+                                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg text-[11px] font-bold">
+                                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                                    <span>Auto-Sync Active ({formatMinutesToReadable(settings.sync_interval_minutes || 3)})</span>
+                                </div>
+                            ) : (
+                                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 border border-amber-200 text-amber-800 rounded-lg text-[11px] font-bold">
+                                    <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                                    <span>Auto-Sync Stopped / Manual Only</span>
+                                </div>
+                            )}
                         </div>
                     </div>
 
+                    {/* MAIN SYNC CONTROLS */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* CARD 1: AUTO SYNC TOGGLE & CUSTOM INTERVAL */}
+                        <div className="border border-gray-200 rounded-xl p-4 bg-gray-50/50 space-y-4 md:col-span-2">
+                            {/* Toggle Header */}
+                            <div className="flex items-center justify-between gap-4">
+                                <div className="space-y-0.5">
+                                    <label className="text-xs font-extrabold text-gray-900 flex items-center gap-2">
+                                        <span>Background Auto-Sync Engine</span>
+                                        {settings.auto_sync_enabled !== 'false' ? (
+                                            <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold">
+                                                Active (ON)
+                                            </span>
+                                        ) : (
+                                            <span className="text-[10px] bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full font-bold">
+                                                Stopped (OFF)
+                                            </span>
+                                        )}
+                                    </label>
+                                    <p className="text-[11px] text-gray-500">
+                                        Turn ON or OFF automatic background syncing. When OFF, the app will never sync automatically until you click Sync.
+                                    </p>
+                                </div>
+
+                                {/* Modern Sliding Toggle Button */}
+                                <button
+                                    type="button"
+                                    onClick={() => setSettings(prev => ({ 
+                                        ...prev, 
+                                        auto_sync_enabled: prev.auto_sync_enabled === 'false' ? 'true' : 'false' 
+                                    }))}
+                                    className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none shadow-inner ${
+                                        settings.auto_sync_enabled !== 'false' ? 'bg-emerald-600' : 'bg-gray-300'
+                                    }`}
+                                >
+                                    <span
+                                        className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                                            settings.auto_sync_enabled !== 'false' ? 'translate-x-5' : 'translate-x-0'
+                                        }`}
+                                    />
+                                </button>
+                            </div>
+
+                            {/* CUSTOM TIME INTERVAL SETTINGS */}
+                            <div className={`pt-3 border-t border-gray-200 space-y-3 transition-opacity ${
+                                settings.auto_sync_enabled === 'false' ? 'opacity-40 pointer-events-none' : 'opacity-100'
+                            }`}>
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-800">
+                                            Sync Frequency / Custom Interval Time
+                                        </label>
+                                        <p className="text-[11px] text-gray-500">
+                                            Select a quick preset (e.g. every 3 mins, 1 hour) or type any custom duration in minutes.
+                                        </p>
+                                    </div>
+                                    <div className="text-xs font-bold text-gray-900 bg-white px-3 py-1 rounded-lg border border-gray-200 shadow-2xs">
+                                        Scheduled: <span className="text-emerald-700 font-extrabold">{formatMinutesToReadable(settings.sync_interval_minutes || 3)}</span>
+                                    </div>
+                                </div>
+
+                                {/* Quick Presets */}
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Presets:</span>
+                                    {[
+                                        { label: '3 Mins', value: '3' },
+                                        { label: '5 Mins', value: '5' },
+                                        { label: '15 Mins', value: '15' },
+                                        { label: '30 Mins', value: '30' },
+                                        { label: '1 Hour', value: '60' },
+                                        { label: '2 Hours', value: '120' }
+                                    ].map(preset => {
+                                        const isSelected = String(settings.sync_interval_minutes || '3') === preset.value;
+                                        return (
+                                            <button
+                                                key={preset.value}
+                                                type="button"
+                                                onClick={() => setSettings(prev => ({ ...prev, sync_interval_minutes: preset.value }))}
+                                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer border ${
+                                                    isSelected
+                                                        ? 'bg-black text-white border-black shadow-xs'
+                                                        : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100 hover:border-gray-300'
+                                                }`}
+                                            >
+                                                {preset.label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+
+                                {/* Custom Numerical Input Box */}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                                    <div>
+                                        <label className="block text-[11px] font-bold text-gray-700 mb-1">
+                                            Custom Time in Minutes (e.g. 3, 45, 60, 120)
+                                        </label>
+                                        <div className="relative">
+                                            <input
+                                                type="number"
+                                                min="1"
+                                                max="1440"
+                                                step="1"
+                                                value={settings.sync_interval_minutes || 3}
+                                                onChange={(e) => {
+                                                    const val = Math.max(1, parseInt(e.target.value) || 1);
+                                                    setSettings({ ...settings, sync_interval_minutes: String(val) });
+                                                }}
+                                                className="w-full p-2 border border-gray-300 rounded-lg text-xs font-bold bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                                placeholder="e.g. 3, 15, 60"
+                                            />
+                                            <span className="absolute right-3 top-2 text-xs font-semibold text-gray-400">
+                                                minutes
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-[11px] font-bold text-gray-700 mb-1">
+                                            Hour Shortcuts
+                                        </label>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => setSettings(prev => ({ ...prev, sync_interval_minutes: '60' }))}
+                                                className={`flex-1 py-2 px-2.5 border rounded-lg text-[11px] font-bold transition-colors ${
+                                                    String(settings.sync_interval_minutes) === '60'
+                                                        ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                                                        : 'bg-white border-gray-200 hover:bg-gray-50 text-gray-700'
+                                                }`}
+                                            >
+                                                1 Hour (60m)
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setSettings(prev => ({ ...prev, sync_interval_minutes: '120' }))}
+                                                className={`flex-1 py-2 px-2.5 border rounded-lg text-[11px] font-bold transition-colors ${
+                                                    String(settings.sync_interval_minutes) === '120'
+                                                        ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                                                        : 'bg-white border-gray-200 hover:bg-gray-50 text-gray-700'
+                                                }`}
+                                            >
+                                                2 Hours (120m)
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* CARD 2: DEVICE CREDENTIALS & URL */}
+                        <div className="border border-gray-200 rounded-xl p-4 bg-gray-50/50 space-y-3">
+                            <h4 className="font-bold text-xs text-gray-900 border-b border-gray-200 pb-1.5">
+                                Station Credentials & Server Target
+                            </h4>
+
+                            <div>
+                                <label className="block font-bold text-gray-700 text-xs mb-1">Device Identification ID</label>
+                                <input
+                                    type="text"
+                                    value={settings.device_id}
+                                    onChange={(e) => setSettings({ ...settings, device_id: e.target.value })}
+                                    className="w-full p-2 border border-gray-300 rounded-lg font-mono font-bold text-xs bg-white"
+                                />
+                                <p className="text-[10px] text-gray-400 mt-1">Unique cashier / counter workstation ID.</p>
+                            </div>
+
+                            <div>
+                                <label className="block font-bold text-gray-700 text-xs mb-1">Production Cloud Server URL</label>
+                                <input
+                                    type="text"
+                                    value={settings.server_url}
+                                    onChange={(e) => setSettings({ ...settings, server_url: e.target.value })}
+                                    placeholder="https://hilal-app-three.vercel.app"
+                                    className="w-full p-2 border border-gray-300 rounded-lg font-mono font-medium text-xs bg-white"
+                                />
+                                <p className="text-[10px] text-gray-400 mt-1">Defaults to https://hilal-app-three.vercel.app</p>
+                            </div>
+                        </div>
+
+                        {/* CARD 3: MANUAL SYNC DISPATCH */}
+                        <div className="border border-gray-200 rounded-xl p-4 bg-gray-50/50 space-y-3 flex flex-col justify-between">
+                            <div>
+                                <h4 className="font-bold text-xs text-gray-900 border-b border-gray-200 pb-1.5">
+                                    Instant Manual Sync Test
+                                </h4>
+                                <p className="text-xs text-gray-600 mt-2 leading-relaxed">
+                                    Trigger an immediate pull and push cycle right now without waiting for the scheduled background timer.
+                                </p>
+                            </div>
+
+                            <button
+                                type="button"
+                                onClick={handleTriggerSync}
+                                disabled={isSyncing}
+                                className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-lg transition-colors cursor-pointer shadow-xs disabled:opacity-50 flex items-center justify-center gap-2"
+                            >
+                                <IconSync className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                                <span>{isSyncing ? 'Synchronizing Cloud Now...' : 'Run Immediate Sync Now'}</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* SAVE BUTTON */}
                     <div className="pt-2 border-t border-gray-100 flex justify-end">
                         <button
                             type="submit"
                             disabled={saving}
-                            className="px-5 py-2 bg-black hover:bg-gray-800 text-white rounded-lg font-bold text-xs transition-colors cursor-pointer shadow-2xs disabled:opacity-50"
+                            className="px-6 py-2.5 bg-black hover:bg-gray-800 text-white rounded-lg font-bold text-xs transition-colors cursor-pointer shadow-2xs disabled:opacity-50 flex items-center gap-2"
                         >
-                            {saving ? 'Saving...' : 'Save System Settings'}
+                            <IconCheck className="w-4 h-4" />
+                            <span>{saving ? 'Saving System Settings...' : 'Save Sync & Device Settings'}</span>
                         </button>
                     </div>
                 </form>

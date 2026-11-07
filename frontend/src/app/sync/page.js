@@ -132,6 +132,65 @@ export default function SyncPage() {
                 </div>
             </div>
 
+            {/* Auto-Sync Engine Schedule & Control Card */}
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-xs p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                        syncStats.autoSyncEnabled ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-gray-100 text-gray-500 border border-gray-200'
+                    }`}>
+                        <IconSync className={`w-5 h-5 ${syncStats.autoSyncEnabled ? 'animate-pulse' : ''}`} />
+                    </div>
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <h4 className="font-extrabold text-sm text-gray-900">Background Auto-Sync</h4>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                syncStats.autoSyncEnabled ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-200 text-gray-700'
+                            }`}>
+                                {syncStats.autoSyncEnabled ? 'ACTIVE / RUNNING' : 'STOPPED / PAUSED'}
+                            </span>
+                        </div>
+                        <p className="text-[11px] text-gray-500">
+                            {syncStats.autoSyncEnabled 
+                                ? `Syncing automatically every ${syncStats.syncIntervalMinutes || 3} minute(s)` 
+                                : 'Auto-sync is stopped. Transactions are synced only when triggered manually.'}
+                        </p>
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={async () => {
+                            const newStatus = !syncStats.autoSyncEnabled;
+                            const token = localStorage.getItem('token');
+                            try {
+                                await fetch('http://localhost:5000/api/sync/config', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                                    body: JSON.stringify({ auto_sync_enabled: String(newStatus) })
+                                });
+                                fetchSyncStatus();
+                            } catch (e) {
+                                console.error('Failed to toggle auto sync:', e);
+                            }
+                        }}
+                        className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs ${
+                            syncStats.autoSyncEnabled 
+                                ? 'bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100' 
+                                : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                        }`}
+                    >
+                        {syncStats.autoSyncEnabled ? 'Stop Auto-Sync' : 'Resume Auto-Sync'}
+                    </button>
+                    <a
+                        href="/settings"
+                        className="px-3.5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl transition-colors"
+                    >
+                        Change Time in Settings
+                    </a>
+                </div>
+            </div>
+
             {/* Sync Action Card */}
             <div className="bg-white rounded-2xl border border-gray-200 shadow-md p-6 space-y-4 text-center">
                 <div className="w-14 h-14 mx-auto rounded-2xl bg-[#FEF9E7] border border-[#F3E5AB] flex items-center justify-center text-[#B8860B]">
