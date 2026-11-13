@@ -4,23 +4,20 @@ const fs = require('fs');
 const crypto = require('crypto');
 
 function generateUUID() {
-    return crypto.randomUUID ? crypto.randomUUID() : ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
+    return crypto.randomUUID ? crypto.randomUUID() : ([1e7] + -1e3 + -4e3 + -8e3 + -1e11).replace(/[018]/g, c =>
         (c ^ crypto.randomBytes(1)[0] & 15 >> c / 4).toString(16)
     );
 }
 
-// Store database in local folder or appData
-let dbPath;
-if (process.env.ELECTRON_RUN_AS_NODE || process.env.NODE_ENV === 'development') {
-    dbPath = path.join(__dirname, 'wholesale.db');
-} else {
-    const userDataPath = process.env.APPDATA || (process.platform === 'darwin' ? process.env.HOME + '/Library/Preferences' : process.env.HOME + '/.local/share');
-    const appDataDir = path.join(userDataPath, 'HilalWholesalerShop');
-    if (!fs.existsSync(appDataDir)) {
-        fs.mkdirSync(appDataDir, { recursive: true });
-    }
-    dbPath = path.join(appDataDir, 'wholesale.db');
+// Store database in appData (consistent across Electron & standalone node)
+const userDataPath = process.env.APPDATA || (process.platform === 'darwin' ? process.env.HOME + '/Library/Preferences' : process.env.HOME + '/.local/share');
+const appDataDir = path.join(userDataPath, 'HilalWholesalerShop');
+if (!fs.existsSync(appDataDir)) {
+    fs.mkdirSync(appDataDir, { recursive: true });
 }
+const dbPath = (fs.existsSync(path.join(appDataDir, 'wholesale.db')) || !fs.existsSync(path.join(__dirname, 'wholesale.db')))
+    ? path.join(appDataDir, 'wholesale.db')
+    : path.join(__dirname, 'wholesale.db');
 
 const db = new sqlite3.Database(dbPath, (err) => {
     if (err) {
@@ -101,6 +98,7 @@ function initializeDatabase() {
             category_id INTEGER NOT NULL,
             brand_id INTEGER,
             name TEXT NOT NULL,
+            image TEXT,
             description TEXT,
             is_essential INTEGER DEFAULT 0,
             is_deleted INTEGER DEFAULT 0,
@@ -459,9 +457,13 @@ function initializeDatabase() {
             error_message TEXT,
             retry_count INTEGER DEFAULT 0,
             device_id TEXT,
+            cloud_acknowledged_at DATETIME,
             created_at DATETIME DEFAULT (datetime('now', 'localtime')),
             updated_at DATETIME DEFAULT (datetime('now', 'localtime'))
         )`);
+
+        // Migration: Ensure cloud_acknowledged_at column exists in sync_queue
+        db.run("ALTER TABLE sync_queue ADD COLUMN cloud_acknowledged_at DATETIME", () => { });
 
         // 29. Audit Logs Table
         db.run(`CREATE TABLE IF NOT EXISTS audit_logs (
@@ -502,7 +504,7 @@ function initializeDatabase() {
         db.run(`CREATE INDEX IF NOT EXISTS idx_variant_prod_id ON product_variants(product_id)`);
         db.run(`CREATE INDEX IF NOT EXISTS idx_packagings_barcode ON product_packagings(barcode)`);
         db.run(`CREATE INDEX IF NOT EXISTS idx_packagings_variant ON product_packagings(variant_id)`);
-        db.run(`CREATE INDEX IF NOT EXISTS idx_packagings_var_type ON product_packagings(variant_id, packaging_type_id)`);
+        db.run(`CREATE UNIQUE INDEX IF NOT EXISTS uq_packagings_var_type ON product_packagings(variant_id, packaging_type_id)`);
 
         db.run(`CREATE INDEX IF NOT EXISTS idx_sales_created ON sales(created_at)`);
         db.run(`CREATE INDEX IF NOT EXISTS idx_sales_inv ON sales(invoice_no)`);
@@ -537,19 +539,20 @@ function initializeDatabase() {
         db.run(`CREATE INDEX IF NOT EXISTS idx_sync_status ON sync_queue(status)`);
 
         // Migration columns if existing db
-        db.run("ALTER TABLE sales ADD COLUMN supplier_id INTEGER", () => {});
-        db.run("ALTER TABLE sales ADD COLUMN initial_amount_paid REAL DEFAULT 0", () => {});
-        db.run("ALTER TABLE categories ADD COLUMN parent_id INTEGER REFERENCES categories(id)", () => {});
+        db.run("ALTER TABLE sales ADD COLUMN supplier_id INTEGER", () => { });
+        db.run("ALTER TABLE sales ADD COLUMN initial_amount_paid REAL DEFAULT 0", () => { });
+        db.run("ALTER TABLE categories ADD COLUMN parent_id INTEGER REFERENCES categories(id)", () => { });
         db.run(`CREATE INDEX IF NOT EXISTS idx_cat_parent ON categories(parent_id)`);
-        db.run("ALTER TABLE products ADD COLUMN is_essential INTEGER DEFAULT 0", () => {});
+        db.run("ALTER TABLE products ADD COLUMN is_essential INTEGER DEFAULT 0", () => { });
+        db.run("ALTER TABLE products ADD COLUMN image TEXT", () => { });
         db.run(`CREATE INDEX IF NOT EXISTS idx_products_essential ON products(is_essential)`);
-        db.run("ALTER TABLE sale_returns ADD COLUMN refund_method TEXT DEFAULT 'credit'", () => {});
-        db.run("ALTER TABLE sale_returns ADD COLUMN status TEXT DEFAULT 'completed'", () => {});
-        db.run("ALTER TABLE customer_ledger ADD COLUMN return_id INTEGER", () => {});
-        db.run("ALTER TABLE sales ADD COLUMN order_status TEXT DEFAULT 'COMPLETED'", () => {});
-        db.run("ALTER TABLE sales ADD COLUMN online_order_id TEXT", () => {});
-        db.run("ALTER TABLE stock_movements ADD COLUMN is_synced INTEGER DEFAULT 0", () => {});
-        db.run("ALTER TABLE customer_ledger ADD COLUMN is_synced INTEGER DEFAULT 0", () => {});
+        db.run("ALTER TABLE sale_returns ADD COLUMN refund_method TEXT DEFAULT 'credit'", () => { });
+        db.run("ALTER TABLE sale_returns ADD COLUMN status TEXT DEFAULT 'completed'", () => { });
+        db.run("ALTER TABLE customer_ledger ADD COLUMN return_id INTEGER", () => { });
+        db.run("ALTER TABLE sales ADD COLUMN order_status TEXT DEFAULT 'COMPLETED'", () => { });
+        db.run("ALTER TABLE sales ADD COLUMN online_order_id TEXT", () => { });
+        db.run("ALTER TABLE stock_movements ADD COLUMN is_synced INTEGER DEFAULT 0", () => { });
+        db.run("ALTER TABLE customer_ledger ADD COLUMN is_synced INTEGER DEFAULT 0", () => { });
         db.run("ALTER TABLE stock_movements ADD COLUMN quantity_delta REAL", () => {
             db.run(`
                 UPDATE stock_movements 
@@ -563,17 +566,17 @@ function initializeDatabase() {
                     ELSE -ABS(COALESCE(equivalent_qty, quantity, 0))
                 END
                 WHERE quantity_delta IS NULL
-            `, () => {});
+            `, () => { });
         });
-        db.run("CREATE UNIQUE INDEX IF NOT EXISTS uq_stock_movements_uuid ON stock_movements(uuid)", () => {});
-        db.run("CREATE UNIQUE INDEX IF NOT EXISTS uq_customer_ledger_uuid ON customer_ledger(uuid)", () => {});
-        db.run("CREATE UNIQUE INDEX IF NOT EXISTS uq_sales_uuid ON sales(uuid)", () => {});
-        db.run("CREATE UNIQUE INDEX IF NOT EXISTS uq_payments_uuid ON payments(uuid)", () => {});
-        db.run("CREATE UNIQUE INDEX IF NOT EXISTS uq_sale_returns_uuid ON sale_returns(uuid)", () => {});
-        db.run("CREATE UNIQUE INDEX IF NOT EXISTS uq_purchases_uuid ON purchases(uuid)", () => {});
-        db.run("CREATE INDEX IF NOT EXISTS idx_sales_order_status ON sales(order_status)", () => {});
-        db.run("UPDATE customers SET phone = mobile WHERE (phone IS NULL OR phone = '') AND mobile IS NOT NULL AND mobile != ''", () => {});
-        db.run("UPDATE customers SET mobile = phone WHERE (mobile IS NULL OR mobile = '') AND phone IS NOT NULL AND phone != ''", () => {});
+        db.run("CREATE UNIQUE INDEX IF NOT EXISTS uq_stock_movements_uuid ON stock_movements(uuid)", () => { });
+        db.run("CREATE UNIQUE INDEX IF NOT EXISTS uq_customer_ledger_uuid ON customer_ledger(uuid)", () => { });
+        db.run("CREATE UNIQUE INDEX IF NOT EXISTS uq_sales_uuid ON sales(uuid)", () => { });
+        db.run("CREATE UNIQUE INDEX IF NOT EXISTS uq_payments_uuid ON payments(uuid)", () => { });
+        db.run("CREATE UNIQUE INDEX IF NOT EXISTS uq_sale_returns_uuid ON sale_returns(uuid)", () => { });
+        db.run("CREATE UNIQUE INDEX IF NOT EXISTS uq_purchases_uuid ON purchases(uuid)", () => { });
+        db.run("CREATE INDEX IF NOT EXISTS idx_sales_order_status ON sales(order_status)", () => { });
+        db.run("UPDATE customers SET phone = mobile WHERE (phone IS NULL OR phone = '') AND mobile IS NOT NULL AND mobile != ''", () => { });
+        db.run("UPDATE customers SET mobile = phone WHERE (mobile IS NULL OR mobile = '') AND phone IS NOT NULL AND phone != ''", () => { });
 
         console.log('Wholesale database schema created successfully.');
 
@@ -614,7 +617,7 @@ function seedInitialData() {
 
     // 3. Seed Dynamic Packaging Types
     const standardPackagings = [
-        'Piece', 'Carton', 'Bag', 'Box', 'Packet', 'Bottle', 'Gallon', 'Tin', 'Can', 
+        'Piece', 'Carton', 'Bag', 'Box', 'Packet', 'Bottle', 'Gallon', 'Tin', 'Can',
         'Pouch', 'Jar', 'Tray', 'Sack', 'Bucket', 'Drum', 'Roll', 'Dozen'
     ];
     standardPackagings.forEach(p => {
@@ -629,8 +632,8 @@ function seedInitialData() {
     db.get("SELECT COUNT(*) as count FROM categories", (err, row) => {
         if (row && row.count === 0) {
             const categories = [
-                'Aata / Flour', 'Sugar', 'Rice', 'Daal / Pulses', 'Cooking Oil', 'Ghee', 
-                'Tea', 'Spices', 'Biscuits', 'Beverages', 'Sauces', 'Canned Foods', 
+                'Aata / Flour', 'Sugar', 'Rice', 'Daal / Pulses', 'Cooking Oil', 'Ghee',
+                'Tea', 'Spices', 'Biscuits', 'Beverages', 'Sauces', 'Canned Foods',
                 'Dry Fruits', 'Bakery', 'Cleaning Products', 'Personal Care', 'Other'
             ];
             const stmt = db.prepare("INSERT INTO categories (uuid, name, is_pinned) VALUES (?, ?, ?)");
@@ -739,109 +742,232 @@ function seedInitialData() {
     `);
 }
 
+let isMaintenanceLocked = false;
+
 function cleanAndCompactDatabase(options = {}, callback) {
     if (typeof options === 'function') {
         callback = options;
         options = {};
     }
-    const cb = typeof callback === 'function' ? callback : () => {};
+    const cb = typeof callback === 'function' ? callback : () => { };
+
+    // 1. Concurrency Protection: Check if already locked or sync is active
+    if (isMaintenanceLocked) {
+        console.warn('[Database Maintenance] Maintenance lock active. Request deferred.');
+        return cb(null, { skipped: true, reason: 'Maintenance already in progress' });
+    }
 
     try {
-        // Requirement 7: Prevent compaction from interrupting active cloud sync operations
-        let isSyncActive = false;
-        try {
-            const syncEngine = require('./syncEngine');
-            if (syncEngine && typeof syncEngine.isSyncActive === 'function') {
-                isSyncActive = syncEngine.isSyncActive();
-            }
-        } catch (seErr) {}
+        const syncEngine = require('./syncEngine');
+        if (syncEngine && typeof syncEngine.isSyncActive === 'function' && syncEngine.isSyncActive()) {
+            console.log('[Database Maintenance] Cloud sync is currently active. Maintenance deferred to prevent lock contention.');
+            return cb(null, { success: true, skipped: true, reason: 'Cloud sync active' });
+        }
+    } catch (seErr) { }
 
-        if (isSyncActive) {
-            console.log('[Database Compact] Cloud sync is currently active. Compaction deferred to avoid lock contention.');
-            return cb(null, { success: true, skipped: true, reason: 'Sync in progress' });
+    // Acquire database-wide maintenance lock
+    isMaintenanceLocked = true;
+    const releaseLockAndReturn = (err, result) => {
+        isMaintenanceLocked = false;
+        cb(err, result);
+    };
+
+    const currentDbPath = db.filename || path.join(__dirname, 'wholesale.db');
+
+    // 2. Safe Writable Backup Directory in user-data path
+    const backupDir = path.join(path.dirname(currentDbPath), 'Backups');
+    try {
+        if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
+    } catch (dirErr) {
+        console.error('[Database Maintenance] Failed to access/create backup directory:', dirErr.message);
+        return releaseLockAndReturn(new Error(`Backup directory inaccessible: ${dirErr.message}`));
+    }
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const safetyBackupPath = path.join(backupDir, `wholesale-pre-maintenance-${timestamp}.db`);
+
+    // 3. Pre-Maintenance SQLite Health Check
+    db.get("PRAGMA integrity_check", (chkErr, row) => {
+        if (chkErr) {
+            console.error('[Database Maintenance] Integrity check error:', chkErr.message);
+            return releaseLockAndReturn(chkErr);
+        }
+        const integrityStatus = row ? (row.integrity_check || Object.values(row)[0]) : 'unknown';
+        if (integrityStatus !== 'ok') {
+            console.error('[Database Maintenance] CRITICAL: PRAGMA integrity_check failed:', integrityStatus);
+            return releaseLockAndReturn(new Error(`Database integrity failure: ${integrityStatus}`));
         }
 
-        // Requirement 9: Verify database integrity before proceeding
-        db.get("PRAGMA integrity_check", (chkErr, row) => {
-            if (chkErr) {
-                console.error('[Database Compact] Integrity check error:', chkErr.message);
-                return cb(chkErr);
-            }
-            const integrityStatus = row ? (row.integrity_check || Object.values(row)[0]) : 'unknown';
-            if (integrityStatus !== 'ok') {
-                console.error('[Database Compact] CRITICAL: PRAGMA integrity_check failed:', integrityStatus);
-                return cb(new Error(`Database integrity failure: ${integrityStatus}`));
+        // 4. Safe Online Backup Handling (WAL Checkpoint + VACUUM INTO)
+        // Flush WAL pages into database file before backup
+        db.run("PRAGMA wal_checkpoint(TRUNCATE)", (ckptErr) => {
+            if (ckptErr) {
+                console.error('[Database Maintenance] WAL Checkpoint failed. Aborting maintenance:', ckptErr.message);
+                return releaseLockAndReturn(new Error(`WAL Checkpoint failed: ${ckptErr.message}`));
             }
 
-            // Requirements 1, 2, 4:
-            // ONLY delete sync_queue records where status = 'SYNCED' AND updated_at < datetime('now', '-3 days')
-            // Real business tables (sales, purchases, customer_ledgers, audit_logs, inventory) are NEVER touched!
-            const pruneSql = "DELETE FROM sync_queue WHERE status = 'SYNCED' AND updated_at < datetime('now', '-3 days')";
-            db.run(pruneSql, function(pruneErr) {
-                if (pruneErr) {
-                    console.error('[Database Compact] Error pruning synced queue:', pruneErr.message);
-                    return cb(pruneErr);
-                }
-                const prunedCount = this.changes || 0;
-                if (prunedCount > 0) {
-                    console.log(`[Database Compact] Pruned ${prunedCount} acknowledged SYNCED queue records older than 3 days.`);
+            db.run('VACUUM INTO ?', [safetyBackupPath], (vErr) => {
+                if (vErr) {
+                    console.error('[Database Maintenance] VACUUM INTO backup failed. Aborting maintenance:', vErr.message);
+                    return releaseLockAndReturn(new Error(`Backup creation failed: ${vErr.message}`));
                 }
 
-                // Requirement 6: Check available disk space before running VACUUM
-                const currentDbPath = db.filename || path.join(__dirname, 'wholesale.db');
-                let dbSize = 0;
+                // Verify backup file was created and is non-empty
                 try {
-                    if (fs.existsSync(currentDbPath)) dbSize = fs.statSync(currentDbPath).size;
-                } catch (e) {}
-
-                const executeVacuum = () => {
-                    db.run("PRAGMA optimize", (optErr) => {
-                        if (optErr) console.warn('[Database Compact] PRAGMA optimize note:', optErr.message);
-                        
-                        db.run("VACUUM", (vacErr) => {
-                            if (vacErr) {
-                                console.error('[Database Compact] VACUUM error:', vacErr.message);
-                                return cb(vacErr);
-                            }
-                            console.log('[Database Compact] VACUUM completed successfully. Database defragmented and vacuumed.');
-
-                            // Post-vacuum integrity verification
-                            db.get("PRAGMA integrity_check", (postErr, postRow) => {
-                                const postStatus = postRow ? (postRow.integrity_check || Object.values(postRow)[0]) : 'ok';
-                                if (postStatus !== 'ok') {
-                                    console.error('[Database Compact] Post-vacuum integrity alert:', postStatus);
-                                }
-                                cb(null, { success: true, prunedCount, integrity: postStatus });
-                            });
-                        });
-                    });
-                };
-
-                if (typeof fs.statfs === 'function') {
-                    fs.statfs(path.dirname(currentDbPath), (fsErr, stats) => {
-                        if (!fsErr && stats) {
-                            const freeBytes = (stats.bavail || stats.bfree || 0) * (stats.bsize || 4096);
-                            const requiredBytes = Math.max(50 * 1024 * 1024, dbSize * 3); // Minimum 50MB free space
-                            if (freeBytes < requiredBytes) {
-                                console.warn(`[Database Compact] Low disk space (${(freeBytes/1024/1024).toFixed(1)} MB available). Skipping VACUUM to protect disk.`);
-                                return cb(null, { success: true, prunedCount, vacuumSkipped: true, reason: 'Low disk space' });
-                            }
-                        }
-                        executeVacuum();
-                    });
-                } else {
-                    executeVacuum();
+                    const stats = fs.statSync(safetyBackupPath);
+                    if (!stats || stats.size === 0) {
+                        console.error('[Database Maintenance] Verified backup file is missing or 0 bytes. Aborting.');
+                        return releaseLockAndReturn(new Error('Verified backup file is empty'));
+                    }
+                } catch (statErr) {
+                    console.error('[Database Maintenance] Backup verification failed. Aborting maintenance:', statErr.message);
+                    return releaseLockAndReturn(statErr);
                 }
-            });
+
+                console.log(`[Database Maintenance] Verified pre-maintenance backup created: ${path.basename(safetyBackupPath)}`);
+
+                // 5. Cloud Verification & Pruning
+                // Select candidates: status = 'SYNCED', cloud_acknowledged_at > 3 days ago, no errors
+                const candidateSql = `
+                    SELECT uuid FROM sync_queue 
+                    WHERE status = 'SYNCED' 
+                      AND cloud_acknowledged_at IS NOT NULL 
+                      AND cloud_acknowledged_at < datetime('now', '-3 days')
+                      AND (error_message IS NULL OR error_message = '')
+                      AND status NOT IN ('PENDING', 'FAILED', 'SYNCING')
+                    LIMIT 200
+                `;
+
+                db.all(candidateSql, async (candErr, candidateRows) => {
+                    if (candErr) {
+                        console.error('[Database Maintenance] Error reading candidate queue rows:', candErr.message);
+                        return releaseLockAndReturn(candErr);
+                    }
+
+                    const candidates = (candidateRows || []).map(r => r.uuid);
+                    let verifiedUuidsToDelete = [];
+
+                    if (candidates.length > 0) {
+                        try {
+                            const syncEngine = require('./syncEngine');
+                            const serverUrl = await syncEngine.getServerUrl();
+                            const verifyRes = await fetch(`${serverUrl}/api/sync/verify`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ uuids: candidates }),
+                                signal: AbortSignal.timeout(15000)
+                            });
+
+                            if (verifyRes.ok) {
+                                const verifyData = await verifyRes.json();
+                                if (Array.isArray(verifyData.verifiedUuids)) {
+                                    verifiedUuidsToDelete = verifyData.verifiedUuids;
+                                }
+
+                                // Self-healing: if cloud does NOT have a locally-claimed SYNCED record,
+                                // reset it to PENDING so it is immediately pushed up to the cloud!
+                                if (Array.isArray(verifyData.missingUuids) && verifyData.missingUuids.length > 0) {
+                                    console.warn(`[Database Maintenance] Detected ${verifyData.missingUuids.length} ghost SYNCED records missing from cloud. Reverting to PENDING!`);
+                                    const placeholders = verifyData.missingUuids.map(() => '?').join(',');
+                                    db.run(
+                                        `UPDATE sync_queue 
+                                         SET status = 'PENDING', cloud_acknowledged_at = NULL, updated_at = datetime('now', 'localtime') 
+                                         WHERE uuid IN (${placeholders})`,
+                                        verifyData.missingUuids,
+                                        () => { }
+                                    );
+                                }
+                            } else {
+                                console.warn('[Database Maintenance] Cloud verification returned HTTP status', verifyRes.status, '- skipping queue deletion.');
+                            }
+                        } catch (netErr) {
+                            console.warn('[Database Maintenance] Cloud verification offline/unreachable:', netErr.message, '- queue records preserved.');
+                        }
+                    }
+
+                            const proceedWithVacuum = (prunedCount) => {
+                                // Check available disk space before VACUUM
+                                let dbSize = 0;
+                                try { if (fs.existsSync(currentDbPath)) dbSize = fs.statSync(currentDbPath).size; } catch (e) { }
+
+                                const executeVacuum = () => {
+                                    db.run("PRAGMA optimize", (optErr) => {
+                                        if (optErr) console.warn('[Database Maintenance] PRAGMA optimize note:', optErr.message);
+
+                                        db.run("VACUUM", (vacErr) => {
+                                            if (vacErr) {
+                                                console.error('[Database Maintenance] VACUUM error:', vacErr.message);
+                                                return releaseLockAndReturn(vacErr);
+                                            }
+                                    console.log('[Database Maintenance] VACUUM completed successfully. Database defragmented.');
+
+                                                // Log audit record
+                                                const logUuid = generateUUID();
+                                                const auditDetails = `Pruned ${prunedCount} cloud-verified records (>3d). Safety backup: ${path.basename(safetyBackupPath)}. Defragmented via VACUUM.`;
+                                                db.run(
+                                                    `INSERT INTO audit_logs (uuid, user_id, username, action, entity_name, entity_id, details, created_at)
+                                         VALUES (?, 1, 'system', 'DATABASE_MAINTENANCE', 'system', 'compact', ?, datetime('now', 'localtime'))`,
+                                                    [logUuid, auditDetails],
+                                                    () => { }
+                                                );
+
+                                                // Post-vacuum integrity verification
+                                                db.get("PRAGMA integrity_check", (postErr, postRow) => {
+                                                    const postStatus = postRow ? (postRow.integrity_check || Object.values(postRow)[0]) : 'ok';
+                                                    if (postStatus !== 'ok') {
+                                                        console.error('[Database Maintenance] Post-vacuum integrity warning:', postStatus);
+                                                    }
+                                                    releaseLockAndReturn(null, {
+                                                        success: true,
+                                                        prunedCount,
+                                                        safetyBackup: path.basename(safetyBackupPath),
+                                                        integrity: postStatus
+                                                    });
+                                                });
+                                            });
+                                        });
+                                };
+
+                                if (typeof fs.statfs === 'function') {
+                                    fs.statfs(path.dirname(currentDbPath), (fsErr, stats) => {
+                                        if (!fsErr && stats) {
+                                            const freeBytes = (stats.bavail || stats.bfree || 0) * (stats.bsize || 4096);
+                                            const requiredBytes = Math.max(50 * 1024 * 1024, dbSize * 3);
+                                            if (freeBytes < requiredBytes) {
+                                                console.warn(`[Database Maintenance] Low disk space (${(freeBytes / 1024 / 1024).toFixed(1)} MB available). Skipping VACUUM.`);
+                                                return releaseLockAndReturn(null, { success: true, prunedCount, vacuumSkipped: true, reason: 'Low disk space' });
+                                            }
+                                        }
+                                        executeVacuum();
+                                    });
+                                } else {
+                                    executeVacuum();
+                                }
+                            };
+
+                                        // Only delete explicitly cloud-verified UUIDs
+                                        if (verifiedUuidsToDelete.length > 0) {
+                                            const placeholders = verifiedUuidsToDelete.map(() => '?').join(',');
+                                            db.run(
+                                                `DELETE FROM sync_queue WHERE uuid IN (${placeholders})`,
+                                                verifiedUuidsToDelete,
+                                                function (delErr) {
+                                                    const deletedCount = this ? (this.changes || 0) : 0;
+                                                    console.log(`[Database Maintenance] Pruned ${deletedCount} cloud-verified SYNCED records.`);
+                                                    proceedWithVacuum(deletedCount);
+                                                }
+                        );
+                } else {
+                        proceedWithVacuum(0);
+                }
+                });
         });
-    } catch (unexpectedErr) {
-        // Requirement 8: Never crash the POS on maintenance error
-        console.error('[Database Compact] Unexpected exception guarded:', unexpectedErr.message);
-        cb(unexpectedErr);
-    }
+    });
+    });
 }
 
 db.cleanAndCompactDatabase = cleanAndCompactDatabase;
+db.isMaintenanceRunning = () => isMaintenanceLocked;
 
 module.exports = db;
 

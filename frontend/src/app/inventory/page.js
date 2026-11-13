@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useEffect, useMemo } from 'react';
 import CustomModalAlert from '../components/CustomModalAlert';
-import { apiUrl } from '../../lib/api';
+import { apiUrl, resolveMediaUrl } from '../../lib/api';
 import { 
     IconPlus, IconClose, IconInventory, IconSuppliers, 
     IconProducts, IconCheck, IconWarning, IconSearch,
@@ -68,6 +68,7 @@ export default function InventoryPage() {
     // Edit Item Form State
     const [editVariantId, setEditVariantId] = useState(null);
     const [editProductName, setEditProductName] = useState('');
+    const [editProductImage, setEditProductImage] = useState('');
     const [editVariantName, setEditVariantName] = useState('Standard');
     const [editCategoryId, setEditCategoryId] = useState('');
     const [editBaseUnitId, setEditBaseUnitId] = useState('');
@@ -115,6 +116,8 @@ export default function InventoryPage() {
 
     // Add Product Item Form State (Starts with 0 stock)
     const [newProductName, setNewProductName] = useState('');
+    const [newProductImage, setNewProductImage] = useState('');
+    const [uploadingImage, setUploadingImage] = useState(false);
     const [newVariantName, setNewVariantName] = useState('Standard');
     const [newCategoryId, setNewCategoryId] = useState('');
     const [newBaseUnitId, setNewBaseUnitId] = useState('');
@@ -144,6 +147,7 @@ export default function InventoryPage() {
     // Modal Trigger with fresh auto-generated barcodes
     const handleOpenAddItemModal = () => {
         setNewProductName('');
+        setNewProductImage('');
         setNewVariantName('Standard');
         setNewInitialStock('0');
         setNewBaseBarcode(generateBarcode('896'));
@@ -388,6 +392,7 @@ export default function InventoryPage() {
     const handleOpenEditItemModal = (item) => {
         setEditVariantId(item.variant_id);
         setEditProductName(item.product_name || '');
+        setEditProductImage(item.image || '');
         setEditVariantName(item.variant_name || 'Standard');
 
         // Robust category matching: by ID or by name
@@ -720,6 +725,49 @@ export default function InventoryPage() {
         }
     };
 
+    // Product Image Upload to Disk (keeps DB small & lightweight)
+    const handleImageUpload = async (file, isEdit = false) => {
+        if (!file) return;
+        if (!file.type || !file.type.startsWith('image/')) {
+            showAlert('Please select an image file (PNG, JPG, WebP, etc.)', 'warning');
+            return;
+        }
+        if (file.size > 10 * 1024 * 1024) {
+            showAlert('Image file size must be less than 10MB', 'warning');
+            return;
+        }
+
+        setUploadingImage(true);
+        const formData = new FormData();
+        formData.append('image', file);
+
+        try {
+            const token = localStorage.getItem('token');
+            const headers = {};
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+
+            const res = await fetch(apiUrl('/api/upload'), {
+                method: 'POST',
+                headers,
+                body: formData
+            });
+            const data = await res.json();
+            if (res.ok && data.url) {
+                if (isEdit) {
+                    setEditProductImage(data.url);
+                } else {
+                    setNewProductImage(data.url);
+                }
+            } else {
+                showAlert(data.error || 'Failed to upload image', 'error');
+            }
+        } catch (err) {
+            showAlert(err.message, 'error');
+        } finally {
+            setUploadingImage(false);
+        }
+    };
+
     // Save Edit Item
     const handleSaveEditItem = async (e) => {
         e.preventDefault();
@@ -812,6 +860,7 @@ export default function InventoryPage() {
                 headers,
                 body: JSON.stringify({
                     name: editProductName.trim(),
+                    image: editProductImage || '',
                     category_id: catId,
                     variant_name: editVariantName.trim() || 'Standard',
                     sku: editSku.trim(),
@@ -1419,6 +1468,7 @@ export default function InventoryPage() {
                 headers,
                 body: JSON.stringify({
                     name: newProductName.trim(),
+                    image: newProductImage || '',
                     category_id: catId,
                     variant_name: newVariantName.trim() || 'Standard',
                     sku,
@@ -1447,6 +1497,7 @@ export default function InventoryPage() {
 
                 setAddItemModalOpen(false);
                 setNewProductName('');
+                setNewProductImage('');
                 setNewBaseBarcode('');
                 setNewCartonBarcode('');
                 setNewIsEssential(false);
@@ -1988,27 +2039,42 @@ export default function InventoryPage() {
                                         >
                                             {/* Column 1: Product & SKU */}
                                             <td className="py-3 px-3.5 bg-white group-hover:bg-blue-50/20 border-y border-l border-gray-200/80 group-hover:border-blue-200/80 rounded-l-xl transition-all duration-150">
-                                                <div className="space-y-1">
-                                                    <div className="font-bold text-gray-900 text-xs sm:text-[13px] leading-snug">
-                                                        {item.product_name}
-                                                        {isNonStandardVariant && (
-                                                            <span className="text-[10px] text-blue-700 bg-blue-50 font-semibold px-1.5 py-0.5 rounded border border-blue-200/60 ml-1.5">
-                                                                {item.variant_name}
+                                                <div className="flex items-start gap-2.5">
+                                                    {item.image ? (
+                                                        <img
+                                                            src={resolveMediaUrl(item.image)}
+                                                            alt={item.product_name}
+                                                            className="w-10 h-10 rounded-lg object-cover border border-gray-200 shrink-0 mt-0.5 shadow-2xs"
+                                                            loading="lazy"
+                                                            onError={(e) => { e.target.style.display = 'none'; }}
+                                                        />
+                                                    ) : (
+                                                        <div className="w-10 h-10 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center text-gray-300 shrink-0 mt-0.5">
+                                                            <IconBox className="w-5 h-5 opacity-40" />
+                                                        </div>
+                                                    )}
+                                                    <div className="space-y-1 min-w-0">
+                                                        <div className="font-bold text-gray-900 text-xs sm:text-[13px] leading-snug">
+                                                            {item.product_name}
+                                                            {isNonStandardVariant && (
+                                                                <span className="text-[10px] text-blue-700 bg-blue-50 font-semibold px-1.5 py-0.5 rounded border border-blue-200/60 ml-1.5">
+                                                                    {item.variant_name}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                                            <span className="px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200/80 text-[10px] font-semibold text-slate-700">
+                                                                {item.category_name}
                                                             </span>
-                                                        )}
-                                                    </div>
-                                                    <div className="flex items-center gap-1.5 flex-wrap">
-                                                        <span className="px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200/80 text-[10px] font-semibold text-slate-700">
-                                                            {item.category_name}
-                                                        </span>
-                                                        {item.is_essential ? (
-                                                            <span className="px-1.5 py-0.5 rounded-md bg-amber-100 border border-amber-300 text-[9.5px] font-black text-amber-900 flex items-center gap-0.5 shadow-2xs">
-                                                                ★ Essential
+                                                            {item.is_essential ? (
+                                                                <span className="px-1.5 py-0.5 rounded-md bg-amber-100 border border-amber-300 text-[9.5px] font-black text-amber-900 flex items-center gap-0.5 shadow-2xs">
+                                                                    ★ Essential
+                                                                </span>
+                                                            ) : null}
+                                                            <span className="text-[10px] text-gray-400 font-mono tracking-wider">
+                                                                {item.sku}
                                                             </span>
-                                                        ) : null}
-                                                        <span className="text-[10px] text-gray-400 font-mono tracking-wider">
-                                                            {item.sku}
-                                                        </span>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </td>
@@ -2933,6 +2999,49 @@ export default function InventoryPage() {
                                     </div>
                                 </div>
 
+                                {/* Product Photo Upload */}
+                                <div className="pt-1">
+                                    <label className="block font-bold text-gray-700 mb-1">Product Photo (Optional)</label>
+                                    <div className="flex items-center gap-3 bg-white p-2.5 rounded-xl border border-gray-200">
+                                        <div className="w-14 h-14 rounded-xl border border-gray-200 overflow-hidden bg-gray-50 shrink-0 flex items-center justify-center relative shadow-2xs">
+                                            {newProductImage ? (
+                                                <img
+                                                    src={resolveMediaUrl(newProductImage)}
+                                                    alt="Preview"
+                                                    className="w-full h-full object-cover"
+                                                />
+                                            ) : (
+                                                <IconBox className="w-6 h-6 text-gray-300" />
+                                            )}
+                                            {uploadingImage && (
+                                                <div className="absolute inset-0 bg-white/80 flex items-center justify-center">
+                                                    <div className="w-4 h-4 border-2 border-[#0B3B7B] border-t-transparent rounded-full animate-spin"></div>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <input
+                                                type="file"
+                                                accept="image/*"
+                                                onChange={(e) => handleImageUpload(e.target.files[0], false)}
+                                                disabled={uploadingImage}
+                                                className="block w-full text-[11px] text-gray-500 file:mr-2.5 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-[11px] file:font-bold file:bg-[#0B3B7B] file:text-white hover:file:bg-blue-800 file:cursor-pointer cursor-pointer"
+                                            />
+                                            {newProductImage ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setNewProductImage('')}
+                                                    className="mt-1 text-[10.5px] text-rose-600 font-bold hover:underline cursor-pointer"
+                                                >
+                                                    Remove Photo
+                                                </button>
+                                            ) : (
+                                                <p className="text-[10px] text-gray-400 mt-0.5">Stored on disk — keeps database fast & small</p>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+
                                 <div>
                                     <div className="flex justify-between items-center mb-1">
                                         <label className="font-bold text-gray-700">Individual Unit / Piece Barcode</label>
@@ -3749,6 +3858,49 @@ export default function InventoryPage() {
                                                 </option>
                                             ))}
                                         </select>
+                                    </div>
+                                </div>
+
+                                {/* Edit Product Photo Upload */}
+                                <div className="pt-1">
+                                    <label className="block font-bold text-gray-700 mb-1">Product Photo (Optional)</label>
+                                    <div className="flex items-center gap-3 bg-white p-2.5 rounded-xl border border-gray-200">
+                                        <div className="w-14 h-14 rounded-xl border border-gray-200 overflow-hidden bg-gray-50 shrink-0 flex items-center justify-center relative shadow-2xs">
+                                            {editProductImage ? (
+                                                <img
+                                                    src={resolveMediaUrl(editProductImage)}
+                                                    alt="Preview"
+                                                    className="w-full h-full object-cover"
+                                                />
+                                            ) : (
+                                                <IconBox className="w-6 h-6 text-gray-300" />
+                                            )}
+                                            {uploadingImage && (
+                                                <div className="absolute inset-0 bg-white/80 flex items-center justify-center">
+                                                    <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <input
+                                                type="file"
+                                                accept="image/*"
+                                                onChange={(e) => handleImageUpload(e.target.files[0], true)}
+                                                disabled={uploadingImage}
+                                                className="block w-full text-[11px] text-gray-500 file:mr-2.5 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-[11px] file:font-bold file:bg-[#0B3B7B] file:text-white hover:file:bg-blue-800 file:cursor-pointer cursor-pointer"
+                                            />
+                                            {editProductImage ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setEditProductImage('')}
+                                                    className="mt-1 text-[10.5px] text-rose-600 font-bold hover:underline cursor-pointer"
+                                                >
+                                                    Remove Photo
+                                                </button>
+                                            ) : (
+                                                <p className="text-[10px] text-gray-400 mt-0.5">Stored on disk — keeps database fast & small</p>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
 

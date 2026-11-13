@@ -59,7 +59,6 @@ export default function Sidebar() {
         { label: 'Payments', href: '/payments', icon: IconPayments },
         { label: 'Expenses', href: '/expenses', icon: IconExpenses },
         { label: 'Reports', href: '/reports', icon: IconReports },
-        { label: 'Sync', href: '/sync', icon: IconSync },
         { label: 'Users & Audit', href: '/users', icon: IconUsersAudit },
         { label: 'Settings', href: '/settings', icon: IconSettings },
     ];

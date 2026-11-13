@@ -30,9 +30,11 @@ function spawnPrintWin() {
   getOrCreatePrintWindow();
 }
 
-protocol.registerSchemesAsPrivileged([
-  { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true } }
-]);
+if (protocol && protocol.registerSchemesAsPrivileged) {
+  protocol.registerSchemesAsPrivileged([
+    { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true } }
+  ]);
+}
 
 function waitForNextJs(url, retries = 30, interval = 1000) {
   return new Promise((resolve, reject) => {

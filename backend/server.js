@@ -16,9 +16,91 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || 'hilal_wholesaler_secret_key_2026';
 
+const multer = require('multer');
+
+// Configure Images Directory on File System (keeps database small & fast)
+const userDataPath = process.env.APPDATA || (process.platform === 'darwin' ? process.env.HOME + '/Library/Preferences' : process.env.HOME + '/.local/share');
+const baseImagesDir = path.join(userDataPath, 'HilalWholesalerShop', 'images');
+
+const productImagesDir = path.join(baseImagesDir, 'products');
+if (!fs.existsSync(productImagesDir)) {
+    fs.mkdirSync(productImagesDir, { recursive: true });
+}
+
+// Ensure local project images/products also exists
+const localImagesDir = path.join(__dirname, 'images', 'products');
+if (!fs.existsSync(localImagesDir)) {
+    fs.mkdirSync(localImagesDir, { recursive: true });
+}
+
+// Serve static image files
+app.use('/images', express.static(baseImagesDir));
+if (baseImagesDir !== path.join(__dirname, 'images')) {
+    app.use('/images', express.static(path.join(__dirname, 'images')));
+}
+
+// Multer Storage for Product Images
+const productStorage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        cb(null, productImagesDir);
+    },
+    filename: function (req, file, cb) {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        const ext = path.extname(file.originalname).toLowerCase() || '.jpg';
+        cb(null, 'prod-' + uniqueSuffix + ext);
+    }
+});
+
+const uploadProductImage = multer({
+    storage: productStorage,
+    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+    fileFilter: (req, file, cb) => {
+        if (!file.mimetype || file.mimetype.startsWith('image/')) {
+            cb(null, true);
+        } else {
+            cb(new Error('Only image files are allowed!'), false);
+        }
+    }
+});
+
 app.use(cors());
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
+
+// Upload API Endpoint
+app.post('/api/upload', (req, res) => {
+    uploadProductImage.single('image')(req, res, (err) => {
+        if (err) {
+            console.error('Image upload error:', err.message);
+            return res.status(400).json({ error: err.message || 'Image upload failed' });
+        }
+        if (!req.file) {
+            return res.status(400).json({ error: 'No image file uploaded' });
+        }
+        const imageUrl = `/images/products/${req.file.filename}`;
+        // If AppData and local directory are different, also mirror to local for dev convenience
+        try {
+            const localCopy = path.join(localImagesDir, req.file.filename);
+            if (req.file.path !== localCopy) {
+                fs.copyFileSync(req.file.path, localCopy);
+            }
+        } catch (copyErr) { }
+
+        res.json({ success: true, url: imageUrl, filename: req.file.filename });
+    });
+});
+
+// Database Maintenance Write Guard: Protect active billing & writes during compaction
+app.use((req, res, next) => {
+    if (typeof db.isMaintenanceRunning === 'function' && db.isMaintenanceRunning()) {
+        const isWrite = ['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method);
+        const isMaintenanceEndpoint = req.path.startsWith('/api/system/compact') || req.path.startsWith('/api/system/backup');
+        if (isWrite && !isMaintenanceEndpoint) {
+            return res.status(503).json({ error: 'Database maintenance in progress. Please retry in a few seconds.' });
+        }
+    }
+    next();
+});
 
 // In-Memory Fast Cache for Master Data (Settings, Packaging Types, Units)
 const masterCache = {
@@ -376,7 +458,7 @@ app.get('/api/products', (req, res) => {
 
     const query = `
         SELECT 
-            p.id as product_id, p.uuid as product_uuid, p.name as product_name, p.description,
+            p.id as product_id, p.uuid as product_uuid, p.name as product_name, p.image, p.description,
             COALESCE(p.is_essential, 0) as is_essential,
             c.id as category_id, c.name as category_name,
             b.id as brand_id, b.name as brand_name,
@@ -406,9 +488,11 @@ app.get('/api/products', (req, res) => {
             if (err) return res.status(500).json({ error: err.message });
 
             const packagingMap = {};
-            packagings.forEach(pack => {
+            (packagings || []).forEach(pack => {
                 if (!packagingMap[pack.variant_id]) packagingMap[pack.variant_id] = [];
-                packagingMap[pack.variant_id].push(pack);
+                if (!packagingMap[pack.variant_id].some(p => p.packaging_type_id === pack.packaging_type_id)) {
+                    packagingMap[pack.variant_id].push(pack);
+                }
             });
 
             const productsList = rows.map(row => {
@@ -456,7 +540,7 @@ app.patch('/api/products/:identifier/essential', (req, res) => {
 });
 
 app.post('/api/products', authenticateToken, requireAdmin, (req, res) => {
-    const { category_id, brand_id, name, description, variant_name, sku, barcode, base_unit_id, minimum_stock, reorder_level, is_loose_allowed, packagings, is_essential, initial_stock, opening_stock } = req.body;
+    const { category_id, brand_id, name, description, image, variant_name, sku, barcode, base_unit_id, minimum_stock, reorder_level, is_loose_allowed, packagings, is_essential, initial_stock, opening_stock } = req.body;
     const initialQty = parseFloat(initial_stock || opening_stock || req.body.initial_quantity) || 0;
 
     if (!category_id || !name || !base_unit_id) {
@@ -472,8 +556,8 @@ app.post('/api/products', authenticateToken, requireAdmin, (req, res) => {
         const productUUID = generateUUID();
 
         db.run(
-            `INSERT INTO products (uuid, category_id, brand_id, name, description, is_essential) VALUES (?, ?, ?, ?, ?, ?)`,
-            [productUUID, category_id, brand_id || null, name, description || '', is_essential ? 1 : 0],
+            `INSERT INTO products (uuid, category_id, brand_id, name, image, description, is_essential) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [productUUID, category_id, brand_id || null, name, image || null, description || '', is_essential ? 1 : 0],
             function(err) {
                 if (err) {
                     db.run("ROLLBACK");
@@ -526,6 +610,7 @@ app.post('/api/products', authenticateToken, requireAdmin, (req, res) => {
 
                         db.run("COMMIT", (err) => {
                             if (err) return res.status(500).json({ error: err.message });
+                            invalidateProductsCache();
                             logAudit(req.user.id, req.user.username, 'CREATE_PRODUCT', 'products', productId, `Created product ${name} - ${finalVariantName}`);
                             syncEngine.enqueueSync('PRODUCT', 'products', productId, req.body);
                             res.json({ success: true, productId, variantId, sku: finalSku, barcode: finalBarcode });
@@ -541,7 +626,7 @@ app.post('/api/products', authenticateToken, requireAdmin, (req, res) => {
 app.put('/api/products/:variant_id', authenticateToken, requireAdmin, (req, res) => {
     const variantId = parseInt(req.params.variant_id);
     const { 
-        name, category_id, brand_id, description, 
+        name, category_id, brand_id, description, image,
         variant_name, sku, barcode, base_unit_id, 
         minimum_stock, reorder_level, is_loose_allowed, packagings, is_essential 
     } = req.body;
@@ -560,9 +645,18 @@ app.put('/api/products/:variant_id', authenticateToken, requireAdmin, (req, res)
             db.run("BEGIN TRANSACTION");
 
             // 1. Update Product
+            let updateProductSql = `UPDATE products SET name = ?, category_id = COALESCE(?, category_id), brand_id = ?, description = ?, is_essential = COALESCE(?, is_essential)`;
+            let updateProductParams = [name.trim(), category_id || null, brand_id || null, description || '', is_essential !== undefined ? (is_essential ? 1 : 0) : null];
+            if (image !== undefined) {
+                updateProductSql += `, image = ?`;
+                updateProductParams.push(image || null);
+            }
+            updateProductSql += ` WHERE id = ?`;
+            updateProductParams.push(productId);
+
             db.run(
-                `UPDATE products SET name = ?, category_id = COALESCE(?, category_id), brand_id = ?, description = ?, is_essential = COALESCE(?, is_essential) WHERE id = ?`,
-                [name.trim(), category_id || null, brand_id || null, description || '', is_essential !== undefined ? (is_essential ? 1 : 0) : null, productId],
+                updateProductSql,
+                updateProductParams,
                 function(err) {
                     if (err) {
                         db.run("ROLLBACK");
@@ -598,38 +692,51 @@ app.put('/api/products/:variant_id', authenticateToken, requireAdmin, (req, res)
 
                             // 3. Update Packagings if provided
                             if (Array.isArray(packagings) && packagings.length > 0) {
-                                db.run("DELETE FROM product_packagings WHERE variant_id = ?", [variantId], function(err) {
-                                    if (err) {
-                                        db.run("ROLLBACK");
-                                        return res.status(500).json({ error: err.message });
+                                const incomingTypeIds = packagings.map(p => parseInt(p.packaging_type_id)).filter(Boolean);
+                                const placeholders = incomingTypeIds.map(() => '?').join(',');
+
+                                db.run(
+                                    `DELETE FROM product_packagings WHERE variant_id = ? AND packaging_type_id NOT IN (${placeholders})`,
+                                    [variantId, ...incomingTypeIds],
+                                    function(delErr) {
+                                        if (delErr) {
+                                            db.run("ROLLBACK");
+                                            return res.status(500).json({ error: delErr.message });
+                                        }
+
+                                        const packStmt = db.prepare(`
+                                            INSERT INTO product_packagings (uuid, variant_id, packaging_type_id, conversion_factor, is_default, purchase_price, selling_price, barcode)
+                                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                                            ON CONFLICT(variant_id, packaging_type_id) DO UPDATE SET
+                                                conversion_factor = excluded.conversion_factor,
+                                                is_default = excluded.is_default,
+                                                purchase_price = excluded.purchase_price,
+                                                selling_price = excluded.selling_price,
+                                                barcode = excluded.barcode
+                                        `);
+                                        packagings.forEach(p => {
+                                            packStmt.run(
+                                                generateUUID(), 
+                                                variantId, 
+                                                p.packaging_type_id, 
+                                                p.conversion_factor || 1, 
+                                                p.is_default ? 1 : 0, 
+                                                p.purchase_price || 0, 
+                                                p.selling_price || 0, 
+                                                (p.barcode && p.barcode.trim()) || barcode || sku || ''
+                                            );
+                                        });
+                                        packStmt.finalize();
+
+                                        db.run("COMMIT", (err) => {
+                                            if (err) return res.status(500).json({ error: err.message });
+                                            invalidateProductsCache();
+                                            logAudit(req.user.id, req.user.username, 'UPDATE_PRODUCT', 'products', productId, `Updated product ${name} (Variant ID: ${variantId})`);
+                                            syncEngine.enqueueSync('PRODUCT_UPDATE', 'products', productId, req.body);
+                                            res.json({ success: true, productId, variantId });
+                                        });
                                     }
-
-                                    const packStmt = db.prepare(`
-                                        INSERT INTO product_packagings (uuid, variant_id, packaging_type_id, conversion_factor, is_default, purchase_price, selling_price, barcode)
-                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                                    `);
-                                    packagings.forEach(p => {
-                                        packStmt.run(
-                                            generateUUID(), 
-                                            variantId, 
-                                            p.packaging_type_id, 
-                                            p.conversion_factor || 1, 
-                                            p.is_default ? 1 : 0, 
-                                            p.purchase_price || 0, 
-                                            p.selling_price || 0, 
-                                            (p.barcode && p.barcode.trim()) || barcode || sku || ''
-                                        );
-                                    });
-                                    packStmt.finalize();
-
-                                    db.run("COMMIT", (err) => {
-                                        if (err) return res.status(500).json({ error: err.message });
-                                        invalidateProductsCache();
-                                        logAudit(req.user.id, req.user.username, 'UPDATE_PRODUCT', 'products', productId, `Updated product ${name} (Variant ID: ${variantId})`);
-                                        syncEngine.enqueueSync('PRODUCT_UPDATE', 'products', productId, req.body);
-                                        res.json({ success: true, productId, variantId });
-                                    });
-                                });
+                                );
                             } else {
                                 db.run("COMMIT", (err) => {
                                     if (err) return res.status(500).json({ error: err.message });
@@ -759,7 +866,7 @@ app.get('/api/inventory/stock', (req, res) => {
             SELECT 
                 v.id as variant_id, v.sku, v.barcode as variant_barcode, v.variant_name, v.current_stock, v.minimum_stock, v.reorder_level, v.is_loose_allowed,
                 v.base_unit_id,
-                p.id as product_id, p.name as product_name, COALESCE(p.is_essential, 0) as is_essential,
+                p.id as product_id, p.name as product_name, p.image, COALESCE(p.is_essential, 0) as is_essential,
                 c.id as category_id, c.name as category_name, u.name as unit_name, u.symbol as unit_symbol,
                 s.quantity as base_stock, s.loose_quantity
             FROM product_variants v
@@ -787,7 +894,9 @@ app.get('/api/inventory/stock', (req, res) => {
                 const packagingMap = {};
                 (packagings || []).forEach(pack => {
                     if (!packagingMap[pack.variant_id]) packagingMap[pack.variant_id] = [];
-                    packagingMap[pack.variant_id].push(pack);
+                    if (!packagingMap[pack.variant_id].some(p => p.packaging_type_id === pack.packaging_type_id)) {
+                        packagingMap[pack.variant_id].push(pack);
+                    }
                 });
                 const stockList = rows.map(row => ({
                     ...row,
@@ -828,7 +937,7 @@ app.get('/api/inventory/stock', (req, res) => {
             SELECT 
                 v.id as variant_id, v.sku, v.barcode as variant_barcode, v.variant_name, v.current_stock, v.minimum_stock, v.reorder_level, v.is_loose_allowed,
                 v.base_unit_id,
-                p.id as product_id, p.name as product_name, COALESCE(p.is_essential, 0) as is_essential,
+                p.id as product_id, p.name as product_name, p.image, COALESCE(p.is_essential, 0) as is_essential,
                 c.id as category_id, c.name as category_name, u.name as unit_name, u.symbol as unit_symbol,
                 s.quantity as base_stock, s.loose_quantity
             FROM product_variants v
@@ -869,7 +978,9 @@ app.get('/api/inventory/stock', (req, res) => {
                 const packagingMap = {};
                 (packagings || []).forEach(pack => {
                     if (!packagingMap[pack.variant_id]) packagingMap[pack.variant_id] = [];
-                    packagingMap[pack.variant_id].push(pack);
+                    if (!packagingMap[pack.variant_id].some(p => p.packaging_type_id === pack.packaging_type_id)) {
+                        packagingMap[pack.variant_id].push(pack);
+                    }
                 });
                 const stockList = rows.map(row => ({
                     ...row,
@@ -4862,18 +4973,6 @@ app.listen(PORT, () => {
             console.error('[WhatsApp Service] Startup init failed:', e.message);
         }
     }, 1000);
-
-    // Initial background two-way sync on startup (after 4s)
-    setTimeout(() => {
-        syncEngine.processTwoWaySync().catch(err => {
-            console.warn('[SyncEngine Auto] Initial cloud sync note:', err.message);
-        });
-    }, 4000);
-
-    // Recurring two-way background sync based on user settings
-    syncEngine.restartAutoSyncScheduler().catch(err => {
-        console.warn('[SyncEngine Auto] Scheduler init note:', err.message);
-    });
 
     // Startup database optimization (15s after boot)
     setTimeout(() => {
