@@ -1339,66 +1339,75 @@ export default function POSPage() {
                                         <div
                                             key={product.variant_id}
                                             onClick={() => handleAddToCart(product, defaultPack)}
-                                            className="bg-white border border-gray-200 hover:border-blue-400 rounded-xl p-2 flex flex-col justify-between cursor-pointer hover:shadow-md transition-all group relative overflow-hidden"
+                                            className="bg-white border border-gray-200 hover:border-blue-500 rounded-2xl flex flex-col justify-between cursor-pointer hover:shadow-lg transition-all group relative overflow-hidden"
                                         >
-                                            {/* Card Header: Category */}
-                                            <div>
-                                                <div className="flex items-center justify-between gap-1 mb-1 min-w-0">
-                                                    <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider truncate">
+                                            {/* Full-Width Product Image Header (Flush Edge-to-Edge) */}
+                                            <div className="relative w-full h-36 sm:h-40 bg-gray-50 overflow-hidden border-b border-gray-100 flex items-center justify-center shrink-0">
+                                                {/* Low Badge on top-left of image */}
+                                                {isLowStock && (
+                                                    <span className="absolute top-2 left-2 z-10 px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-wider bg-rose-600 text-white shadow-xs">
+                                                        Low Stock
+                                                    </span>
+                                                )}
+
+                                                {/* Category Badge on top-right of image */}
+                                                {product.category_name && (
+                                                    <span
+                                                        title={product.category_name}
+                                                        className="absolute top-2 right-2 z-10 px-2 py-0.5 rounded-md text-[8px] font-bold uppercase tracking-wider bg-white/90 backdrop-blur-md text-gray-600 border border-gray-200/70 shadow-2xs truncate max-w-[55%]"
+                                                    >
                                                         {product.category_name}
                                                     </span>
-                                                </div>
+                                                )}
 
-                                                {/* Product Image Tile with Overlay Badges */}
-                                                <div className="relative h-28 w-full rounded-lg overflow-hidden bg-gray-50/40 my-1 shrink-0 border border-gray-100 p-1 flex items-center justify-center shadow-2xs group-hover:border-blue-300 transition-colors">
-                                                    {/* Low Badge on top-left of image */}
-                                                    {isLowStock && (
-                                                        <span className="absolute top-1.5 left-1.5 z-10 px-1.5 py-0.5 rounded text-[7.5px] font-black bg-rose-100 text-rose-700 border border-rose-200 shadow-2xs">
-                                                            Low
-                                                        </span>
-                                                    )}
+                                                {/* Stock Badge on bottom-left of image */}
+                                                <span
+                                                    title={formattedStock}
+                                                    className={`absolute bottom-2 left-2 z-10 text-[8.5px] font-bold px-2 py-0.5 rounded-md leading-tight truncate max-w-[90%] shadow-2xs backdrop-blur-md ${product.current_stock <= 0
+                                                        ? 'text-rose-700 bg-white/95 border border-rose-200'
+                                                        : isLowStock
+                                                            ? 'text-amber-800 bg-white/95 border border-amber-200'
+                                                            : 'text-emerald-800 bg-white/95 border border-emerald-200'
+                                                        }`}
+                                                >
+                                                    {formattedStock}
+                                                </span>
 
-                                                    {/* Stock Badge on bottom-left of image */}
-                                                    <span
-                                                        title={formattedStock}
-                                                        className={`absolute bottom-1.5 left-1.5 z-10 text-[8px] font-bold px-1.5 py-0.5 rounded-md leading-tight truncate max-w-[92%] shadow-2xs backdrop-blur-xs ${product.current_stock <= 0
-                                                            ? 'text-rose-700 bg-white/95 border border-rose-200'
-                                                            : isLowStock
-                                                                ? 'text-amber-800 bg-white/95 border border-amber-200'
-                                                                : 'text-emerald-800 bg-white/95 border border-emerald-200'
-                                                            }`}
-                                                    >
-                                                        {formattedStock}
-                                                    </span>
-
-                                                    {/* Product Image or Fallback */}
-                                                    {product.image ? (
-                                                        <img
-                                                            src={resolveMediaUrl(product.image)}
-                                                            alt={product.product_name}
-                                                            className="max-h-full max-w-full object-contain group-hover:scale-105 transition-transform duration-300"
-                                                            style={{ imageRendering: '-webkit-optimize-contrast' }}
-                                                            onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                                                        />
-                                                    ) : (
-                                                        <div className="flex items-center justify-center text-gray-300">
-                                                            <IconBox className="w-8 h-8 opacity-30" />
-                                                        </div>
-                                                    )}
-                                                </div>
-
-                                                {/* Product Title & Variant */}
-                                                <h3 className="font-bold text-gray-900 text-xs group-hover:text-[#0B3B7B] transition-colors truncate leading-snug">
-                                                    {product.product_name}
-                                                </h3>
-                                                <div className="text-[9px] text-gray-500 font-medium truncate mt-0.5">
-                                                    Variant: <span className="font-medium text-gray-800">{product.variant_name}</span>
-                                                </div>
+                                                {/* Product Image (Full Width & Clear Look) or Fallback */}
+                                                {product.image ? (
+                                                    <img
+                                                        src={resolveMediaUrl(product.image)}
+                                                        alt={product.product_name}
+                                                        className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-300 select-none"
+                                                        style={{ imageRendering: '-webkit-optimize-contrast' }}
+                                                        onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                                    />
+                                                ) : (
+                                                    <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-50 to-gray-100 text-gray-300">
+                                                        <IconBox className="w-10 h-10 opacity-30 text-gray-400" />
+                                                    </div>
+                                                )}
                                             </div>
 
-                                            {/* Packaging Options & Direct Add-to-Cart Action */}
-                                            <div className="mt-2 pt-1.5 border-t border-gray-100">
-                                                <div className={`grid ${packagingsList.length === 1 ? 'grid-cols-1' : packagingsList.length === 2 ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-3'} gap-1`}>
+                                            {/* Card Body: Title, Variant & Packaging Tiers */}
+                                            <div className="p-2.5 flex flex-col justify-between flex-1">
+                                                <div>
+                                                    {/* Product Title */}
+                                                    <h3
+                                                        className="font-bold text-gray-900 text-xs sm:text-[13px] group-hover:text-blue-700 transition-colors truncate leading-snug"
+                                                        title={product.product_name}
+                                                    >
+                                                        {product.product_name}
+                                                    </h3>
+                                                    {/* Variant */}
+                                                    <div className="text-[9.5px] text-gray-500 font-medium truncate mt-0.5">
+                                                        Variant: <span className="font-semibold text-gray-800">{product.variant_name}</span>
+                                                    </div>
+                                                </div>
+
+                                                {/* Packaging Options & Direct Add-to-Cart Action */}
+                                                <div className="mt-2 pt-2 border-t border-gray-100">
+                                                    <div className={`grid ${packagingsList.length === 1 ? 'grid-cols-1' : packagingsList.length === 2 ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-3'} gap-1.5`}>
                                                     {packagingsList.map((pack) => {
                                                         const packTypeId = pack.packaging_type_id || pack.id;
                                                         const specialPrice = (partyType === 'customer')
@@ -1461,6 +1470,7 @@ export default function POSPage() {
                                                 </div>
                                             </div>
                                         </div>
+                                    </div>
                                     );
                                 })
                             )}
