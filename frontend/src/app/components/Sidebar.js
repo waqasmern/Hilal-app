@@ -8,7 +8,7 @@ import {
     IconPOS, IconProducts, IconInventory,
     IconPurchases, IconSales, IconCustomers, IconSuppliers,
     IconPayments, IconExpenses, IconReports,
-    IconSync, IconUsersAudit, IconSettings, IconLogout, IconX
+    IconSync, IconUsersAudit, IconSettings, IconLogout, IconX, IconBackup
 } from './Icons';
 
 export default function Sidebar() {
@@ -59,6 +59,7 @@ export default function Sidebar() {
         { label: 'Payments', href: '/payments', icon: IconPayments },
         { label: 'Expenses', href: '/expenses', icon: IconExpenses },
         { label: 'Reports', href: '/reports', icon: IconReports },
+        { label: 'Backup', href: '/backup', icon: IconBackup },
         { label: 'Users & Audit', href: '/users', icon: IconUsersAudit },
         { label: 'Settings', href: '/settings', icon: IconSettings },
     ];

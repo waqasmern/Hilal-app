@@ -1339,13 +1339,13 @@ export default function POSPage() {
                                         <div
                                             key={product.variant_id}
                                             onClick={() => handleAddToCart(product, defaultPack)}
-                                            className="bg-white border border-gray-200 hover:border-blue-500 rounded-2xl flex flex-col justify-between cursor-pointer hover:shadow-lg transition-all group relative overflow-hidden"
+                                            className="bg-white border border-gray-200 hover:border-blue-500 rounded-xl flex flex-col justify-between cursor-pointer hover:shadow-md transition-all group relative overflow-hidden"
                                         >
-                                            {/* Full-Width Product Image Header (Flush Edge-to-Edge) */}
-                                            <div className="relative w-full h-36 sm:h-40 bg-gray-50 overflow-hidden border-b border-gray-100 flex items-center justify-center shrink-0">
+                                            {/* Full-Width Product Image Header (Compact Height for Maximum Visible Items) */}
+                                            <div className="relative w-full h-20 sm:h-24 bg-gray-50 overflow-hidden border-b border-gray-100 flex items-center justify-center shrink-0">
                                                 {/* Low Badge on top-left of image */}
                                                 {isLowStock && (
-                                                    <span className="absolute top-2 left-2 z-10 px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-wider bg-rose-600 text-white shadow-xs">
+                                                    <span className="absolute top-1.5 left-1.5 z-10 px-1.5 py-0.5 rounded text-[7.5px] font-black uppercase tracking-wider bg-rose-600 text-white shadow-2xs">
                                                         Low Stock
                                                     </span>
                                                 )}
@@ -1354,7 +1354,7 @@ export default function POSPage() {
                                                 {product.category_name && (
                                                     <span
                                                         title={product.category_name}
-                                                        className="absolute top-2 right-2 z-10 px-2 py-0.5 rounded-md text-[8px] font-bold uppercase tracking-wider bg-white/90 backdrop-blur-md text-gray-600 border border-gray-200/70 shadow-2xs truncate max-w-[55%]"
+                                                        className="absolute top-1.5 right-1.5 z-10 px-1.5 py-0.5 rounded text-[7.5px] font-bold uppercase tracking-wider bg-white/90 backdrop-blur-md text-gray-600 border border-gray-200/70 shadow-2xs truncate max-w-[55%]"
                                                     >
                                                         {product.category_name}
                                                     </span>
@@ -1363,7 +1363,7 @@ export default function POSPage() {
                                                 {/* Stock Badge on bottom-left of image */}
                                                 <span
                                                     title={formattedStock}
-                                                    className={`absolute bottom-2 left-2 z-10 text-[8.5px] font-bold px-2 py-0.5 rounded-md leading-tight truncate max-w-[90%] shadow-2xs backdrop-blur-md ${product.current_stock <= 0
+                                                    className={`absolute bottom-1.5 left-1.5 z-10 text-[8px] font-bold px-1.5 py-0.5 rounded leading-tight truncate max-w-[90%] shadow-2xs backdrop-blur-md ${product.current_stock <= 0
                                                         ? 'text-rose-700 bg-white/95 border border-rose-200'
                                                         : isLowStock
                                                             ? 'text-amber-800 bg-white/95 border border-amber-200'
@@ -1384,29 +1384,29 @@ export default function POSPage() {
                                                     />
                                                 ) : (
                                                     <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-50 to-gray-100 text-gray-300">
-                                                        <IconBox className="w-10 h-10 opacity-30 text-gray-400" />
+                                                        <IconBox className="w-7 h-7 opacity-30 text-gray-400" />
                                                     </div>
                                                 )}
                                             </div>
 
                                             {/* Card Body: Title, Variant & Packaging Tiers */}
-                                            <div className="p-2.5 flex flex-col justify-between flex-1">
+                                            <div className="p-2 flex flex-col justify-between flex-1">
                                                 <div>
                                                     {/* Product Title */}
                                                     <h3
-                                                        className="font-bold text-gray-900 text-xs sm:text-[13px] group-hover:text-blue-700 transition-colors truncate leading-snug"
+                                                        className="font-bold text-gray-900 text-xs sm:text-[12.5px] group-hover:text-blue-700 transition-colors truncate leading-snug"
                                                         title={product.product_name}
                                                     >
                                                         {product.product_name}
                                                     </h3>
                                                     {/* Variant */}
-                                                    <div className="text-[9.5px] text-gray-500 font-medium truncate mt-0.5">
+                                                    <div className="text-[9px] text-gray-500 font-medium truncate mt-0.5">
                                                         Variant: <span className="font-semibold text-gray-800">{product.variant_name}</span>
                                                     </div>
                                                 </div>
 
                                                 {/* Packaging Options & Direct Add-to-Cart Action */}
-                                                <div className="mt-2 pt-2 border-t border-gray-100">
+                                                <div className="mt-1.5 pt-1.5 border-t border-gray-100">
                                                     <div className={`grid ${packagingsList.length === 1 ? 'grid-cols-1' : packagingsList.length === 2 ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-3'} gap-1.5`}>
                                                     {packagingsList.map((pack) => {
                                                         const packTypeId = pack.packaging_type_id || pack.id;

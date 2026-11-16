@@ -11,6 +11,7 @@ const syncEngine = require('./syncEngine');
 const whatsappService = require('./services/whatsappService');
 const reminderService = require('./services/reminderService');
 const schedulerService = require('./services/schedulerService');
+const emailService = require('./services/emailService');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -4000,7 +4001,48 @@ app.get('/api/reports/financial-summary', (req, res) => {
     `;
 
     const qRecoveredDues = `
-        SELECT IFNULL(SUM(p.amount), 0) as recovered_dues
+        SELECT 
+            IFNULL(SUM(p.amount), 0) as recovered_dues,
+            IFNULL(SUM(
+                p.amount * (
+                    CASE 
+                        -- 1. Exact match on sale invoice
+                        WHEN s.id IS NOT NULL AND s.net_amount > 0 THEN
+                            MAX(0.0, (s.net_amount - COALESCE((
+                                SELECT SUM(si.quantity * COALESCE(pp.purchase_price, (SELECT pp2.purchase_price FROM product_packagings pp2 WHERE pp2.variant_id = si.variant_id AND pp2.is_default = 1 LIMIT 1), 0))
+                                FROM sale_items si
+                                LEFT JOIN product_packagings pp ON pp.variant_id = si.variant_id AND pp.packaging_type_id = si.packaging_type_id
+                                WHERE si.sale_id = s.id
+                            ), 0)) * 1.0 / s.net_amount)
+
+                        -- 2. Customer average margin if no invoice match
+                        ELSE COALESCE(
+                            (
+                                SELECT (SUM(cs.net_amount) - SUM(COALESCE((
+                                    SELECT SUM(csi.quantity * COALESCE(cpp.purchase_price, (SELECT cpp2.purchase_price FROM product_packagings cpp2 WHERE cpp2.variant_id = csi.variant_id AND cpp2.is_default = 1 LIMIT 1), 0))
+                                    FROM sale_items csi
+                                    LEFT JOIN product_packagings cpp ON cpp.variant_id = csi.variant_id AND cpp.packaging_type_id = csi.packaging_type_id
+                                    WHERE csi.sale_id = cs.id
+                                ), 0))) * 1.0 / NULLIF(SUM(cs.net_amount), 0)
+                                FROM sales cs 
+                                WHERE cs.customer_id = p.party_id AND cs.status = 'completed' AND cs.net_amount > 0
+                            ),
+                            -- 3. Store-wide historical average margin
+                            (
+                                SELECT (SUM(asale.net_amount) - SUM(COALESCE((
+                                    SELECT SUM(asi.quantity * COALESCE(app.purchase_price, (SELECT app2.purchase_price FROM product_packagings app2 WHERE app2.variant_id = asi.variant_id AND app2.is_default = 1 LIMIT 1), 0))
+                                    FROM sale_items asi
+                                    LEFT JOIN product_packagings app ON app.variant_id = asi.variant_id AND app.packaging_type_id = asi.packaging_type_id
+                                    WHERE asi.sale_id = asale.id
+                                ), 0))) * 1.0 / NULLIF(SUM(asale.net_amount), 0)
+                                FROM sales asale 
+                                WHERE asale.status = 'completed' AND asale.net_amount > 0
+                            ),
+                            0.15
+                        )
+                    END
+                )
+            ), 0) as recovered_dues_profit
         FROM payments p
         LEFT JOIN sales s ON p.reference_no = s.invoice_no
         WHERE p.party_type = 'customer' 
@@ -4073,8 +4115,7 @@ app.get('/api/reports/financial-summary', (req, res) => {
                         const totalCogs = salesRow ? Math.round(Number(salesRow.total_cogs) || 0) : 0;
                         const totalProfit = salesRow ? Math.round(Number(salesRow.total_profit) || 0) : 0;
                         const pendingProfit = salesRow ? Math.round(Number(salesRow.pending_profit) || 0) : 0;
-                        const overallMargin = netSale > 0 ? (totalProfit / netSale) : 0.15;
-                        const recoveredDuesProfit = Math.round(recoveredDues * overallMargin);
+                        const recoveredDuesProfit = recRow ? Math.round(Number(recRow.recovered_dues_profit) || 0) : 0;
                         const grossRealizedProfit = Math.round(totalProfit - pendingProfit + recoveredDuesProfit);
 
                         // User formula:
@@ -4960,6 +5001,290 @@ app.post('/api/system/browse-folder', authenticateToken, requireAdmin, (req, res
         }
         res.json({ canceled: false, folderPath: stdout.trim() });
     });
+});
+
+// ─── COMPREHENSIVE BACKUP & NODEMAILER ONLINE BACKUP ENGINE ─────────────────
+// 1. Backup Status Overview
+app.get('/api/backup/status', authenticateToken, requireAdmin, (req, res) => {
+    const currentDbPath = db.filename || path.join(__dirname, 'wholesale.db');
+    let dbSize = 0;
+    try {
+        if (fs.existsSync(currentDbPath)) dbSize = fs.statSync(currentDbPath).size;
+    } catch (e) {}
+
+    const folder = backupDir;
+    let localFiles = [];
+    if (fs.existsSync(folder)) {
+        localFiles = fs.readdirSync(folder).filter(f => f.endsWith('.db')).map(f => {
+            const stats = fs.statSync(path.join(folder, f));
+            return { fileName: f, size: stats.size, createdAt: stats.birthtime, path: path.join(folder, f) };
+        }).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    }
+
+    db.get(`
+        SELECT 
+            (SELECT COUNT(*) FROM sales) as totalSales,
+            (SELECT COUNT(*) FROM customers) as totalCustomers,
+            (SELECT COUNT(*) FROM products) as totalProducts
+    `, [], (err, counts) => {
+        db.all("SELECT key, value FROM settings WHERE key LIKE 'backup_email_%' OR key = 'backup_last_email_sent_at' OR key = 'shop_name'", [], (sErr, settingsRows) => {
+            const map = {};
+            (settingsRows || []).forEach(r => { map[r.key] = r.value; });
+
+            res.json({
+                dbPath: currentDbPath,
+                dbSize,
+                dbSizeFormatted: (dbSize / (1024 * 1024)).toFixed(2) + ' MB',
+                totalSales: counts?.totalSales || 0,
+                totalCustomers: counts?.totalCustomers || 0,
+                totalProducts: counts?.totalProducts || 0,
+                localBackupsCount: localFiles.length,
+                lastLocalBackup: localFiles[0] || null,
+                lastEmailBackupAt: map['backup_last_email_sent_at'] || null,
+                emailConfigured: !!(map['backup_email_user'] && map['backup_email_pass']),
+                recipientEmail: map['backup_email_recipient'] || map['backup_email_user'] || '',
+                senderEmail: map['backup_email_user'] || '',
+                service: map['backup_email_service'] || 'gmail',
+                shopName: map['shop_name'] || 'Hilal Foods Solutions'
+            });
+        });
+    });
+});
+
+// 2. Get Email Settings
+app.get('/api/backup/settings', authenticateToken, requireAdmin, (req, res) => {
+    db.all("SELECT key, value FROM settings WHERE key LIKE 'backup_email_%' OR key = 'backup_last_email_sent_at'", [], (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        const map = {};
+        (rows || []).forEach(r => { map[r.key] = r.value; });
+        res.json({
+            service: map['backup_email_service'] || 'gmail',
+            host: map['backup_email_host'] || 'smtp.gmail.com',
+            port: map['backup_email_port'] || '465',
+            secure: map['backup_email_secure'] !== 'false',
+            user: map['backup_email_user'] || '',
+            recipient: map['backup_email_recipient'] || '',
+            autoEnabled: map['backup_email_auto_enabled'] === 'true',
+            hasPassword: !!map['backup_email_pass'],
+            lastEmailBackupAt: map['backup_last_email_sent_at'] || null
+        });
+    });
+});
+
+// 3. Save Email Settings
+app.post('/api/backup/settings', authenticateToken, requireAdmin, (req, res) => {
+    const { service, host, port, secure, user, pass, recipient, autoEnabled } = req.body;
+    
+    const updates = [
+        ['backup_email_service', service || 'gmail'],
+        ['backup_email_host', host || 'smtp.gmail.com'],
+        ['backup_email_port', String(port || '465')],
+        ['backup_email_secure', String(secure !== false)],
+        ['backup_email_user', (user || '').trim()],
+        ['backup_email_recipient', (recipient || '').trim()],
+        ['backup_email_auto_enabled', String(autoEnabled === true)]
+    ];
+
+    if (pass && pass.trim()) {
+        updates.push(['backup_email_pass', pass.trim()]);
+    }
+
+    const stmt = db.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value");
+    db.serialize(() => {
+        updates.forEach(([k, v]) => stmt.run(k, v));
+        stmt.finalize((err) => {
+            if (err) return res.status(500).json({ error: err.message });
+            logAudit(req.user.id, req.user.username, 'UPDATE_BACKUP_SETTINGS', 'settings', null, `Updated email backup settings (service: ${service}, user: ${user})`);
+            res.json({ success: true, message: 'Backup email settings saved successfully' });
+        });
+    });
+});
+
+// 4. Test Email Connection
+app.post('/api/backup/test-email', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { service, host, port, secure, user, pass, recipient } = req.body;
+
+        let emailUser = user;
+        let emailPass = pass;
+        let emailHost = host;
+        let emailPort = port;
+        let emailSecure = secure;
+        let emailServiceType = service;
+        let emailRecipient = recipient;
+
+        // If password not passed in body, fetch saved password from settings
+        if (!emailPass) {
+            const savedSettings = await new Promise((resolve) => {
+                db.all("SELECT key, value FROM settings WHERE key LIKE 'backup_email_%'", [], (e, rows) => {
+                    const m = {};
+                    (rows || []).forEach(r => { m[r.key] = r.value; });
+                    resolve(m);
+                });
+            });
+            emailPass = savedSettings['backup_email_pass'] || '';
+            if (!emailUser) emailUser = savedSettings['backup_email_user'] || '';
+            if (!emailRecipient) emailRecipient = savedSettings['backup_email_recipient'] || emailUser;
+            if (!emailServiceType) emailServiceType = savedSettings['backup_email_service'] || 'gmail';
+            if (!emailHost) emailHost = savedSettings['backup_email_host'] || 'smtp.gmail.com';
+            if (!emailPort) emailPort = savedSettings['backup_email_port'] || '465';
+        }
+
+        if (!emailUser || !emailPass) {
+            return res.status(400).json({ error: 'Sender email and App Password are required to test connection.' });
+        }
+
+        const config = {
+            service: emailServiceType || 'gmail',
+            host: emailHost || 'smtp.gmail.com',
+            port: parseInt(emailPort, 10) || 465,
+            secure: emailSecure !== false,
+            user: emailUser,
+            pass: emailPass
+        };
+
+        await emailService.sendTestEmail(config, emailRecipient || emailUser);
+        logAudit(req.user.id, req.user.username, 'TEST_EMAIL_BACKUP', 'system', null, `Sent test email to ${emailRecipient || emailUser}`);
+        res.json({ success: true, message: `Test email sent successfully to ${emailRecipient || emailUser}!` });
+    } catch (err) {
+        console.error('[Backup Email Test Error]:', err);
+        res.status(500).json({ error: err.message || 'Failed to send test email' });
+    }
+});
+
+// 5. Send Live Database Backup via Email (Nodemailer)
+app.post('/api/backup/send-email', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { recipient: reqRecipient, customNotes } = req.body || {};
+
+        // 1. Fetch saved SMTP config and shop summary
+        const [savedSettings, counts] = await Promise.all([
+            new Promise(resolve => {
+                db.all("SELECT key, value FROM settings WHERE key LIKE 'backup_email_%' OR key = 'shop_name'", [], (e, rows) => {
+                    const m = {};
+                    (rows || []).forEach(r => { m[r.key] = r.value; });
+                    resolve(m);
+                });
+            }),
+            new Promise(resolve => {
+                db.get(`
+                    SELECT 
+                        (SELECT COUNT(*) FROM sales) as totalSales,
+                        (SELECT COUNT(*) FROM customers) as totalCustomers,
+                        (SELECT COUNT(*) FROM products) as totalProducts
+                `, [], (e, r) => resolve(r || {}));
+            })
+        ]);
+
+        const emailUser = savedSettings['backup_email_user'];
+        const emailPass = savedSettings['backup_email_pass'];
+        const emailRecipient = reqRecipient || savedSettings['backup_email_recipient'] || emailUser;
+
+        if (!emailUser || !emailPass) {
+            return res.status(400).json({ 
+                error: 'Email settings not configured. Please enter your Sender Email and App Password in the Email Settings section.' 
+            });
+        }
+
+        if (!emailRecipient) {
+            return res.status(400).json({ error: 'Recipient email address is required.' });
+        }
+
+        // 2. Create fresh database snapshot in Backups folder
+        const now = new Date();
+        const timestamp = now.toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        const backupFileName = `wholesale-backup-${timestamp}.db`;
+        const targetPath = path.join(backupDir, backupFileName);
+        const currentDbPath = db.filename || path.join(__dirname, 'wholesale.db');
+
+        await new Promise((resolve, reject) => {
+            db.run('VACUUM INTO ?', [targetPath], (vErr) => {
+                if (!vErr && fs.existsSync(targetPath)) return resolve();
+                fs.copyFile(currentDbPath, targetPath, (cErr) => {
+                    if (cErr) return reject(cErr);
+                    resolve();
+                });
+            });
+        });
+
+        const fileStats = fs.statSync(targetPath);
+        const sizeFormatted = fileStats.size > 1024 * 1024 
+            ? `${(fileStats.size / (1024 * 1024)).toFixed(2)} MB`
+            : `${(fileStats.size / 1024).toFixed(1)} KB`;
+
+        // 3. Send via Nodemailer
+        const emailConfig = {
+            service: savedSettings['backup_email_service'] || 'gmail',
+            host: savedSettings['backup_email_host'] || 'smtp.gmail.com',
+            port: parseInt(savedSettings['backup_email_port'], 10) || 465,
+            secure: savedSettings['backup_email_secure'] !== 'false',
+            user: emailUser,
+            pass: emailPass
+        };
+
+        await emailService.sendBackupEmail(emailConfig, emailRecipient, targetPath, {
+            shop_name: savedSettings['shop_name'] || 'Hilal Foods Solutions',
+            totalSales: counts.totalSales,
+            totalCustomers: counts.totalCustomers,
+            totalProducts: counts.totalProducts,
+            customNotes
+        });
+
+        // 4. Update last sent timestamp
+        const nowIso = new Date().toISOString();
+        db.run("INSERT INTO settings (key, value) VALUES ('backup_last_email_sent_at', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", [nowIso]);
+        logAudit(req.user.id, req.user.username, 'SEND_EMAIL_BACKUP', 'system', null, `Sent backup ${backupFileName} (${sizeFormatted}) to ${emailRecipient}`);
+
+        res.json({
+            success: true,
+            message: `Database backup (${sizeFormatted}) successfully sent to ${emailRecipient}!`,
+            fileName: backupFileName,
+            filePath: targetPath,
+            size: fileStats.size,
+            sizeFormatted,
+            recipient: emailRecipient,
+            sentAt: nowIso
+        });
+    } catch (err) {
+        console.error('[Send Backup Email Error]:', err);
+        res.status(500).json({ error: err.message || 'Failed to send backup email' });
+    }
+});
+
+// 6. Direct Browser Download of Backup File
+app.get('/api/backup/download/:fileName', (req, res) => {
+    const rawFileName = req.params.fileName;
+    const safeFileName = path.basename(rawFileName);
+    const filePath = path.join(backupDir, safeFileName);
+
+    if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ error: 'Requested backup file not found.' });
+    }
+
+    res.download(filePath, safeFileName, (err) => {
+        if (err) {
+            console.error('[Backup Download Error]:', err);
+            if (!res.headersSent) res.status(500).json({ error: err.message });
+        }
+    });
+});
+
+// 7. Delete Local Backup File
+app.delete('/api/backup/:fileName', authenticateToken, requireAdmin, (req, res) => {
+    const safeFileName = path.basename(req.params.fileName);
+    const filePath = path.join(backupDir, safeFileName);
+
+    if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ error: 'Backup file not found.' });
+    }
+
+    try {
+        fs.unlinkSync(filePath);
+        logAudit(req.user.id, req.user.username, 'DELETE_BACKUP', 'system', null, safeFileName);
+        res.json({ success: true, message: `Backup file ${safeFileName} deleted successfully.` });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 app.listen(PORT, () => {

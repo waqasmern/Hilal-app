@@ -465,9 +465,17 @@ export default function ReportsPage() {
             return acc;
         }, 0)
     );
-    const overallProfitMargin = totalSale > 0 ? (totalProfit / totalSale) : 0.15;
-    const recoveredDuesProfit = Number(financialSummary?.recoveredDuesProfit ?? Math.round(recoveredDues * overallProfitMargin));
-    const grossRealizedProfit = Number(financialSummary?.grossRealizedProfit ?? Math.round(totalProfit - pendingProfit + recoveredDuesProfit));
+    const overallProfitMargin = totalSale > 0 ? (totalProfit / totalSale) : 0;
+    const recoveredDuesProfit = Number(
+        financialSummary?.recoveredDuesProfit !== undefined
+            ? financialSummary.recoveredDuesProfit
+            : Math.round(recoveredDues * overallProfitMargin)
+    );
+    const grossRealizedProfit = Number(
+        financialSummary?.grossRealizedProfit !== undefined
+            ? financialSummary.grossRealizedProfit
+            : Math.round(totalProfit - pendingProfit + recoveredDuesProfit)
+    );
 
     return (
         <div className="space-y-5 sm:space-y-6 pb-12">
