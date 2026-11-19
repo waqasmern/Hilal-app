@@ -24,6 +24,8 @@ export default function SettingsPage() {
         shop_ntn: '1234567-8',
         currency_symbol: 'Rs.',
         shop_logo: '',
+        receipt_logo_width: '130',
+        receipt_logo_height: '42',
         bank_accounts: JSON.stringify([
             {
                 bank_name: 'Meezan Bank',
@@ -693,13 +695,17 @@ export default function SettingsPage() {
                         </div>
 
                         <div className="flex flex-col sm:flex-row items-center gap-4">
-                            {/* Live Logo Preview Box */}
-                            <div className="w-24 h-24 rounded-xl border-2 border-dashed border-gray-300 bg-white flex items-center justify-center p-1 overflow-hidden shrink-0 shadow-2xs">
+                            {/* Live Logo Preview Box with Dynamic Sizing */}
+                            <div className="min-w-28 min-h-24 max-w-64 max-h-36 rounded-xl border-2 border-dashed border-gray-300 bg-white flex items-center justify-center p-2 overflow-hidden shrink-0 shadow-2xs">
                                 {settings.shop_logo ? (
                                     <img 
                                         src={settings.shop_logo} 
                                         alt="Shop Logo Preview" 
-                                        className="w-full h-full object-contain"
+                                        style={{
+                                            maxWidth: `${parseInt(settings.receipt_logo_width) || 130}px`,
+                                            maxHeight: `${parseInt(settings.receipt_logo_height) || 42}px`,
+                                            objectFit: 'contain'
+                                        }}
                                     />
                                 ) : (
                                     <div className="text-center p-2">
@@ -726,6 +732,122 @@ export default function SettingsPage() {
                                 <p className="text-[10px] text-gray-400">
                                     Recommended: PNG or JPG with transparent or white background. Max size: 5MB.
                                 </p>
+                            </div>
+                        </div>
+
+                        {/* Dynamic Logo Dimensions for Receipts & Invoices */}
+                        <div className="mt-4 pt-3.5 border-t border-gray-100 space-y-3">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <h4 className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
+                                        <span>Receipt Logo Dimensions (سائز)</span>
+                                    </h4>
+                                    <p className="text-[10.5px] text-gray-400">
+                                        Customize the logo width &amp; height on printed thermal slips &amp; preview.
+                                    </p>
+                                </div>
+                                <span className="text-[11px] font-mono font-bold bg-navy-50 text-navy-800 border border-navy-200 px-2.5 py-0.5 rounded-lg shadow-2xs">
+                                    {settings.receipt_logo_width || 130}px × {settings.receipt_logo_height || 42}px
+                                </span>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                                {/* Width Slider & Input */}
+                                <div className="bg-gray-50/80 p-2.5 rounded-xl border border-gray-200 space-y-1.5">
+                                    <div className="flex justify-between items-center text-xs">
+                                        <span className="font-bold text-gray-700">Logo Width (چوڑائی):</span>
+                                        <div className="flex items-center gap-1">
+                                            <input
+                                                type="number"
+                                                min="40"
+                                                max="240"
+                                                value={settings.receipt_logo_width || 130}
+                                                onChange={(e) => setSettings(prev => ({ ...prev, receipt_logo_width: e.target.value }))}
+                                                className="w-16 px-1.5 py-0.5 border border-gray-300 rounded text-right font-mono text-xs font-bold bg-white focus:outline-navy-900"
+                                            />
+                                            <span className="text-[10px] text-gray-500 font-semibold">px</span>
+                                        </div>
+                                    </div>
+                                    <input
+                                        type="range"
+                                        min="40"
+                                        max="240"
+                                        step="5"
+                                        value={settings.receipt_logo_width || 130}
+                                        onChange={(e) => setSettings(prev => ({ ...prev, receipt_logo_width: e.target.value }))}
+                                        className="w-full accent-navy-900 cursor-pointer"
+                                    />
+                                    <div className="flex justify-between text-[9px] text-gray-400">
+                                        <span>Narrow (40px)</span>
+                                        <span>Standard (130px)</span>
+                                        <span>Full Wide (240px)</span>
+                                    </div>
+                                </div>
+
+                                {/* Height Slider & Input */}
+                                <div className="bg-gray-50/80 p-2.5 rounded-xl border border-gray-200 space-y-1.5">
+                                    <div className="flex justify-between items-center text-xs">
+                                        <span className="font-bold text-gray-700">Logo Height (اونچائی):</span>
+                                        <div className="flex items-center gap-1">
+                                            <input
+                                                type="number"
+                                                min="20"
+                                                max="140"
+                                                value={settings.receipt_logo_height || 42}
+                                                onChange={(e) => setSettings(prev => ({ ...prev, receipt_logo_height: e.target.value }))}
+                                                className="w-16 px-1.5 py-0.5 border border-gray-300 rounded text-right font-mono text-xs font-bold bg-white focus:outline-navy-900"
+                                            />
+                                            <span className="text-[10px] text-gray-500 font-semibold">px</span>
+                                        </div>
+                                    </div>
+                                    <input
+                                        type="range"
+                                        min="20"
+                                        max="140"
+                                        step="2"
+                                        value={settings.receipt_logo_height || 42}
+                                        onChange={(e) => setSettings(prev => ({ ...prev, receipt_logo_height: e.target.value }))}
+                                        className="w-full accent-navy-900 cursor-pointer"
+                                    />
+                                    <div className="flex justify-between text-[9px] text-gray-400">
+                                        <span>Short (20px)</span>
+                                        <span>Standard (42px)</span>
+                                        <span>Tall (140px)</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Quick Presets */}
+                            <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                                <span className="text-[10px] font-bold text-gray-400 mr-1">Quick Presets:</span>
+                                <button
+                                    type="button"
+                                    onClick={() => setSettings(prev => ({ ...prev, receipt_logo_width: '130', receipt_logo_height: '42' }))}
+                                    className="px-2 py-0.5 text-[10.5px] font-semibold bg-white border border-gray-200 rounded-md hover:bg-gray-100 text-gray-700 cursor-pointer shadow-2xs"
+                                >
+                                    Standard (130×42)
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setSettings(prev => ({ ...prev, receipt_logo_width: '100', receipt_logo_height: '32' }))}
+                                    className="px-2 py-0.5 text-[10.5px] font-semibold bg-white border border-gray-200 rounded-md hover:bg-gray-100 text-gray-700 cursor-pointer shadow-2xs"
+                                >
+                                    Compact (100×32)
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setSettings(prev => ({ ...prev, receipt_logo_width: '180', receipt_logo_height: '55' }))}
+                                    className="px-2 py-0.5 text-[10.5px] font-semibold bg-white border border-gray-200 rounded-md hover:bg-gray-100 text-gray-700 cursor-pointer shadow-2xs"
+                                >
+                                    Large (180×55)
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setSettings(prev => ({ ...prev, receipt_logo_width: '60', receipt_logo_height: '60' }))}
+                                    className="px-2 py-0.5 text-[10.5px] font-semibold bg-white border border-gray-200 rounded-md hover:bg-gray-100 text-gray-700 cursor-pointer shadow-2xs"
+                                >
+                                    Square / Seal (60×60)
+                                </button>
                             </div>
                         </div>
                     </div>

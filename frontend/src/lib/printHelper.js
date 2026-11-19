@@ -332,6 +332,8 @@ export function generateThermalReceiptHtml(inv, settings = {}, cashierName = '',
     const shopEmail = (settings?.shop_email || '').trim();
     const shopNtn = (settings?.shop_ntn || '').trim();
     const shopLogo = (settings?.shop_logo || '').trim();
+    const logoWidth = parseInt(settings?.receipt_logo_width || settings?.logo_width) || 130;
+    const logoHeight = parseInt(settings?.receipt_logo_height || settings?.logo_height) || 42;
 
     // Dynamic customer details from invoice
     const customerName = (inv.customer_name || inv.walkin_name || 'Walk-in Customer').trim() + 
@@ -463,8 +465,8 @@ export function generateThermalReceiptHtml(inv, settings = {}, cashierName = '',
             margin-top: 1px;
         }
         .logo-img {
-            max-height: 40px;
-            max-width: 130px;
+            max-height: ${logoHeight}px;
+            max-width: ${logoWidth}px;
             margin: 0 auto 3px auto;
             display: block;
             object-fit: contain;
@@ -476,8 +478,8 @@ export function generateThermalReceiptHtml(inv, settings = {}, cashierName = '',
     <!-- 1. HEADER (LOGO & SHOP DETAILS) -->
     <div style="text-align: center; padding-bottom: 5px; border-bottom: 1.5px solid #000000;">
         ${shopLogo ? `
-            <div style="margin-bottom: 3px;">
-                <img src="${shopLogo}" alt="Shop Logo" class="logo-img" />
+            <div style="margin-bottom: 3px; display: flex; justify-content: center;">
+                <img src="${shopLogo}" alt="Shop Logo" class="logo-img" style="max-height: ${logoHeight}px; max-width: ${logoWidth}px; object-fit: contain;" />
             </div>
         ` : ''}
         <div style="font-size: 14px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px; line-height: 1.2;">

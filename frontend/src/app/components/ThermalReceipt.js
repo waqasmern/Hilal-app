@@ -142,6 +142,8 @@ export function ThermalReceiptSlip({
     const shopPhone = (settings?.shop_phone || '').trim();
     const shopNtn = (settings?.shop_ntn || '').trim();
     const shopLogo = (settings?.shop_logo || '').trim();
+    const logoWidth = parseInt(settings?.receipt_logo_width || settings?.logo_width) || 130;
+    const logoHeight = parseInt(settings?.receipt_logo_height || settings?.logo_height) || 42;
 
     // Dynamic Customer Details
     const customerName = (invoice.customer_name || invoice.walkin_name || 'Walk-in Customer').trim() +
@@ -209,7 +211,7 @@ export function ThermalReceiptSlip({
                         <img
                             src={shopLogo}
                             alt="Shop Logo"
-                            style={{ maxHeight: '42px', maxWidth: '130px', objectFit: 'contain' }}
+                            style={{ maxHeight: `${logoHeight}px`, maxWidth: `${logoWidth}px`, objectFit: 'contain' }}
                         />
                     </div>
                 )}
