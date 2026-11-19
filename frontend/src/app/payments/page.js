@@ -92,7 +92,7 @@ export default function PaymentsPage() {
     // Filter States
     const [partyTypeFilter, setPartyTypeFilter] = useState('ALL'); // 'ALL' | 'customer' | 'supplier'
     const [paymentMethodFilter, setPaymentMethodFilter] = useState('ALL'); // 'ALL' | 'cash' | 'bank' | 'easypaisa' | 'jazzcash' | 'cheque'
-    const [dateFilter, setDateFilter] = useState('all'); // 'all' | 'today' | 'yesterday' | 'this_week' | 'this_month' | 'custom'
+    const [dateFilter, setDateFilter] = useState('today'); // 'today' | 'yesterday' | 'this_week' | 'this_month' | 'custom'
     const [customStartDate, setCustomStartDate] = useState(getTodayString());
     const [customEndDate, setCustomEndDate] = useState(getTodayString());
     const [searchQuery, setSearchQuery] = useState('');
@@ -718,7 +718,6 @@ export default function PaymentsPage() {
                     {/* Date Filter Pills */}
                     <div className="flex items-center gap-1 overflow-x-auto no-scrollbar py-0.5">
                         {[
-                            { id: 'all', label: 'All Time' },
                             { id: 'today', label: 'Today' },
                             { id: 'yesterday', label: 'Yesterday' },
                             { id: 'this_week', label: 'Last 7 Days' },

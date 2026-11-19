@@ -191,49 +191,89 @@ function generateCustomerLedgerPdf(shopName, customer, ledgerEntries, bankAccoun
     const totalCreditsApplied = paymentsReceived + khataReturns;
     const curBal = Number(customer.balance || 0);
 
-    const todayStr = formatPdfDate(new Date());
+    const todayDate = new Date();
+    const todayStr = formatPdfDate(todayDate);
+
+    // Format date range as "01 Nov 2026 To 30 Nov 2026"
+    const formatStatementDate = (dInput) => {
+        const d = dInput instanceof Date ? dInput : new Date(String(dInput || '').replace(' ', 'T'));
+        if (isNaN(d.getTime())) return todayStr;
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        return `${String(d.getDate()).padStart(2, '0')} ${months[d.getMonth()]} ${d.getFullYear()}`;
+    };
+
+    const validEntryDates = (ledgerEntries || [])
+        .map(e => new Date(String(e.payment_date || e.created_at || '').replace(' ', 'T')))
+        .filter(d => !isNaN(d.getTime()))
+        .sort((a, b) => a - b);
+
+    const rangeFromStr = validEntryDates.length > 0
+        ? formatStatementDate(validEntryDates[0])
+        : formatStatementDate(new Date(todayDate.getFullYear(), todayDate.getMonth(), 1));
+    const rangeToStr = validEntryDates.length > 0
+        ? formatStatementDate(validEntryDates[validEntryDates.length - 1] > todayDate ? validEntryDates[validEntryDates.length - 1] : todayDate)
+        : formatStatementDate(todayDate);
 
     // Page boundaries: A4 [0 0 595 842]. Margins: Left=36, Right=559, Width=523.
     let y = 806;
 
-    // 1. TOP HEADER: LEFT SIDE = CUSTOMER "To:", RIGHT SIDE = SHOP INFO
+    // 1. TOP-RIGHT: SHOP DETAILS (Right-aligned like reference image)
+    const shopTitle = (shopName || 'Hilal Foods Solutions').trim();
+    const shopAddr = (shopDetails.shopAddress || 'Main Bazaar, Timergara, KP, Pakistan').trim();
+    const shopPh = (shopDetails.shopPhone || '+92 300 1234567').trim();
+    const shopEmail = (shopDetails.shopEmail || '').trim();
+
+    let shopY = y - 6;
+    textRight(559, shopY, shopTitle, '/F2', 12, 0.08, 0.08, 0.08);
+    shopY -= 14;
+    textRight(559, shopY, shopAddr, '/F1', 9.5, 0.3, 0.3, 0.3);
+    shopY -= 13;
+    if (shopPh) {
+        textRight(559, shopY, shopPh, '/F1', 9.5, 0.3, 0.3, 0.3);
+        shopY -= 13;
+    }
+    if (shopEmail) {
+        textRight(559, shopY, shopEmail, '/F1', 9.5, 0.3, 0.3, 0.3);
+        shopY -= 13;
+    }
+
+    // 2. LOWER HEADER ROW: LEFT = CUSTOMER "To" BLOCK | RIGHT = "Statement of Accounts" + DATE RANGE
     const customerName = (customer.name || 'Customer').trim();
     const businessName = (customer.business_name || '').trim();
     const cleanPhone = (customer.mobile && String(customer.mobile).trim()) || (customer.phone && String(customer.phone).trim()) || '';
     const cleanAddress = (customer.address && String(customer.address).trim()) || 'Timergara';
 
-    // LEFT SIDE: TO [CUSTOMER] (NO CREDIT LIMIT)
-    text(40, y - 10, 'To:', '/F2', 10, 0.35, 0.35, 0.35);
-    const mainCustomerTitle = (businessName || customerName).toUpperCase();
-    text(40, y - 26, mainCustomerTitle, '/F2', 12, 0.1, 0.1, 0.1);
+    const rowTopY = Math.min(shopY - 12, y - 66);
 
-    let leftY = y - 39;
+    // LEFT: "To" -> Business / Customer Name -> Address -> Phone
+    let leftY = rowTopY;
+    text(40, leftY, 'To', '/F2', 10, 0.15, 0.15, 0.15);
+    leftY -= 14;
+    const mainCustomerTitle = businessName || customerName;
+    text(40, leftY, mainCustomerTitle, '/F2', 10.5, 0.08, 0.08, 0.08);
+    leftY -= 13;
     if (businessName && customerName && businessName.toLowerCase() !== customerName.toLowerCase()) {
-        text(40, leftY, `Attn: ${customerName}`, '/F1', 8.5, 0.35, 0.35, 0.35);
+        text(40, leftY, customerName, '/F2', 9.5, 0.2, 0.2, 0.2);
         leftY -= 12;
     }
+    text(40, leftY, cleanAddress, '/F1', 9.5, 0.25, 0.25, 0.25);
+    leftY -= 12;
     if (cleanPhone) {
-        text(40, leftY, `Phone: ${cleanPhone}`, '/F1', 8.5, 0.35, 0.35, 0.35);
+        text(40, leftY, cleanPhone, '/F1', 9, 0.3, 0.3, 0.3);
         leftY -= 12;
     }
-    text(40, leftY, `Address: ${cleanAddress}`, '/F1', 8.5, 0.35, 0.35, 0.35);
 
-    // RIGHT SIDE: OUR SHOP INFORMATION & STATEMENT META (Clean column alignment)
-    const rightX = 355;
-    text(rightX, y - 10, (shopName || 'Hilal Foods Solutions').toUpperCase(), '/F2', 12, 0.1, 0.1, 0.1);
-    const shopAddr = (shopDetails.shopAddress || 'Main Bazaar, Timergara, KP, Pakistan');
-    const shopPh = (shopDetails.shopPhone || '+92 300 1234567');
-    text(rightX, y - 23, shopAddr, '/F1', 8.5, 0.35, 0.35, 0.35);
-    text(rightX, y - 35, `Phone: ${shopPh}`, '/F1', 8.5, 0.35, 0.35, 0.35);
-    text(rightX, y - 52, 'STATEMENT OF ACCOUNTS', '/F2', 12, 0.1, 0.1, 0.1);
-    text(rightX, y - 66, `Statement Date: ${todayStr}`, '/F2', 8.5, 0.2, 0.2, 0.2);
-    text(rightX, y - 78, `Customer ID: CUST-${String(customer.id || '1').padStart(4, '0')}`, '/F1', 8.5, 0.3, 0.3, 0.3);
+    // RIGHT: "Statement of Accounts" with top & bottom horizontal lines framing the date range
+    let rightY = rowTopY;
+    textRight(559, rightY, 'Statement of Accounts', '/F2', 16, 0.05, 0.05, 0.05);
+    rightY -= 7;
+    drawLine(365, rightY, 559, rightY, 0.1, 1.0);
+    rightY -= 12;
+    textRight(559, rightY, `${rangeFromStr} To ${rangeToStr}`, '/F1', 9.5, 0.25, 0.25, 0.25);
+    rightY -= 6;
+    drawLine(365, rightY, 559, rightY, 0.1, 1.0);
 
-    y = Math.min(leftY - 14, y - 90);
-
-    // Clean horizontal divider line
-    drawLine(36, y, 559, y, 0.75, 1);
-    y -= 14;
+    y = Math.min(leftY - 8, rightY - 16);
 
     // 2. STATEMENT OF ACCOUNT TABLE (Matching the Image)
     // Dark Header Bar

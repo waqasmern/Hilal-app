@@ -15,7 +15,8 @@ import {
 import CustomModalAlert from '../components/CustomModalAlert';
 import ThermalReceipt from '../components/ThermalReceipt';
 import WholesaleA4InvoiceModal from '../components/WholesaleA4InvoiceModal';
-import { triggerPrintHtml, generateThermalReceiptHtml, generateWholesaleInvoiceA4Html, truncateItemName, formatPackShort } from '../../lib/printHelper';
+import WalkinCreditModal from '../components/WalkinCreditModal';
+import { triggerPrintHtml, generateThermalReceiptHtml, generateWholesaleInvoiceA4Html, truncateItemName, formatPackShort, downloadAndOpenPdf } from '../../lib/printHelper';
 import { apiUrl, resolveMediaUrl } from '../../lib/api';
 
 function parseDate(dateInput) {
@@ -116,6 +117,17 @@ export default function POSPage() {
     const { user } = useSelector(state => state.auth);
     const cart = useSelector(state => state.cart);
     const settings = useSelector(state => state.settings);
+    const isAutoScaleDiscount = settings?.auto_scale_item_discount !== 'false';
+
+    const handleToggleAutoScaleDiscount = async () => {
+        const nextVal = isAutoScaleDiscount ? 'false' : 'true';
+        dispatch(setSettings({ auto_scale_item_discount: nextVal }));
+        try {
+            await api.put('/settings', { auto_scale_item_discount: nextVal });
+        } catch (err) {
+            console.warn('Failed to persist auto_scale_item_discount setting:', err);
+        }
+    };
 
     const [products, setProducts] = useState([]);
     const [categories, setCategories] = useState([]);
@@ -448,6 +460,7 @@ export default function POSPage() {
             ? customerPriceMap.get(`${product.variant_id}_${packTypeId}`)
             : undefined;
         const finalPrice = (specialPrice !== undefined) ? specialPrice : (chosenPack.selling_price || 0);
+        const packCost = parseFloat(chosenPack.purchase_price) || ((parseFloat(product.cost_price) || 0) * (parseFloat(chosenPack.conversion_factor) || 1));
 
         dispatch(addItem({
             variant_id: product.variant_id,
@@ -458,9 +471,11 @@ export default function POSPage() {
             unit_name: product.unit_name,
             conversion_factor: chosenPack.conversion_factor || 1,
             price: finalPrice,
+            cost_price: packCost,
             discount_type: 'direct',
             discount_value: 0,
-            packagings: packList
+            packagings: packList,
+            autoScale: isAutoScaleDiscount
         }));
         scrollToCartBottom();
     };
@@ -554,6 +569,7 @@ export default function POSPage() {
                 ? customerPriceMap.get(`${item.variant_id}_${packTypeId}`)
                 : undefined;
             const finalPrice = (specialPrice !== undefined) ? specialPrice : selectedPack.selling_price;
+            const packCost = parseFloat(selectedPack.purchase_price) || ((parseFloat(prod?.cost_price) || 0) * (parseFloat(selectedPack.conversion_factor) || 1));
 
             dispatch(removeItem(itemIndex));
             dispatch(addItem({
@@ -562,7 +578,9 @@ export default function POSPage() {
                 packaging_name: selectedPack.packaging_name,
                 conversion_factor: selectedPack.conversion_factor,
                 price: finalPrice,
-                packagings: packList
+                cost_price: packCost,
+                packagings: packList,
+                autoScale: isAutoScaleDiscount
             }));
         }
     };
@@ -578,10 +596,19 @@ export default function POSPage() {
     const isCreditExceeded = false;
 
     const handleOpenPaymentModal = () => {
-        // Direct payment default
-        setDirectPaymentToggle(true);
-        dispatch(setDiscountsAndCharges({ amount_paid: netAmount }));
-        setCashReceived(netAmount.toString());
+        if (cart.editingSaleId) {
+            // Preserving existing collected cash when editing sale
+            const prevPaid = Math.max(0, parseFloat(cart.originalAmountPaid !== undefined ? cart.originalAmountPaid : (cart.amount_paid || 0)));
+            const effectivePaid = Math.min(netAmount, prevPaid);
+            setCashReceived(effectivePaid.toString());
+            dispatch(setDiscountsAndCharges({ amount_paid: effectivePaid }));
+            setDirectPaymentToggle(effectivePaid >= netAmount && netAmount > 0);
+        } else {
+            // Pending payment default for new sale (Rs. 0 by default)
+            setDirectPaymentToggle(false);
+            dispatch(setDiscountsAndCharges({ amount_paid: 0 }));
+            setCashReceived('0');
+        }
         setPaymentTab('payment');
         setPaymentModalOpen(true);
     };
@@ -629,6 +656,7 @@ export default function POSPage() {
                     address: overrideWalkinData?.address !== undefined ? overrideWalkinData.address : (walkinAddress || 'Timergara')
                 });
                 setWalkinCreditError('');
+                setPaymentModalOpen(false);
                 setWalkinCreditModalOpen(true);
                 return;
             }
@@ -680,6 +708,7 @@ export default function POSPage() {
                     additional_charges: cart.additional_charges || 0,
                     net_amount: netAmount,
                     amount_paid: cart.amount_paid !== undefined ? cart.amount_paid : netAmount,
+                    amount_paid: Math.min(netAmount, Math.max(0, cart.amount_paid !== undefined ? parseFloat(cart.amount_paid) : netAmount)),
                     payment_method: cart.payment_method || 'cash',
                     remarks: cart.remarks || '',
                     admin_override: isAdminApproved || isEditing
@@ -771,10 +800,11 @@ export default function POSPage() {
                 }
             }
 
-            // Auto-print thermal receipt if enabled in Settings
+            // Auto-print bill / receipt if enabled in Settings
             if (settings?.auto_print_sale === 'true') {
+                const autoFormat = (settings?.auto_print_format || settings?.default_print_format || 'a4') === 'thermal' ? 'thermal' : 'a4';
                 setTimeout(() => {
-                    handlePrintInvoice('thermal');
+                    handlePrintInvoice(autoFormat);
                 }, 150);
             }
 
@@ -798,15 +828,14 @@ export default function POSPage() {
         }
     };
 
-    const handlePrintInvoice = async (format = 'thermal') => {
-        const isCartReceipt = format === 'cart-receipt';
-        const isThermal = format === 'thermal' || isCartReceipt;
+    const handlePrintInvoice = async (format = 'a4') => {
+        const isA4 = format === 'a4';
         const a4Printer = (settings?.selected_a4_printer || '').trim();
         const thermalPrinter = (settings?.selected_printer || '').trim();
-        const isThermalTarget = isThermal || ((!a4Printer || a4Printer === 'same_as_thermal') &&
-            /pos|80|receipt|thermal|blackcopper|xp-|xprinter|rpp/i.test(thermalPrinter));
 
-        const targetPrinter = !isThermal && a4Printer && a4Printer !== 'same_as_thermal' ? a4Printer : thermalPrinter;
+        const targetPrinter = isA4
+            ? (a4Printer && a4Printer !== 'same_as_thermal' ? a4Printer : '')
+            : thermalPrinter;
         const isSilent = settings?.silent_print === 'true' && targetPrinter !== 'os_dialog';
 
         // Build target sale object
@@ -814,7 +843,7 @@ export default function POSPage() {
         let targetPrevBal = prevBalance;
         let targetNewBal = newBalance;
 
-        if (isCartReceipt || (!targetSale && cart.items.length > 0)) {
+        if (format === 'cart-receipt' || (!targetSale && cart.items.length > 0)) {
             targetSale = {
                 invoice_no: cart.editingInvoiceNo || 'DRAFT-BILL',
                 created_at: new Date().toISOString(),
@@ -840,18 +869,18 @@ export default function POSPage() {
         if (!targetSale) return;
 
         let htmlContent = '';
-        if (isThermalTarget) {
-            htmlContent = generateThermalReceiptHtml(
+        if (isA4) {
+            htmlContent = generateWholesaleInvoiceA4Html(
                 targetSale,
                 settings,
-                user?.full_name || user?.username || 'Cashier',
                 targetPrevBal,
                 targetNewBal
             );
         } else {
-            htmlContent = generateWholesaleInvoiceA4Html(
+            htmlContent = generateThermalReceiptHtml(
                 targetSale,
                 settings,
+                user?.full_name || user?.username || 'Cashier',
                 targetPrevBal,
                 targetNewBal
             );
@@ -860,12 +889,12 @@ export default function POSPage() {
         await triggerPrintHtml(htmlContent, {
             silent: isSilent,
             printerName: targetPrinter !== 'os_dialog' ? targetPrinter : '',
-            format: isThermalTarget ? 'thermal' : 'a4'
+            format: isA4 ? 'a4' : 'thermal'
         });
     };
 
     const handleDownloadA4PDF = async () => {
-        const element = document.getElementById('printable-invoice-a4');
+        const element = document.getElementById('printable-invoice-a4') || document.getElementById('printable-cart-receipt');
         if (!element) {
             showAlert('Export Error', 'A4 Invoice template not found for PDF export.', 'error');
             return;
@@ -873,35 +902,10 @@ export default function POSPage() {
 
         setDownloadingPdf(true);
         try {
-            const html2canvasModule = await import('html2canvas-pro');
-            const html2canvas = html2canvasModule.default || html2canvasModule;
-            const { jsPDF } = await import('jspdf');
-
-            const rawInv = activeInvoice?.invoice_no || 'INVOICE';
-            const cleanInv = rawInv.replace(/[^a-zA-Z0-9_-]/g, '_');
-
-            const canvas = await html2canvas(element, {
-                scale: 2,
-                useCORS: true,
-                logging: false,
-                backgroundColor: '#ffffff'
-            });
-
-            const imgData = canvas.toDataURL('image/jpeg', 0.98);
-            const pdf = new jsPDF({
-                orientation: 'portrait',
-                unit: 'mm',
-                format: 'a4'
-            });
-
-            const pdfWidth = pdf.internal.pageSize.getWidth();
-            const pdfHeight = pdf.internal.pageSize.getHeight();
-            const margin = 8;
-            const printWidth = pdfWidth - (margin * 2);
-            const printHeight = (canvas.height * printWidth) / canvas.width;
-
-            pdf.addImage(imgData, 'JPEG', margin, margin, printWidth, Math.min(printHeight, pdfHeight - (margin * 2)));
-            pdf.save(`${cleanInv}_A4.pdf`);
+            const rawInv = activeInvoice?.invoice_no || cart.editingInvoiceNo || 'INVOICE';
+            const cleanInv = String(rawInv).replace(/[^a-zA-Z0-9_-]/g, '_');
+            await downloadAndOpenPdf(element, `${cleanInv}_A4.pdf`);
+            showAlert('A4 Bill Ready', 'A4 invoice opened in Chrome. You can view, print, or download it directly from Chrome.', 'success');
         } catch (err) {
             console.error('PDF export error:', err);
             showAlert('PDF Export Failed', err.message || 'Could not generate PDF', 'error');
@@ -1075,47 +1079,53 @@ export default function POSPage() {
                 {/* LEFT COLUMN: Product Catalog & Search */}
                 <div className={`flex-1 flex flex-col min-h-0 min-w-0 bg-white rounded-2xl border-2 border-gray-200 shadow-sm overflow-hidden h-[calc(100vh-10rem)] lg:h-full ${mobileTab === 'catalog' ? 'flex' : 'hidden lg:flex'
                     }`}>
-                    <div className="shrink-0 p-2 sm:p-2.5 border-b border-gray-100 space-y-2 bg-gray-50/50">
-                        {/* 1. TOP ROW: Essential Items Quick Sale Bar (Ultra-Compact High Density, Invisible Scrollbar) */}
+                    <div className="shrink-0 p-2 sm:p-2.5 border-b border-gray-200 space-y-2.5 bg-white">
+                        {/* 1. TOP ROW: Essential Items Quick Sale Bar */}
                         {essentialProducts.length > 0 && (
-                            <div
-                                className="flex items-center gap-1 overflow-x-auto no-scrollbar scroll-smooth select-none"
-                                style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-                                onWheel={(e) => {
-                                    if (e.deltaY !== 0) {
-                                        e.currentTarget.scrollLeft += e.deltaY;
-                                    }
-                                }}
-                            >
-                                <span className="flex items-center gap-0.5 text-[8.5px] font-black uppercase text-amber-950 bg-amber-100/90 border border-amber-300 px-1.5 py-0.5 rounded shrink-0 shadow-2xs leading-none">
-                                    <span className="text-amber-600">★</span> Essential ({essentialProducts.length}):
-                                </span>
-                                {essentialProducts.map((p) => {
-                                    const packList = p._sortedPackagings || p.packagings || [];
-                                    const defaultPack = p._defaultPack || packList[0] || null;
-                                    const specialPrice = (partyType === 'customer' && defaultPack)
-                                        ? customerPriceMap.get(`${p.variant_id}_${defaultPack.packaging_type_id || defaultPack.id}`)
-                                        : undefined;
-                                    const price = (specialPrice !== undefined) ? specialPrice : (defaultPack ? defaultPack.selling_price : 0);
-                                    const packName = defaultPack ? (defaultPack.packaging_name || p.unit_symbol || 'Unit') : (p.unit_symbol || 'Unit');
+                            <div className="bg-amber-50/70 border border-amber-200/90 rounded-xl p-1.5 flex items-center gap-2">
+                                <div className="flex items-center gap-1.5 shrink-0 font-bold text-[9.5px] text-amber-900 pr-2 border-r border-amber-200">
+                                    <span className="w-4 h-4 rounded-full bg-amber-500 text-white flex items-center justify-center text-[9px] font-black shadow-2xs">★</span>
+                                    <span>Essentials</span>
+                                    <span className="bg-amber-200/70 text-amber-950 px-1.5 py-0.2 rounded-full text-[8.5px] font-black border border-amber-300">
+                                        {essentialProducts.length}
+                                    </span>
+                                </div>
+                                <div
+                                    className="flex items-center gap-1.5 overflow-x-auto no-scrollbar scroll-smooth select-none flex-1 py-0.5"
+                                    style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+                                    onWheel={(e) => {
+                                        if (e.deltaY !== 0) {
+                                            e.currentTarget.scrollLeft += e.deltaY;
+                                        }
+                                    }}
+                                >
+                                    {essentialProducts.map((p) => {
+                                        const packList = p._sortedPackagings || p.packagings || [];
+                                        const defaultPack = p._defaultPack || packList[0] || null;
+                                        const specialPrice = (partyType === 'customer' && defaultPack)
+                                            ? customerPriceMap.get(`${p.variant_id}_${defaultPack.packaging_type_id || defaultPack.id}`)
+                                            : undefined;
+                                        const price = (specialPrice !== undefined) ? specialPrice : (defaultPack ? defaultPack.selling_price : 0);
+                                        const packName = defaultPack ? (defaultPack.packaging_name || p.unit_symbol || 'Unit') : (p.unit_symbol || 'Unit');
 
-                                    return (
-                                        <button
-                                            key={`ess-${p.variant_id}`}
-                                            type="button"
-                                            onClick={() => handleAddToCart(p, defaultPack)}
-                                            className="bg-white hover:bg-blue-50/90 border border-blue-200 hover:border-[#0B3B7B] rounded px-1.5 py-0.5 flex items-center gap-1 cursor-pointer shadow-2xs hover:shadow-xs transition-all shrink-0 active:scale-[0.98] group"
-                                            title={`Click to add 1 ${packName} of ${p.product_name} (Rs. ${Number(price || 0).toLocaleString()}) to cart`}
-                                        >
-                                            <span className="text-[9px] font-bold text-gray-900 group-hover:text-[#0B3B7B] transition-colors truncate max-w-[85px] leading-none">
-                                                {p.product_name}
-                                            </span>
-                                            <span className="text-[8px] font-black text-emerald-700 font-mono bg-emerald-50 px-1 py-0.2 rounded border border-emerald-200 leading-none">
-                                                Rs.{Number(price || 0).toLocaleString()}
-                                            </span>
-                                        </button>
-                                    );
-                                })}
+                                        return (
+                                            <button
+                                                key={`ess-${p.variant_id}`}
+                                                type="button"
+                                                onClick={() => handleAddToCart(p, defaultPack)}
+                                                className="bg-white hover:bg-amber-50 border border-amber-200 hover:border-amber-400 rounded-lg px-2 py-1 flex items-center gap-1.5 cursor-pointer shadow-2xs hover:shadow-xs transition-all shrink-0 active:scale-95 group"
+                                                title={`Click to add 1 ${packName} of ${p.product_name} (Rs. ${Number(price || 0).toLocaleString()}) to cart`}
+                                            >
+                                                <span className="text-[10px] font-semibold text-gray-800 group-hover:text-amber-950 transition-colors truncate max-w-[100px] leading-tight">
+                                                    {p.product_name}
+                                                </span>
+                                                <span className="text-[9px] font-bold text-emerald-700 font-mono bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 leading-none">
+                                                    Rs.{Number(price || 0).toLocaleString()}
+                                                </span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             </div>
                         )}
 
@@ -1129,10 +1139,10 @@ export default function POSPage() {
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                     onKeyDown={handleSearchKeyDown}
-                                    className="w-full pl-8 pr-28 py-1.5 rounded-xl border border-blue-200 focus:border-[#0B3B7B] focus:ring-1 focus:ring-[#0B3B7B]/30 outline-none text-xs font-medium bg-white transition-all shadow-2xs"
+                                    className="w-full pl-8 pr-28 py-1.5 rounded-xl border border-gray-300 focus:border-[#0B3B7B] focus:ring-1 focus:ring-[#0B3B7B]/30 outline-none text-xs font-medium bg-white transition-all shadow-2xs"
                                     autoFocus
                                 />
-                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#1E40AF] pointer-events-none">
+                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
                                     <IconSearch className="w-3.5 h-3.5" />
                                 </span>
                                 <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 pointer-events-auto">
@@ -1167,7 +1177,7 @@ export default function POSPage() {
                             </div>
                         </div>
 
-                        {/* 3. Main Categories Row - Deep Navy & Cream Pills per Client Image */}
+                        {/* 3. Main Categories Row - Ultra-clean segmented pill tabs */}
                         <div
                             className="flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar scroll-smooth select-none"
                             style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
@@ -1185,14 +1195,14 @@ export default function POSPage() {
                                     setSelectedCategory(null);
                                     setSelectedSubCategory(null);
                                 }}
-                                className={`px-2.5 py-1 rounded-xl text-[10.5px] whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${!selectedCategory && !showOnlyEssential
-                                    ? 'bg-[#0B3B7B] text-white font-extrabold shadow-2xs border border-[#0B3B7B]'
-                                    : 'bg-white border border-gray-200 text-[#1E293B] hover:bg-blue-50/50 hover:border-blue-300 font-semibold shadow-2xs'
+                                className={`px-3 py-1.5 rounded-xl text-xs whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${!selectedCategory && !showOnlyEssential
+                                    ? 'bg-[#0B3B7B] text-white font-bold shadow-xs border border-[#0B3B7B]'
+                                    : 'bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 hover:text-gray-900 font-medium shadow-2xs'
                                     }`}
                             >
-                                <IconLayers className={`w-3.5 h-3.5 ${!selectedCategory && !showOnlyEssential ? 'text-white' : 'text-[#1E40AF]'}`} />
+                                <IconLayers className={`w-3.5 h-3.5 ${!selectedCategory && !showOnlyEssential ? 'text-white' : 'text-gray-500'}`} />
                                 <span>All Categories</span>
-                                <span className={`px-1.5 py-0.2 rounded text-[8.5px] font-black ${!selectedCategory && !showOnlyEssential ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-700 border border-gray-200'}`}>
+                                <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-bold font-mono ${!selectedCategory && !showOnlyEssential ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600 border border-gray-200'}`}>
                                     {categories.filter(c => !c.parent_id).length}
                                 </span>
                             </button>
@@ -1207,15 +1217,15 @@ export default function POSPage() {
                                         setSelectedSubCategory(null);
                                     }
                                 }}
-                                className={`px-2.5 py-1 rounded-xl text-[10.5px] whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${showOnlyEssential
-                                    ? 'bg-[#FEF3C7] text-[#D97706] font-extrabold shadow-2xs border border-[#FDE68A]'
-                                    : 'bg-white border border-amber-300 text-amber-900 hover:bg-[#FEF3C7]/60 font-semibold shadow-2xs'
+                                className={`px-3 py-1.5 rounded-xl text-xs whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${showOnlyEssential
+                                    ? 'bg-amber-500 text-white font-bold shadow-xs border border-amber-600'
+                                    : 'bg-amber-50/70 hover:bg-amber-100/60 border border-amber-200 text-amber-900 font-medium shadow-2xs'
                                     }`}
                                 title="Filter only essential products in grid"
                             >
-                                <span className="text-[#D97706] font-bold">★</span>
-                                <span>Essential</span>
-                                <span className={`px-1.5 py-0.2 rounded text-[8.5px] font-black ${showOnlyEssential ? 'bg-[#D97706]/15 text-[#92400E]' : 'bg-amber-100 text-amber-900 border border-amber-200'}`}>
+                                <span className={showOnlyEssential ? 'text-white font-bold' : 'text-amber-600 font-bold'}>★</span>
+                                <span>Essentials</span>
+                                <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-bold font-mono ${showOnlyEssential ? 'bg-white/25 text-white' : 'bg-amber-200/70 text-amber-900 border border-amber-300'}`}>
                                     {essentialProducts.length}
                                 </span>
                             </button>
@@ -1233,14 +1243,14 @@ export default function POSPage() {
                                             setSelectedCategory(cat.id);
                                             setSelectedSubCategory(null);
                                         }}
-                                        className={`px-2.5 py-1 rounded-xl text-[10.5px] whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${isSelected
-                                            ? 'bg-[#0B3B7B] text-white font-extrabold shadow-2xs border border-[#0B3B7B]'
-                                            : 'bg-white border border-gray-200 text-[#1E293B] hover:bg-blue-50/50 hover:border-blue-300 font-semibold shadow-2xs'
+                                        className={`px-3 py-1.5 rounded-xl text-xs whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${isSelected
+                                            ? 'bg-[#0B3B7B] text-white font-bold shadow-xs border border-[#0B3B7B]'
+                                            : 'bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 hover:text-gray-900 font-medium shadow-2xs'
                                             }`}
                                     >
                                         <span>{cat.name}</span>
                                         {subCount > 0 && (
-                                            <span className={`px-1.5 py-0.2 rounded text-[8px] font-bold ${isSelected ? 'bg-white/20 text-white' : 'bg-blue-50 text-blue-800 border border-blue-100'}`}>
+                                            <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-bold font-mono ${isSelected ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600 border border-gray-200'}`}>
                                                 {subCount}
                                             </span>
                                         )}
@@ -1256,7 +1266,7 @@ export default function POSPage() {
                             const parentCat = categories.find(c => c.id === selectedCategory);
                             return (
                                 <div
-                                    className="flex items-center gap-1 overflow-x-auto pt-1.5 pb-0.5 no-scrollbar scroll-smooth select-none border-t border-gray-200 bg-gray-50/80 -mx-2 sm:-mx-2.5 px-2 sm:px-2.5"
+                                    className="flex items-center gap-1.5 overflow-x-auto pt-2 pb-0.5 no-scrollbar scroll-smooth select-none border-t border-gray-100 bg-slate-50/70 -mx-2 sm:-mx-2.5 px-2.5 sm:px-3 rounded-b-xl"
                                     style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
                                     onWheel={(e) => {
                                         if (e.deltaY !== 0) {
@@ -1264,15 +1274,16 @@ export default function POSPage() {
                                         }
                                     }}
                                 >
-                                    <span className="text-[9px] font-extrabold text-gray-500 uppercase tracking-wider shrink-0 flex items-center gap-0.5">
-                                        <IconArrowRight className="w-2.5 h-2.5 text-black inline" /> Sub:
+                                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider shrink-0 flex items-center gap-1">
+                                        <IconArrowRight className="w-2.5 h-2.5 text-[#0B3B7B] inline" />
+                                        <span>Sub:</span>
                                     </span>
                                     <button
                                         type="button"
                                         onClick={() => setSelectedSubCategory(null)}
-                                        className={`px-2 py-0.5 rounded-md text-[9.5px] whitespace-nowrap transition-all cursor-pointer ${!selectedSubCategory
-                                            ? 'bg-[#0B3B7B] text-white font-extrabold shadow-2xs border border-[#0B3B7B]'
-                                            : 'bg-white border border-gray-200 text-gray-700 hover:bg-blue-50 font-medium'
+                                        className={`px-2.5 py-1 rounded-lg text-[10px] whitespace-nowrap transition-all cursor-pointer ${!selectedSubCategory
+                                            ? 'bg-[#0B3B7B] text-white font-bold shadow-2xs'
+                                            : 'bg-white hover:bg-gray-100 border border-gray-200 text-gray-700 font-medium'
                                             }`}
                                     >
                                         All in {parentCat?.name || 'Category'}
@@ -1284,9 +1295,9 @@ export default function POSPage() {
                                                 type="button"
                                                 key={sub.id}
                                                 onClick={() => setSelectedSubCategory(sub.id)}
-                                                className={`px-2 py-0.5 rounded-md text-[9.5px] whitespace-nowrap transition-all cursor-pointer ${isSubSelected
-                                                    ? 'bg-[#0B3B7B] text-white font-extrabold shadow-2xs border border-[#0B3B7B]'
-                                                    : 'bg-white border border-gray-200 text-gray-700 hover:bg-blue-50 font-medium'
+                                                className={`px-2.5 py-1 rounded-lg text-[10px] whitespace-nowrap transition-all cursor-pointer ${isSubSelected
+                                                    ? 'bg-[#0B3B7B] text-white font-bold shadow-2xs'
+                                                    : 'bg-white hover:bg-blue-50 border border-gray-200 text-gray-700 hover:text-blue-900 font-medium'
                                                     }`}
                                             >
                                                 {sub.name}
@@ -1341,40 +1352,40 @@ export default function POSPage() {
                                             onClick={() => handleAddToCart(product, defaultPack)}
                                             className="bg-white border border-gray-200 hover:border-blue-500 rounded-xl flex flex-col justify-between cursor-pointer hover:shadow-md transition-all group relative overflow-hidden"
                                         >
-                                            {/* Full-Width Product Image Header (Compact Height for Maximum Visible Items) */}
-                                            <div className="relative w-full h-20 sm:h-24 bg-gray-50 overflow-hidden border-b border-gray-100 flex items-center justify-center shrink-0">
-                                                {/* Low Badge on top-left of image */}
-                                                {isLowStock && (
-                                                    <span className="absolute top-1.5 left-1.5 z-10 px-1.5 py-0.5 rounded text-[7.5px] font-black uppercase tracking-wider bg-rose-600 text-white shadow-2xs">
-                                                        Low Stock
-                                                    </span>
-                                                )}
+                                            {/* Product Image Header (Full-Width for items WITH image, or Ultra-Compact for items WITHOUT image) */}
+                                            {product.image ? (
+                                                <div className="relative w-full h-20 sm:h-22 bg-gray-50 overflow-hidden border-b border-gray-100 flex items-center justify-center shrink-0">
+                                                    {/* Low Badge on top-left of image */}
+                                                    {isLowStock && (
+                                                        <span className="absolute top-1 left-1 z-10 px-1 py-0.5 rounded text-[7px] font-black uppercase tracking-wider bg-rose-600 text-white shadow-2xs">
+                                                            Low Stock
+                                                        </span>
+                                                    )}
 
-                                                {/* Category Badge on top-right of image */}
-                                                {product.category_name && (
+                                                    {/* Category Badge on top-right of image */}
+                                                    {product.category_name && (
+                                                        <span
+                                                            title={product.category_name}
+                                                            className="absolute top-1 right-1 z-10 px-1 py-0.5 rounded text-[7px] font-semibold uppercase tracking-wider bg-white/95 text-gray-600 border border-gray-200/80 shadow-2xs truncate max-w-[55%]"
+                                                        >
+                                                            {product.category_name}
+                                                        </span>
+                                                    )}
+
+                                                    {/* Stock Badge on bottom-left of image */}
                                                     <span
-                                                        title={product.category_name}
-                                                        className="absolute top-1.5 right-1.5 z-10 px-1.5 py-0.5 rounded text-[7.5px] font-bold uppercase tracking-wider bg-white/90 backdrop-blur-md text-gray-600 border border-gray-200/70 shadow-2xs truncate max-w-[55%]"
+                                                        title={formattedStock}
+                                                        className={`absolute bottom-1 left-1 z-10 text-[7.5px] font-bold px-1 py-0.5 rounded leading-tight truncate max-w-[90%] shadow-2xs ${product.current_stock <= 0
+                                                            ? 'text-rose-700 bg-white/95 border border-rose-200'
+                                                            : isLowStock
+                                                                ? 'text-amber-800 bg-white/95 border border-amber-200'
+                                                                : 'text-emerald-800 bg-white/95 border border-emerald-200'
+                                                            }`}
                                                     >
-                                                        {product.category_name}
+                                                        {formattedStock}
                                                     </span>
-                                                )}
 
-                                                {/* Stock Badge on bottom-left of image */}
-                                                <span
-                                                    title={formattedStock}
-                                                    className={`absolute bottom-1.5 left-1.5 z-10 text-[8px] font-bold px-1.5 py-0.5 rounded leading-tight truncate max-w-[90%] shadow-2xs backdrop-blur-md ${product.current_stock <= 0
-                                                        ? 'text-rose-700 bg-white/95 border border-rose-200'
-                                                        : isLowStock
-                                                            ? 'text-amber-800 bg-white/95 border border-amber-200'
-                                                            : 'text-emerald-800 bg-white/95 border border-emerald-200'
-                                                        }`}
-                                                >
-                                                    {formattedStock}
-                                                </span>
-
-                                                {/* Product Image (Full Width & Clear Look) or Fallback */}
-                                                {product.image ? (
+                                                    {/* Product Image */}
                                                     <img
                                                         src={resolveMediaUrl(product.image)}
                                                         alt={product.product_name}
@@ -1382,32 +1393,58 @@ export default function POSPage() {
                                                         style={{ imageRendering: '-webkit-optimize-contrast' }}
                                                         onError={(e) => { e.currentTarget.style.display = 'none'; }}
                                                     />
-                                                ) : (
-                                                    <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-50 to-gray-100 text-gray-300">
-                                                        <IconBox className="w-7 h-7 opacity-30 text-gray-400" />
+                                                </div>
+                                            ) : (
+                                                /* No Image: Ultra-compact header to maximize screen space */
+                                                <div className="px-2 pt-1 pb-1 flex items-center justify-between gap-1 border-b border-gray-100 bg-gray-50/60 shrink-0">
+                                                    <div className="flex items-center gap-1 min-w-0">
+                                                        <span
+                                                            title={formattedStock}
+                                                            className={`text-[7.5px] font-bold px-1 py-0.5 rounded leading-tight truncate ${product.current_stock <= 0
+                                                                ? 'text-rose-700 bg-rose-50 border border-rose-200'
+                                                                : isLowStock
+                                                                    ? 'text-amber-800 bg-amber-50 border border-amber-200'
+                                                                    : 'text-emerald-800 bg-emerald-50 border border-emerald-200'
+                                                                }`}
+                                                        >
+                                                            {formattedStock}
+                                                        </span>
+                                                        {isLowStock && (
+                                                            <span className="px-1 py-0.5 rounded text-[6.5px] font-black uppercase tracking-wider bg-rose-600 text-white shrink-0">
+                                                                Low
+                                                            </span>
+                                                        )}
                                                     </div>
-                                                )}
-                                            </div>
+                                                    {product.category_name && (
+                                                        <span
+                                                            title={product.category_name}
+                                                            className="text-[7px] font-semibold uppercase tracking-wider bg-white text-gray-500 border border-gray-200 px-1 py-0.5 rounded truncate max-w-[80px] shrink-0"
+                                                        >
+                                                            {product.category_name}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            )}
 
                                             {/* Card Body: Title, Variant & Packaging Tiers */}
-                                            <div className="p-2 flex flex-col justify-between flex-1">
+                                            <div className="p-1.5 flex flex-col justify-between flex-1">
                                                 <div>
                                                     {/* Product Title */}
                                                     <h3
-                                                        className="font-bold text-gray-900 text-xs sm:text-[12.5px] group-hover:text-blue-700 transition-colors truncate leading-snug"
+                                                        className="font-bold text-gray-900 text-[11px] group-hover:text-blue-700 transition-colors truncate leading-tight"
                                                         title={product.product_name}
                                                     >
                                                         {product.product_name}
                                                     </h3>
                                                     {/* Variant */}
-                                                    <div className="text-[9px] text-gray-500 font-medium truncate mt-0.5">
-                                                        Variant: <span className="font-semibold text-gray-800">{product.variant_name}</span>
+                                                    <div className="text-[8px] text-gray-400 font-medium truncate mt-0.5">
+                                                        Variant: <span className="font-semibold text-gray-700">{product.variant_name}</span>
                                                     </div>
                                                 </div>
 
                                                 {/* Packaging Options & Direct Add-to-Cart Action */}
-                                                <div className="mt-1.5 pt-1.5 border-t border-gray-100">
-                                                    <div className={`grid ${packagingsList.length === 1 ? 'grid-cols-1' : packagingsList.length === 2 ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-3'} gap-1.5`}>
+                                                <div className="mt-1 pt-1 border-t border-gray-100">
+                                                    <div className={`grid ${packagingsList.length === 1 ? 'grid-cols-1' : packagingsList.length === 2 ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-3'} gap-1`}>
                                                     {packagingsList.map((pack) => {
                                                         const packTypeId = pack.packaging_type_id || pack.id;
                                                         const specialPrice = (partyType === 'customer')
@@ -1426,7 +1463,7 @@ export default function POSPage() {
                                                                     e.stopPropagation();
                                                                     handleAddToCart(product, pack);
                                                                 }}
-                                                                className={`p-1.5 rounded-lg border text-left transition-all cursor-pointer flex flex-col justify-between hover:shadow-2xs active:scale-[0.98] group/btn ${isHighestBulk
+                                                                className={`p-1 rounded-md border text-left transition-all cursor-pointer flex flex-col justify-between hover:shadow-2xs active:scale-[0.98] group/btn ${isHighestBulk
                                                                     ? 'bg-blue-50/80 border-blue-200 hover:bg-blue-100/80 hover:border-blue-400'
                                                                     : isMiddleTier
                                                                         ? 'bg-sky-50/60 border-sky-200 hover:bg-sky-100/60 hover:border-sky-300'
@@ -1435,33 +1472,33 @@ export default function POSPage() {
                                                                 title={`Click to add 1 ${pack.packaging_name} (Rs. ${Number(packPrice || 0).toLocaleString()}) to cart`}
                                                             >
                                                                 {/* 1. TOP: Packaging Name */}
-                                                                <div className="flex items-center gap-1 w-full leading-tight">
+                                                                <div className="flex items-center gap-0.5 w-full leading-tight">
                                                                     {isHighestBulk ? (
-                                                                        <IconBox className="w-3 h-3 text-[#1E40AF] shrink-0" />
+                                                                        <IconBox className="w-2.5 h-2.5 text-[#1E40AF] shrink-0" />
                                                                     ) : isMiddleTier ? (
-                                                                        <IconPackage className="w-3 h-3 text-[#1E40AF] shrink-0" />
+                                                                        <IconPackage className="w-2.5 h-2.5 text-[#1E40AF] shrink-0" />
                                                                     ) : (
-                                                                        <IconTag className="w-3 h-3 text-blue-600 shrink-0" />
+                                                                        <IconTag className="w-2.5 h-2.5 text-blue-600 shrink-0" />
                                                                     )}
-                                                                    <span className="text-[10px] font-extrabold text-gray-900 truncate tracking-tight">{pack.packaging_name}</span>
+                                                                    <span className="text-[9px] font-bold text-gray-900 truncate tracking-tight">{pack.packaging_name}</span>
                                                                 </div>
 
                                                                 {/* 2. PRICE: Dedicated Row */}
-                                                                <div className="mt-1 mb-0.5 w-full">
-                                                                    <span className="text-[10.5px] font-black text-emerald-700 font-mono tracking-tight block">
+                                                                <div className="mt-0.5 mb-0.5 w-full">
+                                                                    <span className="text-[9.5px] font-black text-emerald-700 font-mono tracking-tight block">
                                                                         Rs.{Number(packPrice || 0).toLocaleString()}
                                                                     </span>
                                                                 </div>
 
                                                                 {/* 3. UNITS: Dedicated Line - completely visible, never truncated */}
-                                                                <div className="text-[8.5px] font-bold text-gray-600 my-0.5 w-full whitespace-nowrap">
+                                                                <div className="text-[7.5px] font-semibold text-gray-500 my-0.5 w-full whitespace-nowrap">
                                                                     {factor > 1 ? `${factor} ${product.unit_symbol || product.unit_name || 'pcs'}` : `1 ${product.unit_symbol || product.unit_name || 'pcs'}`}
                                                                 </div>
 
                                                                 {/* 4. ADD BUTTON: Full Width Clean Button */}
-                                                                <div className="w-full mt-1">
-                                                                    <span className="w-full text-center font-bold text-white bg-[#10B981] group-hover/btn:bg-[#059669] py-0.5 rounded text-[8px] flex items-center justify-center gap-1 shadow-2xs transition-colors">
-                                                                        <IconPlus className="w-2.5 h-2.5 inline" strokeWidth={3} /> Add
+                                                                <div className="w-full mt-0.5">
+                                                                    <span className="w-full text-center font-bold text-white bg-[#10B981] group-hover/btn:bg-[#059669] py-0.5 rounded text-[7.5px] flex items-center justify-center gap-0.5 shadow-2xs transition-colors">
+                                                                        <IconPlus className="w-2 h-2 inline" strokeWidth={3} /> Add
                                                                     </span>
                                                                 </div>
                                                             </button>
@@ -1511,6 +1548,18 @@ export default function POSPage() {
                             </div>
                         </div>
                         <div className="flex items-center gap-1.5">
+                            <button
+                                type="button"
+                                onClick={handleToggleAutoScaleDiscount}
+                                className={`text-[9px] font-bold px-2 py-0.5 rounded-md transition-all cursor-pointer border ${
+                                    isAutoScaleDiscount
+                                        ? 'bg-emerald-500/25 text-emerald-100 border-emerald-300/40 hover:bg-emerald-500/40'
+                                        : 'bg-white/10 text-gray-200 border-white/20 hover:bg-white/20'
+                                }`}
+                                title="Auto-Scale Item Rs Discount with Quantity (ON/OFF)"
+                            >
+                                Disc × Qty: {isAutoScaleDiscount ? 'ON' : 'OFF'}
+                            </button>
                             {/* Mobile Back to Catalog Button */}
                             <button
                                 type="button"
@@ -1775,7 +1824,7 @@ export default function POSPage() {
                                                         if (newQty <= 0) {
                                                             dispatch(removeItem(idx));
                                                         } else {
-                                                            dispatch(updateItemQty({ index: idx, quantity: newQty }));
+                                                            dispatch(updateItemQty({ index: idx, quantity: newQty, autoScale: isAutoScaleDiscount }));
                                                         }
                                                     }}
                                                     className="w-4 h-full flex items-center justify-center text-[10px] font-black hover:bg-rose-50 hover:text-rose-600 text-gray-700 cursor-pointer transition-colors"
@@ -1788,13 +1837,13 @@ export default function POSPage() {
                                                     step="any"
                                                     min="0"
                                                     value={item.quantity ?? ''}
-                                                    onChange={(e) => dispatch(updateItemQty({ index: idx, quantity: e.target.value }))}
+                                                    onChange={(e) => dispatch(updateItemQty({ index: idx, quantity: e.target.value, autoScale: isAutoScaleDiscount }))}
                                                     onBlur={(e) => {
                                                         const val = parseFloat(e.target.value);
                                                         if (isNaN(val) || val <= 0) {
                                                             dispatch(removeItem(idx));
                                                         } else {
-                                                            dispatch(updateItemQty({ index: idx, quantity: val }));
+                                                            dispatch(updateItemQty({ index: idx, quantity: val, autoScale: isAutoScaleDiscount }));
                                                         }
                                                     }}
                                                     onKeyDown={(e) => {
@@ -1810,7 +1859,7 @@ export default function POSPage() {
                                                     onClick={() => {
                                                         const currentQty = parseFloat(item.quantity) || 0;
                                                         const newQty = Math.round((currentQty + 1) * 1000) / 1000;
-                                                        dispatch(updateItemQty({ index: idx, quantity: newQty }));
+                                                        dispatch(updateItemQty({ index: idx, quantity: newQty, autoScale: isAutoScaleDiscount }));
                                                     }}
                                                     className="w-4 h-full flex items-center justify-center text-[10px] font-black hover:bg-gray-100 text-gray-700 cursor-pointer transition-colors"
                                                     title="Increase quantity (+1)"
@@ -1854,11 +1903,23 @@ export default function POSPage() {
                                                     placeholder="0"
                                                     value={discValue || ''}
                                                     onChange={(e) => dispatch(updateItemDiscount({ index: idx, discount_value: e.target.value }))}
-                                                    className="w-10 text-right text-[10px] border border-gray-200 rounded px-1 py-0 h-5 bg-white font-mono font-bold focus:outline-none focus:border-[#0B3B7B]"
-                                                    title="Item Discount"
+                                                    className={`w-10 text-right text-[10px] border rounded px-1 py-0 h-5 bg-white font-mono font-bold focus:outline-none ${
+                                                        item.discount_capped
+                                                            ? 'border-amber-500 text-amber-800 bg-amber-50 focus:border-amber-600'
+                                                            : 'border-gray-200 focus:border-[#0B3B7B]'
+                                                    }`}
+                                                    title={item.cost_price > 0
+                                                        ? `Max discount: Rs. ${Math.max(0, ((parseFloat(item.price) || 0) - item.cost_price) * (parseFloat(item.quantity) || 0)).toFixed(0)} (Cost: Rs. ${item.cost_price})`
+                                                        : 'Item Discount'}
                                                 />
                                             </div>
                                         </div>
+                                        {item.discount_capped && item.cost_price > 0 && (
+                                            <div className="text-[9px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 flex items-center justify-between">
+                                                <span>Max discount limit reached (Cost: Rs. {item.cost_price})</span>
+                                                <span>No Loss</span>
+                                            </div>
+                                        )}
                                     </div>
                                 );
                             })
@@ -1948,7 +2009,7 @@ export default function POSPage() {
 
             {/* PAYMENT MODAL (Tabs for Settlement & Receipt Preview + Cash Received Tender) */}
             {paymentModalOpen && (
-                <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-50 p-4 overflow-y-auto">
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
                     <div className={`bg-white rounded-2xl ${paymentTab === 'receipt' ? 'max-w-4xl xl:max-w-5xl' : 'max-w-md'} w-full p-4 space-y-2.5 shadow-2xl border border-gray-200 my-4 transition-all`}>
                         {/* Modal Header */}
                         <div className="flex justify-between items-center border-b border-gray-100 pb-2">
@@ -2065,8 +2126,14 @@ export default function POSPage() {
                                                     const discVal = Math.max(0, parseFloat(e.target.value) || 0);
                                                     dispatch(setDiscountsAndCharges({ special_discount: discVal }));
                                                     const newNet = Math.max(0, grossAmount - totalItemDiscount - discVal + (cart.additional_charges || 0));
-                                                    setCashReceived(newNet.toString());
-                                                    dispatch(setDiscountsAndCharges({ amount_paid: newNet }));
+                                                    if (parseFloat(cashReceived) > 0) {
+                                                        const capped = Math.min(newNet, parseFloat(cashReceived));
+                                                        setCashReceived(capped.toString());
+                                                        dispatch(setDiscountsAndCharges({ amount_paid: capped }));
+                                                    } else {
+                                                        setCashReceived('0');
+                                                        dispatch(setDiscountsAndCharges({ amount_paid: 0 }));
+                                                    }
                                                 }}
                                                 placeholder="0"
                                                 className="w-24 py-1 px-2 rounded-lg border border-gray-300 bg-white font-mono font-bold text-xs text-right text-rose-600 focus:ring-1 focus:ring-[#0B3B7B] outline-none"
@@ -2092,8 +2159,14 @@ export default function POSPage() {
                                                     const chargesVal = Math.max(0, parseFloat(e.target.value) || 0);
                                                     dispatch(setDiscountsAndCharges({ additional_charges: chargesVal }));
                                                     const newNet = Math.max(0, grossAmount - totalItemDiscount - (cart.special_discount || 0) + chargesVal);
-                                                    setCashReceived(newNet.toString());
-                                                    dispatch(setDiscountsAndCharges({ amount_paid: newNet }));
+                                                    if (parseFloat(cashReceived) > 0) {
+                                                        const capped = Math.min(newNet, parseFloat(cashReceived));
+                                                        setCashReceived(capped.toString());
+                                                        dispatch(setDiscountsAndCharges({ amount_paid: capped }));
+                                                    } else {
+                                                        setCashReceived('0');
+                                                        dispatch(setDiscountsAndCharges({ amount_paid: 0 }));
+                                                    }
                                                 }}
                                                 placeholder="0"
                                                 className="w-24 py-1 px-2 rounded-lg border border-gray-300 bg-white font-mono font-bold text-xs text-right text-blue-600 focus:ring-1 focus:ring-[#0B3B7B] outline-none"
@@ -2155,28 +2228,66 @@ export default function POSPage() {
                                         placeholder="0"
                                     />
 
-                                    {/* Quick Payment Status Buttons: Paid vs Pending */}
-                                    <div className="grid grid-cols-2 gap-2 pt-1">
-                                        <button
-                                            type="button"
-                                            onClick={() => handleCashReceivedChange(netAmount.toString())}
-                                            className={`py-1.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer border ${parseFloat(cashReceived) >= netAmount && netAmount > 0
-                                                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                                                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100 hover:border-emerald-500'
-                                                }`}
-                                        >
-                                            <span>✓ Paid (Rs. {netAmount.toLocaleString()})</span>
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => handleCashReceivedChange('0')}
-                                            className={`py-1.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer border ${parseFloat(cashReceived) === 0 || cashReceived === '0' || !cashReceived
-                                                    ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
-                                                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100 hover:border-rose-500'
-                                                }`}
-                                        >
-                                            <span>⏳ Pending (Rs. 0)</span>
-                                        </button>
+                                    {/* Quick Payment Status Buttons: Paid vs Partial vs Pending */}
+                                    <div className="pt-1">
+                                        {cart.editingSaleId && parseFloat(cart.originalAmountPaid || 0) > 0 && netAmount > parseFloat(cart.originalAmountPaid || 0) ? (
+                                            <div className="grid grid-cols-3 gap-1.5">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleCashReceivedChange(netAmount.toString())}
+                                                    className={`py-1.5 px-2 rounded-lg text-[10.5px] font-bold transition-all flex items-center justify-center gap-1 cursor-pointer border ${parseFloat(cashReceived) >= netAmount && netAmount > 0
+                                                            ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                                                            : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100 hover:border-emerald-500'
+                                                        }`}
+                                                >
+                                                    <span>✓ Full Paid</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleCashReceivedChange(parseFloat(cart.originalAmountPaid || 0).toString())}
+                                                    className={`py-1.5 px-2 rounded-lg text-[10.5px] font-bold transition-all flex items-center justify-center gap-1 cursor-pointer border ${parseFloat(cashReceived) === parseFloat(cart.originalAmountPaid || 0) && parseFloat(cashReceived) < netAmount
+                                                            ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                                                            : 'bg-white text-amber-900 border-amber-300 hover:bg-amber-50'
+                                                        }`}
+                                                    title={`Keep previously paid Rs. ${parseFloat(cart.originalAmountPaid || 0).toLocaleString()} and leave remaining Rs. ${(netAmount - parseFloat(cart.originalAmountPaid || 0)).toLocaleString()} as pending due`}
+                                                >
+                                                    <span>⏳ Partial (Rs. {parseFloat(cart.originalAmountPaid || 0).toLocaleString()})</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleCashReceivedChange('0')}
+                                                    className={`py-1.5 px-2 rounded-lg text-[10.5px] font-bold transition-all flex items-center justify-center gap-1 cursor-pointer border ${parseFloat(cashReceived) === 0 || cashReceived === '0' || !cashReceived
+                                                            ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
+                                                            : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100 hover:border-rose-500'
+                                                        }`}
+                                                >
+                                                    <span>❌ 0 Paid (All Due)</span>
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleCashReceivedChange(netAmount.toString())}
+                                                    className={`py-1.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer border ${parseFloat(cashReceived) >= netAmount && netAmount > 0
+                                                            ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                                                            : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100 hover:border-emerald-500'
+                                                        }`}
+                                                >
+                                                    <span>✓ Paid (Rs. {netAmount.toLocaleString()})</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleCashReceivedChange('0')}
+                                                    className={`py-1.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer border ${parseFloat(cashReceived) === 0 || cashReceived === '0' || !cashReceived
+                                                            ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
+                                                            : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100 hover:border-rose-500'
+                                                        }`}
+                                                >
+                                                    <span>⏳ Pending (Rs. 0)</span>
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
 
                                     {/* Real-time Change / Return to Customer Card */}
@@ -2222,8 +2333,8 @@ export default function POSPage() {
                                     )}
                                 </div>
 
-                                {/* Payment Action Buttons (Solid Black) */}
-                                <div className="flex gap-2 pt-1">
+                                {/* Payment Action Buttons (Solid Black & Green) */}
+                                <div className="flex flex-wrap items-center gap-2 pt-1">
                                     <button
                                         type="button"
                                         onClick={() => setPaymentModalOpen(false)}
@@ -2238,6 +2349,15 @@ export default function POSPage() {
                                     >
                                         <IconReceipt className="w-3 h-3" />
                                         <span>Preview Wholesale Bill</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => handlePrintInvoice('a4')}
+                                        className="py-1.5 px-2.5 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-gray-900 font-bold text-[11px] transition-all cursor-pointer flex items-center gap-1 shadow-2xs"
+                                        title="Print full A4 Wholesale Bill"
+                                    >
+                                        <IconPrinter className="w-3.5 h-3.5 text-gray-800" />
+                                        <span>Print A4 Bill</span>
                                     </button>
                                     <button
                                         type="button"
@@ -2507,19 +2627,47 @@ export default function POSPage() {
                                     </button>
                                     <button
                                         type="button"
-                                        onClick={() => handlePrintInvoice('cart-receipt')}
+                                        onClick={() => handlePrintInvoice('thermal')}
+                                        className="px-3.5 py-2 rounded-xl border border-gray-300 bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                                        title="Print 80mm Thermal Receipt Slip"
+                                    >
+                                        <IconReceipt className="w-3.5 h-3.5 text-gray-700" />
+                                        <span>Print 80mm Slip</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => handlePrintInvoice('a4')}
                                         style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                        className="btn-black !bg-black !text-white px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 hover:opacity-90 active:scale-95 transition-all cursor-pointer"
+                                        className="btn-black !bg-black !text-white px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 hover:opacity-90 active:scale-95 transition-all cursor-pointer shadow-xs"
+                                        title="Print full A4 Wholesale Bill"
                                     >
                                         <IconPrinter className="w-3.5 h-3.5 text-white" />
-                                        <span>Print Wholesale Bill</span>
+                                        <span>Print A4 Size Bill</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handleDownloadA4PDF}
+                                        disabled={downloadingPdf}
+                                        className="px-3.5 py-2 rounded-xl border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-900 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs disabled:opacity-50"
+                                        title="Download A4 Bill and open in browser"
+                                    >
+                                        {downloadingPdf ? (
+                                            <>
+                                                <IconSpinner className="w-3.5 h-3.5 text-blue-700 shrink-0" />
+                                                <span>Opening in Browser...</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <IconDownload className="w-3.5 h-3.5 text-blue-700 shrink-0" />
+                                                <span>Download A4 Bill</span>
+                                            </>
+                                        )}
                                     </button>
                                     <button
                                         type="button"
                                         onClick={() => handleCheckout(false)}
                                         disabled={loading}
-                                        style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid #000000' }}
-                                        className="btn-black !bg-black !text-white px-5 py-2 rounded-xl font-extrabold text-xs shadow-md hover:opacity-90 active:scale-95 transition-all disabled:opacity-50 cursor-pointer"
+                                        className="px-5 py-2 rounded-xl bg-[#16A34A] hover:bg-[#15803D] text-white font-extrabold text-xs shadow-md hover:shadow-lg active:scale-95 transition-all disabled:opacity-50 cursor-pointer"
                                     >
                                         {loading ? 'Processing...' : (cart.editingSaleId ? 'Update & Save Invoice' : 'Complete & Save Invoice')}
                                     </button>
@@ -2532,7 +2680,7 @@ export default function POSPage() {
 
             {/* ADMIN CREDIT LIMIT APPROVAL MODAL */}
             {creditLimitModalOpen && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl border-2 border-rose-400">
                         <div className="text-rose-600 font-extrabold text-lg flex items-center gap-2">
                             <IconWarning className="w-5 h-5 text-rose-600" />
@@ -2580,159 +2728,23 @@ export default function POSPage() {
                 </div>
             )}
 
-            {/* WALKIN CREDIT CUSTOMER DETAILS REQUIRED MODAL */}
-            {walkinCreditModalOpen && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in duration-150">
-                    <div className="bg-white rounded-2xl max-w-md w-full p-5 sm:p-6 space-y-4 shadow-2xl border border-gray-100">
-                        {/* Modal Header */}
-                        <div className="flex items-start justify-between border-b border-gray-100 pb-3">
-                            <div className="flex items-center gap-2.5">
-                                <div className="w-10 h-10 rounded-xl bg-blue-50 text-[#0B3B7B] border border-blue-200 flex items-center justify-center shrink-0">
-                                    <IconCustomers className="w-5 h-5 text-[#0B3B7B]" />
-                                </div>
-                                <div>
-                                    <h3 className="text-base font-extrabold text-gray-900 leading-snug">
-                                        Customer Details Required
-                                    </h3>
-                                    <p className="text-xs font-semibold text-gray-500">
-                                        ادھار کھاتہ کیلئے گاہک کا نام اور فون نمبر لازمی ہے
-                                    </p>
-                                </div>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => setWalkinCreditModalOpen(false)}
-                                className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
-                            >
-                                <IconClose className="w-4 h-4" />
-                            </button>
-                        </div>
-
-                        {/* Bill Summary Alert */}
-                        <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl flex items-center justify-between">
-                            <div>
-                                <span className="text-[10px] font-bold uppercase text-amber-800 tracking-wider">Unpaid Due Balance:</span>
-                                <p className="text-base font-black text-rose-600 font-mono">
-                                    Rs. {remainingBalance.toLocaleString()}
-                                </p>
-                            </div>
-                            <span className="text-[10px] font-bold text-amber-900 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-md">
-                                Pending / Partial Sale
-                            </span>
-                        </div>
-
-                        <p className="text-xs text-gray-600 leading-relaxed">
-                            Since this bill has an unpaid/partial balance, please enter the customer's <strong>Real Name</strong> and <strong>Mobile Phone Number</strong> to record the debt in their customer ledger.
-                        </p>
-
-                        {walkinCreditError && (
-                            <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-bold flex items-center gap-1.5">
-                                <IconWarning className="w-4 h-4 text-rose-600 shrink-0" />
-                                <span>{walkinCreditError}</span>
-                            </div>
-                        )}
-
-                        {/* Form Fields */}
-                        <form
-                            onSubmit={(e) => {
-                                e.preventDefault();
-                                const trimmedName = walkinCreditForm.name.trim();
-                                const trimmedPhone = walkinCreditForm.phone.trim();
-                                const trimmedAddr = walkinCreditForm.address.trim() || 'Timergara';
-
-                                if (!trimmedName || trimmedName.toLowerCase() === 'walk-in customer' || trimmedName.toLowerCase() === 'walk-in' || trimmedName.toLowerCase() === 'walkin') {
-                                    setWalkinCreditError('Please enter the customer\'s real name (گاہک کا اصل نام لکھیں)');
-                                    return;
-                                }
-                                if (!trimmedPhone) {
-                                    setWalkinCreditError('Please enter the customer\'s mobile phone number (موبائل نمبر درج کریں)');
-                                    return;
-                                }
-                                if (trimmedPhone.length < 7) {
-                                    setWalkinCreditError('Please enter a valid mobile number (کم از کم 7 ہندسے)');
-                                    return;
-                                }
-
-                                setWalkinName(trimmedName);
-                                setWalkinPhone(trimmedPhone);
-                                setWalkinAddress(trimmedAddr);
-                                setWalkinCreditModalOpen(false);
-                                handleCheckout(false, {
-                                    name: trimmedName,
-                                    phone: trimmedPhone,
-                                    address: trimmedAddr
-                                });
-                            }}
-                            className="space-y-3"
-                        >
-                            <div>
-                                <label className="block text-xs font-bold text-gray-800 mb-1">
-                                    Customer Full Name <span className="text-rose-500">*</span>
-                                </label>
-                                <input
-                                    type="text"
-                                    required
-                                    autoFocus
-                                    value={walkinCreditForm.name}
-                                    onChange={(e) => {
-                                        setWalkinCreditForm(prev => ({ ...prev, name: e.target.value }));
-                                        if (walkinCreditError) setWalkinCreditError('');
-                                    }}
-                                    placeholder="e.g. Ishaq Khan"
-                                    className="w-full py-2 px-3 rounded-xl border border-gray-300 text-xs font-bold bg-white focus:outline-none focus:border-[#0B3B7B] focus:ring-1 focus:ring-[#0B3B7B]"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-xs font-bold text-gray-800 mb-1">
-                                    Mobile / Phone Number <span className="text-rose-500">*</span>
-                                </label>
-                                <input
-                                    type="tel"
-                                    required
-                                    value={walkinCreditForm.phone}
-                                    onChange={(e) => {
-                                        setWalkinCreditForm(prev => ({ ...prev, phone: e.target.value }));
-                                        if (walkinCreditError) setWalkinCreditError('');
-                                    }}
-                                    placeholder="e.g. 03001234567"
-                                    className="w-full py-2 px-3 rounded-xl border border-gray-300 text-xs font-bold font-mono bg-white focus:outline-none focus:border-[#0B3B7B] focus:ring-1 focus:ring-[#0B3B7B]"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-xs font-bold text-gray-800 mb-1">
-                                    Shop / Address <span className="text-gray-400 font-normal">(Optional)</span>
-                                </label>
-                                <input
-                                    type="text"
-                                    value={walkinCreditForm.address}
-                                    onChange={(e) => setWalkinCreditForm(prev => ({ ...prev, address: e.target.value }))}
-                                    placeholder="e.g. Royal Dir Restaurant, Timergara"
-                                    className="w-full py-2 px-3 rounded-xl border border-gray-300 text-xs font-medium bg-white focus:outline-none focus:border-[#0B3B7B] focus:ring-1 focus:ring-[#0B3B7B]"
-                                />
-                            </div>
-
-                            {/* Modal Footer Buttons */}
-                            <div className="flex gap-2 pt-2">
-                                <button
-                                    type="button"
-                                    onClick={() => setWalkinCreditModalOpen(false)}
-                                    className="flex-1 py-2.5 rounded-xl border border-gray-300 text-gray-700 font-bold text-xs hover:bg-gray-100 cursor-pointer transition-colors"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="submit"
-                                    className="flex-1 py-2.5 rounded-xl bg-[#0B3B7B] hover:bg-[#092e60] text-white font-extrabold text-xs shadow-md active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1.5"
-                                >
-                                    <span>✓ Save & Complete Invoice</span>
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
+            {/* FAST ISOLATED WALKIN CREDIT DETAILS MODAL */}
+            <WalkinCreditModal
+                isOpen={walkinCreditModalOpen}
+                remainingBalance={remainingBalance}
+                initialData={walkinCreditForm}
+                onClose={() => {
+                    setWalkinCreditModalOpen(false);
+                    setPaymentModalOpen(true);
+                }}
+                onSubmit={({ name, phone, address }) => {
+                    setWalkinName(name);
+                    setWalkinPhone(phone);
+                    setWalkinAddress(address);
+                    setWalkinCreditModalOpen(false);
+                    handleCheckout(false, { name, phone, address });
+                }}
+            />
 
             {/* 1. REUSABLE WHOLESALE A4 BILL MODAL */}
             <WholesaleA4InvoiceModal

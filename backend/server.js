@@ -1205,8 +1205,9 @@ app.post('/api/sales', authenticateToken, (req, res) => {
         return res.status(400).json({ error: 'Valid sale items and net amount required' });
     }
 
-    const remainingBalance = net_amount - (amount_paid || 0);
-    const paymentStatus = (amount_paid || 0) >= net_amount ? 'paid' : (amount_paid > 0 ? 'partial' : 'unpaid');
+    const effectiveAmountPaid = Math.min(net_amount, Math.max(0, amount_paid !== undefined ? parseFloat(amount_paid) : net_amount));
+    const remainingBalance = Math.max(0, net_amount - effectiveAmountPaid);
+    const paymentStatus = effectiveAmountPaid >= net_amount ? 'paid' : (effectiveAmountPaid > 0 ? 'partial' : 'unpaid');
 
     let effectiveCustomerId = customer_id || null;
 
@@ -1253,7 +1254,7 @@ app.post('/api/sales', authenticateToken, (req, res) => {
                     [
                         saleUUID, invoiceNo, effectiveCustomerId || null, supplier_id || null, req.user.id, device_id || 'DEVICE-CASHIER-01',
                         gross_amount || 0, discount || 0, special_discount || 0, additional_charges || 0,
-                        net_amount, amount_paid || 0, amount_paid || 0, remainingBalance, paymentStatus, payment_method || 'cash', finalRemarks,
+                        net_amount, effectiveAmountPaid, effectiveAmountPaid, remainingBalance, paymentStatus, payment_method || 'cash', finalRemarks,
                         saleNow
                     ],
                     function(err) {
@@ -1299,50 +1300,59 @@ app.post('/api/sales', authenticateToken, (req, res) => {
                                 [chargeUUID, effectiveCustomerId, saleId, net_amount, `Wholesale Invoice ${invoiceNo}`, payment_method || 'cash', saleDate, saleNow]
                             );
 
-                            if (amount_paid > 0) {
+                            if (effectiveAmountPaid > 0) {
                                 const paymentUUID = generateUUID();
                                 db.run(
                                     `INSERT INTO customer_ledger (uuid, customer_id, sale_id, amount, type, description, payment_method, payment_date, created_at)
                                      VALUES (?, ?, ?, ?, 'payment', ?, ?, ?, ?)`,
-                                    [paymentUUID, effectiveCustomerId, saleId, amount_paid, `Payment for Invoice ${invoiceNo}`, payment_method || 'cash', saleDate, saleNow]
+                                    [paymentUUID, effectiveCustomerId, saleId, effectiveAmountPaid, `Payment for Invoice ${invoiceNo}`, payment_method || 'cash', saleDate, saleNow]
                                 );
 
                                 db.run(
                                     `INSERT INTO payments (uuid, party_type, party_id, amount, payment_method, reference_no, user_id, device_id, notes, payment_date, created_at)
                                      VALUES (?, 'customer', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                                    [generateUUID(), effectiveCustomerId, amount_paid, payment_method || 'cash', invoiceNo, req.user.id, device_id || 'DEVICE-CASHIER-01', `Payment for Invoice ${invoiceNo}`, saleDate, saleNow]
+                                    [generateUUID(), effectiveCustomerId, effectiveAmountPaid, payment_method || 'cash', invoiceNo, req.user.id, device_id || 'DEVICE-CASHIER-01', `Payment for Invoice ${invoiceNo}`, saleDate, saleNow]
                                 );
                             }
 
                             db.run(`UPDATE customers SET balance = balance + ? WHERE id = ?`, [remainingBalance, effectiveCustomerId]);
                         } else if (supplier_id) {
-                        // Supplier contra sale / debit entry
-                        const chargeUUID = generateUUID();
-                        db.run(
-                            `INSERT INTO supplier_ledger (uuid, supplier_id, purchase_id, amount, type, description, payment_date, created_at)
-                             VALUES (?, ?, NULL, ?, 'sale_deduction', ?, ?, ?)`,
-                            [chargeUUID, supplier_id, net_amount, `Sale Invoice ${invoiceNo}`, saleDate, saleNow]
-                        );
-
-                        if (amount_paid > 0) {
+                            // Supplier contra sale / debit entry
+                            const chargeUUID = generateUUID();
                             db.run(
-                                `INSERT INTO payments (uuid, party_type, party_id, amount, payment_method, reference_no, user_id, device_id, notes, payment_date, created_at)
-                                 VALUES (?, 'supplier', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                                [generateUUID(), supplier_id, amount_paid, payment_method || 'cash', invoiceNo, req.user.id, device_id || 'DEVICE-CASHIER-01', `Payment for Sale Invoice ${invoiceNo}`, saleDate, saleNow]
+                                `INSERT INTO supplier_ledger (uuid, supplier_id, purchase_id, amount, type, description, payment_date, created_at)
+                                 VALUES (?, ?, NULL, ?, 'sale_deduction', ?, ?, ?)`,
+                                [chargeUUID, supplier_id, net_amount, `Sale Invoice ${invoiceNo}`, saleDate, saleNow]
                             );
+
+                            if (effectiveAmountPaid > 0) {
+                                db.run(
+                                    `INSERT INTO payments (uuid, party_type, party_id, amount, payment_method, reference_no, user_id, device_id, notes, payment_date, created_at)
+                                     VALUES (?, 'supplier', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                                    [generateUUID(), supplier_id, effectiveAmountPaid, payment_method || 'cash', invoiceNo, req.user.id, device_id || 'DEVICE-CASHIER-01', `Payment for Sale Invoice ${invoiceNo}`, saleDate, saleNow]
+                                );
+                            }
+
+                            // Reduces our liability to the supplier
+                            db.run(`UPDATE suppliers SET balance = balance - ? WHERE id = ?`, [remainingBalance, supplier_id]);
+                        } else {
+                            // Walk-in Customer Cash Sale
+                            if (effectiveAmountPaid > 0) {
+                                db.run(
+                                    `INSERT INTO payments (uuid, party_type, party_id, amount, payment_method, reference_no, user_id, device_id, notes, payment_date, created_at)
+                                     VALUES (?, 'customer', 0, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                                    [generateUUID(), effectiveAmountPaid, payment_method || 'cash', invoiceNo, req.user.id, device_id || 'DEVICE-CASHIER-01', finalRemarks || `Walk-in Cash Payment for Invoice ${invoiceNo}`, saleDate, saleNow]
+                                );
+                            }
                         }
 
-                        // Reduces our liability to the supplier
-                        db.run(`UPDATE suppliers SET balance = balance - ? WHERE id = ?`, [remainingBalance, supplier_id]);
-                    }
-
-                    // Cash Register update if Cash payment
-                    if ((payment_method || 'cash') === 'cash' && amount_paid > 0) {
-                        db.run(
-                            `UPDATE cash_registers SET cash_sales = cash_sales + ? WHERE user_id = ? AND status = 'open'`,
-                            [amount_paid, req.user.id]
-                        );
-                    }
+                        // Cash Register update if Cash payment
+                        if ((payment_method || 'cash') === 'cash' && effectiveAmountPaid > 0) {
+                            db.run(
+                                `UPDATE cash_registers SET cash_sales = cash_sales + ? WHERE user_id = ? AND status = 'open'`,
+                                [effectiveAmountPaid, req.user.id]
+                            );
+                        }
 
                     db.run("COMMIT", (err) => {
                         if (err) return res.status(500).json({ error: err.message });
@@ -1534,7 +1544,7 @@ app.get('/api/sales', (req, res) => {
     const summaryQuery = `
         SELECT 
             COUNT(*) as total_count,
-            COALESCE(SUM(s.net_amount), 0) as totalSale,
+            COALESCE(SUM(COALESCE(s.gross_amount, s.net_amount + COALESCE(s.discount, 0) + COALESCE(s.special_discount, 0))), 0) as totalSale,
             ROUND(COALESCE(SUM(
                 COALESCE(s.net_amount, 0) - COALESCE((
                     SELECT SUM(si.quantity * COALESCE(pp.purchase_price, (SELECT pp2.purchase_price FROM product_packagings pp2 WHERE pp2.variant_id = si.variant_id AND pp2.is_default = 1 LIMIT 1), 0))
@@ -1543,7 +1553,8 @@ app.get('/api/sales', (req, res) => {
                     WHERE si.sale_id = s.id
                 ), 0)
             ), 0), 2) as totalProfit,
-            COALESCE(SUM(COALESCE(s.initial_amount_paid, s.amount_paid)), 0) as checkoutCollected,
+            COALESCE(SUM(MIN(s.net_amount, COALESCE(s.initial_amount_paid, s.amount_paid))), 0) as checkoutCollected,
+            COALESCE(SUM(MAX(0, s.net_amount - COALESCE(s.initial_amount_paid, s.amount_paid))), 0) as newDuesAdded,
             COALESCE(SUM(COALESCE(s.remaining_balance, s.net_amount - COALESCE(s.amount_paid, 0))), 0) as totalPendingDues,
             COALESCE(SUM(COALESCE(s.discount, 0) + COALESCE(s.special_discount, 0)), 0) as totalDiscount,
             COALESCE(SUM(CASE WHEN COALESCE(s.remaining_balance, 0) <= 0.01 AND COALESCE(s.net_amount, 0) > 0 THEN 1 ELSE 0 END), 0) as paid_count,
@@ -1556,16 +1567,21 @@ app.get('/api/sales', (req, res) => {
     db.get(summaryQuery, dateParams, (err, summaryRow) => {
         if (err) return res.status(500).json({ error: err.message });
 
-        // Calculate recovered dues from customer payments in the same date range (excluding current sale checkout payments and refund payouts)
+        // Calculate recovered dues from customer payments in the same date range (excluding initial checkout payments and refund payouts)
         let recWhere = "p.party_type = 'customer' AND p.amount > 0 AND (p.notes IS NULL OR (p.notes NOT LIKE '%Refund%' AND p.notes NOT LIKE '%return%')) AND (p.reference_no IS NULL OR (p.reference_no NOT LIKE 'SALE-%' AND p.reference_no NOT LIKE 'RET-%'))";
         let recParams = [];
         if (dateBounds) {
             recWhere += " AND ( (p.payment_date IS NOT NULL AND DATE(p.payment_date) >= DATE(?) AND DATE(p.payment_date) <= DATE(?)) OR (p.payment_date IS NULL AND DATE(p.created_at) >= DATE(?) AND DATE(p.created_at) <= DATE(?)) )";
-            recWhere += " AND NOT (s.id IS NOT NULL AND DATE(s.created_at) >= DATE(?) AND DATE(s.created_at) <= DATE(?))";
-            recParams.push(dateBounds.start, dateBounds.end, dateBounds.start, dateBounds.end, dateBounds.start, dateBounds.end);
-        } else {
-            recWhere += " AND NOT (s.id IS NOT NULL AND DATE(s.created_at) = DATE(COALESCE(p.payment_date, p.created_at)))";
+            recParams.push(dateBounds.start, dateBounds.end, dateBounds.start, dateBounds.end);
         }
+        // Exclude only the initial checkout payment already counted in checkoutCollected (so same-day later FIFO/Wasooli recoveries ARE counted)
+        recWhere += ` AND NOT (
+            s.id IS NOT NULL
+            AND COALESCE(s.initial_amount_paid, 0) > 0
+            AND (p.notes IS NULL OR (p.notes NOT LIKE '%FIFO%' AND p.notes NOT LIKE '%Wasooli%' AND p.notes NOT LIKE '%recovery%'))
+            AND p.id = (SELECT MIN(p2.id) FROM payments p2 WHERE p2.reference_no = s.invoice_no)
+            AND DATE(s.created_at) = DATE(COALESCE(p.payment_date, p.created_at))
+        )`;
 
         const qSalesRec = `
             SELECT COALESCE(SUM(p.amount), 0) as totalRecoveredDues 
@@ -1626,6 +1642,7 @@ app.get('/api/sales', (req, res) => {
                     totalCollected: totalCollectedCash,
                     totalRecoveredDues: recoveredDues,
                     totalCashRefunds: cashRefunds,
+                    newDuesAdded: summaryRow ? Number(summaryRow.newDuesAdded) : 0,
                     totalPendingDues: summaryRow ? Number(summaryRow.totalPendingDues) : 0,
                     totalDiscount: summaryRow ? Number(summaryRow.totalDiscount) : 0,
                     statusCounts: {
@@ -1695,7 +1712,7 @@ app.get('/api/sales', (req, res) => {
                     const dataQuery = `
                         SELECT 
                             s.*, 
-                            COALESCE(s.initial_amount_paid, s.amount_paid) as initial_amount_paid,
+                            MIN(s.net_amount, COALESCE(s.initial_amount_paid, s.amount_paid)) as initial_amount_paid,
                             COALESCE(c.name, sup.name, 'Walk-in Customer') as customer_name,
                             COALESCE(c.business_name, sup.company_name, '') as customer_business,
                             COALESCE(NULLIF(c.mobile, ''), NULLIF(c.phone, ''), NULLIF(sup.phone, ''), '') as customer_phone,
@@ -1707,11 +1724,16 @@ app.get('/api/sales', (req, res) => {
                                 THEN 1 ELSE 0 
                             END as is_settled_later,
                             (
-                                SELECT MAX(COALESCE(p.payment_date, DATE(p.created_at)))
+                                SELECT MAX(p.created_at)
                                 FROM payments p
-                                WHERE p.reference_no = s.invoice_no 
-                                  AND DATE(COALESCE(p.payment_date, p.created_at)) > DATE(s.created_at)
-                            ) as settled_later_date,
+                                WHERE p.party_type = 'customer' AND p.amount > 0
+                                  AND (p.notes IS NULL OR (p.notes NOT LIKE '%Refund%' AND p.notes NOT LIKE '%return%'))
+                                  AND (
+                                      p.reference_no = s.invoice_no
+                                      OR (s.customer_id IS NOT NULL AND p.party_id = s.customer_id AND (p.reference_no IS NULL OR p.reference_no = '') AND p.created_at > s.created_at)
+                                  )
+                                  AND p.created_at > s.created_at
+                            ) as settled_later_at,
                             COALESCE((
                                 SELECT ROUND(SUM(si.quantity * COALESCE(pp.purchase_price, (SELECT pp2.purchase_price FROM product_packagings pp2 WHERE pp2.variant_id = si.variant_id AND pp2.is_default = 1 LIMIT 1), 0)), 2)
                                 FROM sale_items si
@@ -1751,16 +1773,50 @@ app.get('/api/sales', (req, res) => {
 
                     db.all(dataQuery, [...fullParams, limit, offset], (err, rows) => {
                         if (err) return res.status(500).json({ error: err.message });
-                        res.json({
-                            data: rows || [],
-                            recoveredPayments,
-                            pagination: {
-                                total,
-                                page,
-                                limit,
-                                totalPages
-                            },
-                            summary
+
+                        let retListWhere = "(sr.status IS NULL OR sr.status != 'void')";
+                        const retListParams = [];
+                        if (dateBounds) {
+                            retListWhere += " AND DATE(sr.created_at) >= DATE(?) AND DATE(sr.created_at) <= DATE(?)";
+                            retListParams.push(dateBounds.start, dateBounds.end);
+                        }
+                        const qReturnsList = `
+                            SELECT 
+                                sr.id as return_id,
+                                sr.uuid as return_uuid,
+                                sr.sale_id,
+                                sr.customer_id,
+                                sr.total_refund,
+                                sr.return_type,
+                                sr.refund_method,
+                                sr.status,
+                                sr.remarks,
+                                sr.created_at,
+                                s.invoice_no as original_invoice_no,
+                                COALESCE(c.name, 'Walk-in Customer') as customer_name,
+                                COALESCE(c.business_name, '') as customer_business,
+                                COALESCE(NULLIF(c.mobile, ''), NULLIF(c.phone, ''), '') as customer_phone,
+                                u.username as cashier_name
+                            FROM sale_returns sr
+                            LEFT JOIN sales s ON sr.sale_id = s.id
+                            LEFT JOIN customers c ON sr.customer_id = c.id
+                            LEFT JOIN users u ON sr.user_id = u.id
+                            WHERE ${retListWhere}
+                            ORDER BY sr.created_at DESC, sr.id DESC
+                        `;
+                        db.all(qReturnsList, retListParams, (retErr, returnRows) => {
+                            res.json({
+                                data: rows || [],
+                                recoveredPayments,
+                                returnsList: (!retErr && Array.isArray(returnRows)) ? returnRows : [],
+                                pagination: {
+                                    total,
+                                    page,
+                                    limit,
+                                    totalPages
+                                },
+                                summary
+                            });
                         });
                     });
                 });
@@ -1834,7 +1890,36 @@ app.get('/api/sales/:id', (req, res) => {
                     THEN COALESCE(u.symbol, u.name, 'Unit')
                     ELSE COALESCE(pt.name, si.unit_name, 'Unit')
                 END as packaging_name,
-                COALESCE(pp.conversion_factor, 1) as conversion_factor
+                COALESCE(pp.conversion_factor, 1) as conversion_factor,
+                COALESCE((
+                    SELECT SUM(sri.quantity)
+                    FROM sale_return_items sri
+                    JOIN sale_returns sr ON sri.sale_return_id = sr.id
+                    WHERE sr.sale_id = si.sale_id
+                      AND (sr.status IS NULL OR sr.status != 'void')
+                      AND sri.variant_id = si.variant_id
+                      AND sri.packaging_type_id = si.packaging_type_id
+                ), 0) as invoice_returned_qty,
+                COALESCE((
+                    SELECT SUM(si2.quantity)
+                    FROM sale_items si2
+                    JOIN sales s2 ON si2.sale_id = s2.id
+                    WHERE s2.customer_id = ?
+                      AND ? IS NOT NULL
+                      AND (s2.status IS NULL OR s2.status != 'void')
+                      AND si2.variant_id = si.variant_id
+                      AND si2.packaging_type_id = si.packaging_type_id
+                ), si.quantity) as cust_total_bought,
+                COALESCE((
+                    SELECT SUM(sri2.quantity)
+                    FROM sale_return_items sri2
+                    JOIN sale_returns sr2 ON sri2.sale_return_id = sr2.id
+                    WHERE sr2.customer_id = ?
+                      AND ? IS NOT NULL
+                      AND (sr2.status IS NULL OR sr2.status != 'void')
+                      AND sri2.variant_id = si.variant_id
+                      AND sri2.packaging_type_id = si.packaging_type_id
+                ), 0) as cust_total_returned
             FROM sale_items si
             LEFT JOIN product_variants v ON si.variant_id = v.id
             LEFT JOIN products p ON v.product_id = p.id
@@ -1842,9 +1927,22 @@ app.get('/api/sales/:id', (req, res) => {
             LEFT JOIN packaging_types pt ON si.packaging_type_id = pt.id
             LEFT JOIN product_packagings pp ON (pp.variant_id = v.id AND pp.packaging_type_id = si.packaging_type_id)
             WHERE si.sale_id = ?
-        `, [sale.id], (err, items) => {
+        `, [sale.customer_id || null, sale.customer_id || null, sale.customer_id || null, sale.customer_id || null, sale.id], (err, items) => {
             if (err) return res.status(500).json({ error: err.message });
-            res.json({ ...sale, items });
+            const enrichedItems = (items || []).map(it => {
+                const invRem = Math.max(0, Number(it.quantity || 0) - Number(it.invoice_returned_qty || 0));
+                const custRem = sale.customer_id
+                    ? Math.max(0, Number(it.cust_total_bought || 0) - Number(it.cust_total_returned || 0))
+                    : invRem;
+                const remaining = Math.round(Math.min(invRem, custRem) * 1000) / 1000;
+                const alreadyReturned = Math.max(0, Math.round((Number(it.quantity || 0) - remaining) * 1000) / 1000);
+                return {
+                    ...it,
+                    already_returned: alreadyReturned,
+                    remaining_returnable: remaining
+                };
+            });
+            res.json({ ...sale, items: enrichedItems });
         });
     });
 });
@@ -1872,7 +1970,11 @@ app.put('/api/sales/:id', authenticateToken, (req, res, next) => {
         if (!oldSale) return res.status(404).json({ error: 'Sale invoice not found' });
 
         const actualSaleId = oldSale.id;
-        const targetCustomerId = customer_id !== undefined ? customer_id : oldSale.customer_id;
+        let targetCustomerId = customer_id !== undefined ? customer_id : oldSale.customer_id;
+        const partyType = req.body.party_type || (targetCustomerId ? 'customer' : 'walkin');
+        const walkinName = req.body.walkin_name;
+        const walkinPhone = req.body.walkin_phone;
+        const walkinAddress = req.body.walkin_address;
 
         db.serialize(() => {
             db.run("BEGIN TRANSACTION");
@@ -1892,22 +1994,72 @@ app.put('/api/sales/:id', authenticateToken, (req, res, next) => {
             const newPaid = amount_paid !== undefined ? parseFloat(amount_paid) : oldSale.amount_paid;
             const newRemaining = Math.max(0, newNet - newPaid);
             const newPaymentStatus = newPaid >= newNet ? 'paid' : (newPaid > 0 ? 'partial' : 'unpaid');
-            const newRemarks = remarks !== undefined ? remarks : oldSale.remarks;
+            let newRemarks = remarks !== undefined ? remarks : oldSale.remarks;
+            if (partyType === 'walkin' && walkinName) {
+                const formattedWalkin = `Walk-in: ${walkinName} ${walkinPhone ? '(' + walkinPhone + ')' : ''}`;
+                if (!newRemarks || newRemarks.includes('Walk-in:') || newRemarks === 'Walk-in Customer') {
+                    newRemarks = formattedWalkin;
+                }
+            }
             const newPayMethod = payment_method || oldSale.payment_method;
 
+            const proceedToFinish = () => {
+                if (!targetCustomerId && partyType === 'walkin' && newRemaining > 0 && (walkinName || walkinPhone)) {
+                    resolveOrCreateWalkinCustomer(walkinName, walkinPhone, walkinAddress, (wErr, newCustId) => {
+                        if (!wErr && newCustId) {
+                            targetCustomerId = newCustId;
+                        }
+                        finishSaleUpdate();
+                    });
+                } else {
+                    finishSaleUpdate();
+                }
+            };
+
             const finishSaleUpdate = () => {
+                // Keep initial_amount_paid and the checkout payment row in sync when an invoice is edited
+                const oldInitPaid = oldSale.initial_amount_paid !== null && oldSale.initial_amount_paid !== undefined
+                    ? parseFloat(oldSale.initial_amount_paid)
+                    : parseFloat(oldSale.amount_paid || 0);
+                const laterRecoveries = Math.max(0, parseFloat(oldSale.amount_paid || 0) - oldInitPaid);
+                const newInitialPaid = Math.max(0, newPaid - laterRecoveries);
+
                 db.run(`
                     UPDATE sales SET 
                         customer_id = ?,
                         gross_amount = ?, discount = ?, special_discount = ?, additional_charges = ?,
-                        net_amount = ?, amount_paid = ?, remaining_balance = ?, payment_status = ?,
+                        net_amount = ?, amount_paid = ?, initial_amount_paid = ?, remaining_balance = ?, payment_status = ?,
                         payment_method = ?, remarks = ?
                     WHERE id = ?
-                `, [targetCustomerId, newGross, newDiscount, newSpecialDisc, newCharges, newNet, newPaid, newRemaining, newPaymentStatus, newPayMethod, newRemarks, actualSaleId], (upErr) => {
+                `, [targetCustomerId, newGross, newDiscount, newSpecialDisc, newCharges, newNet, newPaid, newInitialPaid, newRemaining, newPaymentStatus, newPayMethod, newRemarks, actualSaleId], (upErr) => {
                     if (upErr) {
                         db.run("ROLLBACK");
                         return res.status(500).json({ error: upErr.message });
                     }
+
+                    // Sync checkout payment record in payments table
+                    db.get(
+                        "SELECT id FROM payments WHERE reference_no = ? ORDER BY id ASC LIMIT 1",
+                        [oldSale.invoice_no],
+                        (pErr, pRow) => {
+                            if (!pErr && pRow) {
+                                if (newInitialPaid > 0) {
+                                    db.run(
+                                        "UPDATE payments SET amount = ?, payment_method = ?, party_id = ? WHERE id = ?",
+                                        [newInitialPaid, newPayMethod, targetCustomerId || 0, pRow.id]
+                                    );
+                                } else {
+                                    db.run("DELETE FROM payments WHERE id = ?", [pRow.id]);
+                                }
+                            } else if (!pErr && newInitialPaid > 0) {
+                                db.run(
+                                    `INSERT INTO payments (uuid, party_type, party_id, amount, payment_method, reference_no, user_id, payment_date, notes)
+                                     VALUES (?, 'customer', ?, ?, ?, ?, ?, DATE(?), ?)`,
+                                    [generateUUID(), targetCustomerId || 0, newInitialPaid, newPayMethod, oldSale.invoice_no, req.user?.id || 1, oldSale.created_at || new Date().toISOString(), newRemarks]
+                                );
+                            }
+                        }
+                    );
 
                     if (oldSale.customer_id && targetCustomerId && oldSale.customer_id === targetCustomerId) {
                         const balanceDelta = newRemaining - oldSale.remaining_balance;
@@ -1986,12 +2138,12 @@ app.put('/api/sales/:id', authenticateToken, (req, res, next) => {
                                 db.run("ROLLBACK");
                                 return res.status(500).json({ error: finErr.message });
                             }
-                            finishSaleUpdate();
+                            proceedToFinish();
                         });
                     });
                 });
             } else {
-                finishSaleUpdate();
+                proceedToFinish();
             }
         });
     });
@@ -2385,6 +2537,60 @@ app.get('/api/customers/:id/ledger', (req, res) => {
     });
 });
 
+// GET aggregated returnable items actually purchased by a customer (bought - already returned)
+app.get('/api/customers/:id/returnable-items', (req, res) => {
+    const customerId = req.params.id;
+    const sql = `
+        SELECT 
+            si.variant_id,
+            si.packaging_type_id,
+            p.name as product_name,
+            pv.variant_name,
+            pv.sku,
+            COALESCE(pt.name, si.unit_name, 'PCS') as packaging_name,
+            COALESCE(pp.conversion_factor, 1) as conversion_factor,
+            SUM(si.quantity) as total_bought,
+            COALESCE((
+                SELECT SUM(sri.quantity)
+                FROM sale_return_items sri
+                JOIN sale_returns sr ON sri.sale_return_id = sr.id
+                WHERE sr.customer_id = ?
+                  AND (sr.status IS NULL OR sr.status != 'void')
+                  AND sri.variant_id = si.variant_id
+                  AND sri.packaging_type_id = si.packaging_type_id
+            ), 0) as already_returned,
+            (
+                SELECT CASE WHEN si2.quantity > 0 THEN ROUND(si2.total / si2.quantity, 2) ELSE si2.price END
+                FROM sale_items si2
+                JOIN sales s2 ON si2.sale_id = s2.id
+                WHERE s2.customer_id = ?
+                  AND (s2.status IS NULL OR s2.status != 'void')
+                  AND si2.variant_id = si.variant_id
+                  AND si2.packaging_type_id = si.packaging_type_id
+                ORDER BY s2.created_at DESC, si2.id DESC
+                LIMIT 1
+            ) as latest_unit_price
+        FROM sale_items si
+        JOIN sales s ON si.sale_id = s.id
+        JOIN product_variants pv ON si.variant_id = pv.id
+        JOIN products p ON pv.product_id = p.id
+        LEFT JOIN packaging_types pt ON si.packaging_type_id = pt.id
+        LEFT JOIN product_packagings pp ON (pp.variant_id = si.variant_id AND pp.packaging_type_id = si.packaging_type_id)
+        WHERE s.customer_id = ? AND (s.status IS NULL OR s.status != 'void')
+        GROUP BY si.variant_id, si.packaging_type_id
+        HAVING (total_bought - already_returned) > 0.0001
+        ORDER BY p.name ASC
+    `;
+    db.all(sql, [customerId, customerId, customerId], (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        const enriched = (rows || []).map(r => ({
+            ...r,
+            max_quantity: Math.max(0, Math.round((Number(r.total_bought || 0) - Number(r.already_returned || 0)) * 1000) / 1000)
+        }));
+        res.json(enriched);
+    });
+});
+
 app.get('/api/customers/:id/statement-pdf', (req, res) => {
     const { id } = req.params;
     db.get("SELECT * FROM customers WHERE id = ?", [id], (err, customer) => {
@@ -2403,12 +2609,14 @@ app.get('/api/customers/:id/statement-pdf', (req, res) => {
                 let shopName = 'Hilal Wholesaler Shop';
                 let shopAddress = 'Main Bazaar, Timergara, KP, Pakistan';
                 let shopPhone = '+92 300 1234567';
+                let shopEmail = '';
                 let bankAccounts = [];
                 if (settings) {
                     settings.forEach(s => {
                         if (s.key === 'shop_name') shopName = s.value;
                         if (s.key === 'shop_address') shopAddress = s.value;
                         if (s.key === 'shop_phone') shopPhone = s.value;
+                        if (s.key === 'shop_email') shopEmail = s.value;
                         if (s.key === 'bank_accounts') {
                             try {
                                 const parsed = JSON.parse(s.value);
@@ -2420,7 +2628,7 @@ app.get('/api/customers/:id/statement-pdf', (req, res) => {
 
                 delete require.cache[require.resolve('./services/reminderService')];
                 const freshReminderService = require('./services/reminderService');
-                const pdfBuf = freshReminderService.generateCustomerLedgerPdf(shopName, customer, ledgerWithRunning, bankAccounts, { shopAddress, shopPhone });
+                const pdfBuf = freshReminderService.generateCustomerLedgerPdf(shopName, customer, ledgerWithRunning, bankAccounts, { shopAddress, shopPhone, shopEmail });
                 const safeName = (customer.name || 'Customer').replace(/[^a-zA-Z0-9_-]/g, '_');
                 const now = new Date();
                 const pad = (n) => String(n).padStart(2, '0');
@@ -3671,8 +3879,8 @@ app.get('/api/payments', (req, res) => {
         whereClauses.push(`(
             LOWER(COALESCE(p.reference_no, '')) LIKE ? OR
             LOWER(COALESCE(p.notes, '')) LIKE ? OR
-            LOWER(COALESCE(c.name, sup.name, '')) LIKE ? OR
-            LOWER(COALESCE(c.business_name, sup.company_name, '')) LIKE ? OR
+            LOWER(COALESCE(c.name, sup.name, s.remarks, 'Walk-in Customer')) LIKE ? OR
+            LOWER(COALESCE(c.business_name, sup.company_name, 'Direct Cash Sale')) LIKE ? OR
             LOWER(COALESCE(c.phone, sup.phone, '')) LIKE ? OR
             LOWER(COALESCE(u.username, '')) LIKE ? OR
             CAST(p.amount AS TEXT) LIKE ?
@@ -3686,8 +3894,8 @@ app.get('/api/payments', (req, res) => {
         // Backward-compatible unpaginated query for other modules
         const query = `
             SELECT p.*,
-                   COALESCE(c.name, sup.name, '') as party_name,
-                   COALESCE(c.business_name, sup.company_name, '') as party_business,
+                   COALESCE(c.name, sup.name, NULLIF(TRIM(REPLACE(s.remarks, 'Walk-in:', '')), ''), 'Walk-in Customer') as party_name,
+                   COALESCE(c.business_name, sup.company_name, 'Direct Cash Sale') as party_business,
                    COALESCE(c.phone, sup.phone, '') as party_phone,
                    COALESCE(c.address, sup.address, '') as party_address,
                    COALESCE(c.balance, sup.balance, 0) as party_current_balance,
@@ -3695,6 +3903,7 @@ app.get('/api/payments', (req, res) => {
             FROM payments p
             LEFT JOIN customers c ON p.party_type = 'customer' AND p.party_id = c.id
             LEFT JOIN suppliers sup ON p.party_type = 'supplier' AND p.party_id = sup.id
+            LEFT JOIN sales s ON p.reference_no = s.invoice_no
             LEFT JOIN users u ON p.user_id = u.id
             ${whereSql}
             ORDER BY p.created_at DESC, p.id DESC
@@ -3723,6 +3932,7 @@ app.get('/api/payments', (req, res) => {
         FROM payments p
         LEFT JOIN customers c ON p.party_type = 'customer' AND p.party_id = c.id
         LEFT JOIN suppliers sup ON p.party_type = 'supplier' AND p.party_id = sup.id
+        LEFT JOIN sales s ON p.reference_no = s.invoice_no
         LEFT JOIN users u ON p.user_id = u.id
         ${whereSql}
     `;
@@ -3761,8 +3971,8 @@ app.get('/api/payments', (req, res) => {
         // 2. Fetch only the current page of rows
         const paginatedQuery = `
             SELECT p.*,
-                   COALESCE(c.name, sup.name, '') as party_name,
-                   COALESCE(c.business_name, sup.company_name, '') as party_business,
+                   COALESCE(c.name, sup.name, NULLIF(TRIM(REPLACE(s.remarks, 'Walk-in:', '')), ''), 'Walk-in Customer') as party_name,
+                   COALESCE(c.business_name, sup.company_name, 'Direct Cash Sale') as party_business,
                    COALESCE(c.phone, sup.phone, '') as party_phone,
                    COALESCE(c.address, sup.address, '') as party_address,
                    COALESCE(c.balance, sup.balance, 0) as party_current_balance,
@@ -3770,6 +3980,7 @@ app.get('/api/payments', (req, res) => {
             FROM payments p
             LEFT JOIN customers c ON p.party_type = 'customer' AND p.party_id = c.id
             LEFT JOIN suppliers sup ON p.party_type = 'supplier' AND p.party_id = sup.id
+            LEFT JOIN sales s ON p.reference_no = s.invoice_no
             LEFT JOIN users u ON p.user_id = u.id
             ${whereSql}
             ORDER BY p.created_at DESC, p.id DESC
@@ -3950,14 +4161,33 @@ app.get('/api/reports/financial-summary', (req, res) => {
     const expDateClause = hasDates ? `AND ( (e.expense_date IS NOT NULL AND DATE(e.expense_date) >= ? AND DATE(e.expense_date) <= ?) OR (e.expense_date IS NULL AND DATE(e.created_at) >= ? AND DATE(e.created_at) <= ?) )` : '';
 
     // Recovered Dues (Wasooli) are ONLY payments recovered from previous bills (created before startDate) or FIFO/on-account debt recovery.
-    // Payments for invoices created in the current period are part of that sale's checkout cash and must NOT be double-counted.
-    const recExcludeClause = hasDates
-        ? `AND NOT (s.id IS NOT NULL AND DATE(s.created_at) >= ? AND DATE(s.created_at) <= ?)`
-        : `AND NOT (s.id IS NOT NULL AND DATE(s.created_at) = DATE(COALESCE(p.payment_date, p.created_at)))`;
+    // Exclude only the initial checkout payment already counted in initial_amount_paid (so same-day later FIFO/Wasooli recoveries ARE counted)
+    const recExcludeClause = `AND NOT (
+        s.id IS NOT NULL
+        AND COALESCE(s.initial_amount_paid, 0) > 0
+        AND (p.notes IS NULL OR (p.notes NOT LIKE '%FIFO%' AND p.notes NOT LIKE '%Wasooli%' AND p.notes NOT LIKE '%recovery%'))
+        AND p.id = (SELECT MIN(p2.id) FROM payments p2 WHERE p2.reference_no = s.invoice_no)
+        AND DATE(s.created_at) = DATE(COALESCE(p.payment_date, p.created_at))
+    )`;
 
-    const saleParams = hasDates ? [startDate, endDate] : [];
+    const pendingDueExpr = hasDates
+        ? `MAX(
+            COALESCE(s.remaining_balance, 0),
+            (s.net_amount - COALESCE(s.initial_amount_paid, s.amount_paid)) - COALESCE((
+                SELECT SUM(p.amount)
+                FROM payments p
+                WHERE p.party_type = 'customer' AND p.amount > 0
+                  AND (p.notes IS NULL OR (p.notes NOT LIKE '%Refund%' AND p.notes NOT LIKE '%return%'))
+                  AND p.reference_no = s.invoice_no
+                  AND p.created_at > s.created_at
+                  AND DATE(COALESCE(p.payment_date, p.created_at)) <= DATE(?)
+            ), 0)
+        )`
+        : `COALESCE(s.remaining_balance, 0)`;
+
+    const saleParams = hasDates ? [endDate, endDate, startDate, endDate] : [];
     const payParams = hasDates ? [startDate, endDate, startDate, endDate] : [];
-    const recParams = hasDates ? [...payParams, startDate, endDate] : [];
+    const recParams = hasDates ? [...payParams] : [];
     const expParams = hasDates ? [startDate, endDate, startDate, endDate] : [];
 
     const qSales = `
@@ -3986,13 +4216,13 @@ app.get('/api/reports/financial-summary', (req, res) => {
             ), 0) as total_profit,
             IFNULL(SUM(
                 CASE 
-                    WHEN s.net_amount > 0 AND s.remaining_balance > 0 THEN
+                    WHEN s.net_amount > 0 AND (${pendingDueExpr}) > 0 THEN
                         (s.net_amount - COALESCE((
                             SELECT SUM(si.quantity * COALESCE(pp.purchase_price, (SELECT pp2.purchase_price FROM product_packagings pp2 WHERE pp2.variant_id = si.variant_id AND pp2.is_default = 1 LIMIT 1), 0))
                             FROM sale_items si
                             LEFT JOIN product_packagings pp ON pp.variant_id = si.variant_id AND pp.packaging_type_id = si.packaging_type_id
                             WHERE si.sale_id = s.id
-                        ), 0)) * (MIN(s.net_amount, s.remaining_balance) / s.net_amount)
+                        ), 0)) * (MIN(s.net_amount, ${pendingDueExpr}) / s.net_amount)
                     ELSE 0
                 END
             ), 0) as pending_profit
@@ -4071,9 +4301,17 @@ app.get('/api/reports/financial-summary', (req, res) => {
             COUNT(sr.id) as return_count,
             IFNULL(SUM(sr.total_refund), 0) as total_returns,
             IFNULL(SUM(CASE WHEN sr.refund_method = 'cash' THEN sr.total_refund ELSE 0 END), 0) as cash_refunds,
-            IFNULL(SUM(CASE WHEN sr.refund_method = 'credit' OR sr.refund_method IS NULL THEN sr.total_refund ELSE 0 END), 0) as credit_returns
+            IFNULL(SUM(CASE WHEN sr.refund_method = 'credit' OR sr.refund_method IS NULL THEN sr.total_refund ELSE 0 END), 0) as credit_returns,
+            IFNULL(SUM((
+                SELECT SUM(sri.quantity * (sri.refund_price - COALESCE(pp.purchase_price, (
+                    SELECT pp2.purchase_price FROM product_packagings pp2 WHERE pp2.variant_id = sri.variant_id AND pp2.is_default = 1 LIMIT 1
+                ), 0)))
+                FROM sale_return_items sri
+                LEFT JOIN product_packagings pp ON pp.variant_id = sri.variant_id AND pp.packaging_type_id = sri.packaging_type_id
+                WHERE sri.sale_return_id = sr.id
+            )), 0) as returned_profit
         FROM sale_returns sr
-        WHERE 1=1 ${returnDateClause}
+        WHERE (sr.status IS NULL OR sr.status != 'void') ${returnDateClause}
     `;
     const retParams = hasDates ? [startDate, endDate] : [];
 
@@ -4106,21 +4344,20 @@ app.get('/api/reports/financial-summary', (req, res) => {
                         const creditReturns = refRow ? Number(refRow.credit_returns) : 0;
                         const returnCount = refRow ? Number(refRow.return_count) : 0;
 
-                        // When merchandise is returned on credit note (Khata adjustment),
-                        // it reduces the customer's unpaid debt. Net new dues added is gross credit minus credit notes:
-                        const netNewDuesAdded = Math.max(0, grossNewDuesAdded - creditReturns);
-                        const newDuesAdded = netNewDuesAdded;
+                        // Keep New Dues Added as the actual credit billed (do not alter 1500 -> 1200)
+                        const newDuesAdded = grossNewDuesAdded;
 
                         // Profit metrics calculation
                         const totalCogs = salesRow ? Math.round(Number(salesRow.total_cogs) || 0) : 0;
                         const totalProfit = salesRow ? Math.round(Number(salesRow.total_profit) || 0) : 0;
                         const pendingProfit = salesRow ? Math.round(Number(salesRow.pending_profit) || 0) : 0;
                         const recoveredDuesProfit = recRow ? Math.round(Number(recRow.recovered_dues_profit) || 0) : 0;
-                        const grossRealizedProfit = Math.round(totalProfit - pendingProfit + recoveredDuesProfit);
+                        const returnedProfit = refRow ? Math.round(Math.max(0, Number(refRow.returned_profit) || 0)) : 0;
+                        const grossRealizedProfit = Math.round(totalProfit - pendingProfit + recoveredDuesProfit - returnedProfit);
 
-                        // User formula:
-                        // gross revenue = total sale + recoverd dues - new dues added - expance - dicount - stock paid - returns
-                        const grossRevenue = totalSale + recoveredDues - newDuesAdded - expenses - discount - stockPaid - totalReturns;
+                        // Realized Cash Revenue = Total Sale + Recovered Dues - New Dues Added - Expenses - Discount - Stock Paid - Cash Refunds
+                        // (Khata credit returns do not deduct cash from the drawer)
+                        const grossRevenue = totalSale + recoveredDues - newDuesAdded - expenses - discount - stockPaid - cashRefunds;
 
                         res.json({
                             totalSale,
@@ -4142,6 +4379,7 @@ app.get('/api/reports/financial-summary', (req, res) => {
                             totalProfit,
                             pendingProfit,
                             recoveredDuesProfit,
+                            returnedProfit,
                             grossRealizedProfit
                         });
                     });
@@ -4271,6 +4509,33 @@ app.put('/api/settings', authenticateToken, requireAdmin, (req, res) => {
             try { syncEngine.restartAutoSyncScheduler(); } catch(e) {}
         }
         res.json({ success: true });
+    });
+});
+
+// TODO: Remove before production - clears all sales, returns, ledgers, and payments for clean testing
+app.post('/api/admin/clear-transactions', authenticateToken, requireAdmin, (req, res) => {
+    db.serialize(() => {
+        db.run("BEGIN TRANSACTION");
+        db.run("DELETE FROM sale_return_items");
+        db.run("DELETE FROM sale_returns");
+        db.run("DELETE FROM sale_items");
+        db.run("DELETE FROM sales");
+        db.run("DELETE FROM customer_ledger");
+        db.run("DELETE FROM supplier_ledger");
+        db.run("DELETE FROM payments");
+        db.run("DELETE FROM cash_registers");
+        db.run("DELETE FROM stock_movements WHERE reference_type IN ('SALE', 'SALE_RETURN')");
+        db.run("UPDATE customers SET balance = 0");
+        db.run("UPDATE suppliers SET balance = 0");
+        db.run("DELETE FROM sqlite_sequence WHERE name IN ('sales', 'sale_items', 'sale_returns', 'sale_return_items', 'customer_ledger', 'supplier_ledger', 'payments', 'cash_registers')");
+        db.run("COMMIT", (err) => {
+            if (err) {
+                db.run("ROLLBACK");
+                return res.status(500).json({ error: err.message });
+            }
+            logAudit(req.user?.id || 1, req.user?.username || 'admin', 'CLEAR_TRANSACTIONS', 'sales', null, 'Cleared all sales, returns, ledgers, and payments');
+            res.json({ success: true, message: 'All sales, ledgers, and payments cleared successfully.' });
+        });
     });
 });
 
@@ -4528,6 +4793,56 @@ app.post('/api/sales/returns', authenticateToken, (req, res) => {
                 });
             }
             executeReturn(sale);
+        });
+    } else if (customer_id) {
+        // Enforce Rule: Direct customer return can only return items the customer actually bought, up to (bought - already_returned)
+        const boughtSql = `
+            SELECT 
+                si.variant_id,
+                si.packaging_type_id,
+                p.name as product_name,
+                SUM(si.quantity) as total_bought,
+                COALESCE((
+                    SELECT SUM(sri.quantity)
+                    FROM sale_return_items sri
+                    JOIN sale_returns sr ON sri.sale_return_id = sr.id
+                    WHERE sr.customer_id = ?
+                      AND (sr.status IS NULL OR sr.status != 'void')
+                      AND sri.variant_id = si.variant_id
+                      AND sri.packaging_type_id = si.packaging_type_id
+                ), 0) as already_returned
+            FROM sale_items si
+            JOIN sales s ON si.sale_id = s.id
+            JOIN product_variants pv ON si.variant_id = pv.id
+            JOIN products p ON pv.product_id = p.id
+            WHERE s.customer_id = ? AND (s.status IS NULL OR s.status != 'void')
+            GROUP BY si.variant_id, si.packaging_type_id
+        `;
+        db.all(boughtSql, [customer_id, customer_id], (bErr, boughtRows) => {
+            if (bErr) return res.status(500).json({ error: bErr.message });
+            const boughtMap = new Map();
+            (boughtRows || []).forEach(r => {
+                boughtMap.set(`${r.variant_id}_${r.packaging_type_id}`, {
+                    name: r.product_name,
+                    bought: Number(r.total_bought || 0),
+                    returned: Number(r.already_returned || 0),
+                    remaining: Math.max(0, Number(r.total_bought || 0) - Number(r.already_returned || 0))
+                });
+            });
+
+            for (const it of items) {
+                const key = `${it.variant_id}_${it.packaging_type_id}`;
+                const record = boughtMap.get(key);
+                if (!record) {
+                    return res.status(400).json({ error: 'This customer has not purchased the selected item/packaging.' });
+                }
+                if (Number(it.quantity) > record.remaining + 0.0001) {
+                    return res.status(400).json({
+                        error: `Cannot return ${it.quantity} of ${record.name}. Customer bought ${record.bought} and has ${record.remaining} remaining returnable.`
+                    });
+                }
+            }
+            executeReturn(null);
         });
     } else {
         executeReturn(null);
@@ -4891,60 +5206,143 @@ app.get('/api/sync/pull', (req, res) => {
 });
 
 // ─── DATABASE LOCAL BACKUP & RESTORE (ADMIN ONLY) ───────────────────────────
-const backupDir = path.join(__dirname, '..', 'Backups');
-if (!fs.existsSync(backupDir)) {
-    try { fs.mkdirSync(backupDir, { recursive: true }); } catch (e) {}
+const appDataDir = path.join(userDataPath, 'HilalWholesalerShop');
+const defaultBackupDir = fs.existsSync(path.join(__dirname, '..', 'Backups'))
+    ? path.join(__dirname, '..', 'Backups')
+    : path.join(appDataDir, 'Backups');
+
+try {
+    if (!fs.existsSync(defaultBackupDir)) fs.mkdirSync(defaultBackupDir, { recursive: true });
+} catch (e) {
+    try {
+        const fallback = path.join(appDataDir, 'Backups');
+        if (!fs.existsSync(fallback)) fs.mkdirSync(fallback, { recursive: true });
+    } catch (e2) {}
 }
+
+function getLiveDbPath() {
+    if (db.filename && fs.existsSync(db.filename)) return db.filename;
+    if (db.dbPath && fs.existsSync(db.dbPath)) return db.dbPath;
+    const candidates = [
+        path.join(appDataDir, 'wholesale.db'),
+        path.join(__dirname, 'wholesale.db'),
+        path.join(__dirname, '..', 'wholesale.db'),
+        path.join(process.cwd(), 'wholesale.db')
+    ];
+    for (const c of candidates) {
+        if (fs.existsSync(c)) return c;
+    }
+    return path.join(appDataDir, 'wholesale.db');
+}
+
+function getEffectiveBackupDir(requestedDir, callback) {
+    if (requestedDir && typeof requestedDir === 'string' && requestedDir.trim()) {
+        const dest = path.resolve(requestedDir.trim());
+        try {
+            if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
+            return callback(null, dest);
+        } catch (e) {
+            console.warn('[Backup] Could not create requested directory:', dest, e.message);
+        }
+    }
+    db.get("SELECT value FROM settings WHERE key = 'local_backup_folder'", [], (err, row) => {
+        let dest = (row && row.value && row.value.trim()) ? path.resolve(row.value.trim()) : defaultBackupDir;
+        try {
+            if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
+        } catch (e) {
+            console.warn('[Backup] Saved backup folder inaccessible, falling back to default:', dest, e.message);
+            dest = defaultBackupDir;
+            try {
+                if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
+            } catch (err2) {
+                dest = path.join(appDataDir, 'Backups');
+                try { if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true }); } catch (err3) {}
+            }
+        }
+        callback(null, dest);
+    });
+}
+
+// Configure and persist Local Backup destination folder
+app.post('/api/backup/folder', authenticateToken, requireAdmin, (req, res) => {
+    const { folderPath } = req.body;
+    if (!folderPath || typeof folderPath !== 'string' || !folderPath.trim()) {
+        return res.status(400).json({ error: 'Valid folder path is required' });
+    }
+    const cleanPath = path.resolve(folderPath.trim());
+    try {
+        if (!fs.existsSync(cleanPath)) {
+            fs.mkdirSync(cleanPath, { recursive: true });
+        }
+        const testFile = path.join(cleanPath, `.test_write_${Date.now()}`);
+        fs.writeFileSync(testFile, 'test');
+        fs.unlinkSync(testFile);
+    } catch (e) {
+        return res.status(400).json({ error: `Cannot write to selected folder: ${e.message}` });
+    }
+
+    db.run("INSERT INTO settings (key, value) VALUES ('local_backup_folder', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", [cleanPath], (err) => {
+        if (err) return res.status(500).json({ error: err.message });
+        logAudit(req.user.id, req.user.username, 'UPDATE_BACKUP_FOLDER', 'settings', null, `Changed backup folder to: ${cleanPath}`);
+        res.json({ success: true, folderPath: cleanPath, message: 'Backup destination folder updated successfully!' });
+    });
+});
 
 app.post('/api/system/backup', authenticateToken, requireAdmin, (req, res) => {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
     const backupFileName = `wholesale-backup-${timestamp}.db`;
-    
-    // Support custom target destination folder if specified
-    const destDir = (req.body && req.body.targetFolder) ? req.body.targetFolder : backupDir;
-    if (!fs.existsSync(destDir)) {
-        try { fs.mkdirSync(destDir, { recursive: true }); } catch (e) {}
-    }
-    const targetPath = path.join(destDir, backupFileName);
-    const currentDbPath = db.filename || path.join(__dirname, 'wholesale.db');
+    const requestedFolder = req.body && req.body.targetFolder;
 
-    if (fs.existsSync(currentDbPath)) {
-        // Safe atomic live snapshot via VACUUM INTO for zero locking and minimum size
-        db.run('VACUUM INTO ?', [targetPath], (vErr) => {
-            if (!vErr && fs.existsSync(targetPath)) {
-                const stats = fs.statSync(targetPath);
-                logAudit(req.user.id, req.user.username, 'CREATE_BACKUP', 'system', null, backupFileName);
-                return res.json({ 
-                    success: true, 
-                    backupFileName, 
-                    path: targetPath,
-                    targetFolder: destDir,
-                    size: stats.size,
-                    sizeFormatted: (stats.size / 1024).toFixed(1) + ' KB'
-                });
-            }
-            // Fallback to copyFile if VACUUM INTO encounters file-system constraints
-            fs.copyFile(currentDbPath, targetPath, (cErr) => {
-                if (cErr) return res.status(500).json({ error: cErr.message });
-                const stats = fs.statSync(targetPath);
-                logAudit(req.user.id, req.user.username, 'CREATE_BACKUP', 'system', null, backupFileName);
-                res.json({ 
-                    success: true, 
-                    backupFileName, 
-                    path: targetPath,
-                    targetFolder: destDir,
-                    size: stats.size,
-                    sizeFormatted: (stats.size / 1024).toFixed(1) + ' KB'
+    getEffectiveBackupDir(requestedFolder, (dirErr, destDir) => {
+        if (dirErr || !destDir) {
+            return res.status(500).json({ error: 'Failed to access or create backup folder.' });
+        }
+
+        const targetPath = path.join(destDir, backupFileName);
+        const currentDbPath = getLiveDbPath();
+
+        if (fs.existsSync(currentDbPath)) {
+            // Safe atomic live snapshot via VACUUM INTO for zero locking and minimum size
+            db.run('VACUUM INTO ?', [targetPath], (vErr) => {
+                if (!vErr && fs.existsSync(targetPath)) {
+                    const stats = fs.statSync(targetPath);
+                    logAudit(req.user.id, req.user.username, 'CREATE_BACKUP', 'system', null, backupFileName);
+                    return res.json({ 
+                        success: true, 
+                        backupFileName, 
+                        path: targetPath, 
+                        targetFolder: destDir, 
+                        size: stats.size, 
+                        sizeFormatted: (stats.size > 1024 * 1024) 
+                            ? (stats.size / (1024 * 1024)).toFixed(2) + ' MB'
+                            : (stats.size / 1024).toFixed(1) + ' KB'
+                    });
+                }
+                // Fallback to copyFile if VACUUM INTO encounters file-system constraints
+                fs.copyFile(currentDbPath, targetPath, (cErr) => {
+                    if (cErr) return res.status(500).json({ error: cErr.message });
+                    const stats = fs.statSync(targetPath);
+                    logAudit(req.user.id, req.user.username, 'CREATE_BACKUP', 'system', null, backupFileName);
+                    res.json({ 
+                        success: true, 
+                        backupFileName, 
+                        path: targetPath, 
+                        targetFolder: destDir, 
+                        size: stats.size, 
+                        sizeFormatted: (stats.size > 1024 * 1024) 
+                            ? (stats.size / (1024 * 1024)).toFixed(2) + ' MB'
+                            : (stats.size / 1024).toFixed(1) + ' KB'
+                    });
                 });
             });
-        });
-    } else {
-        res.status(404).json({ error: 'Live database file not found for backup' });
-    }
+        } else {
+            res.status(404).json({ error: `Live database file not found at ${currentDbPath}` });
+        }
+    });
 });
 
 app.post('/api/system/compact', authenticateToken, requireAdmin, (req, res) => {
-    const currentDbPath = db.filename || path.join(__dirname, 'wholesale.db');
+    const currentDbPath = getLiveDbPath();
     let sizeBefore = 0;
     try {
         if (fs.existsSync(currentDbPath)) sizeBefore = fs.statSync(currentDbPath).size;
@@ -4977,17 +5375,18 @@ app.post('/api/system/compact', authenticateToken, requireAdmin, (req, res) => {
 });
 
 app.get('/api/system/backups', authenticateToken, requireAdmin, (req, res) => {
-    try {
-        const folder = req.query.folder || backupDir;
-        if (!fs.existsSync(folder)) return res.json({ files: [], currentFolder: folder, defaultFolder: backupDir });
-        const files = fs.readdirSync(folder).filter(f => f.endsWith('.db')).map(f => {
-            const stats = fs.statSync(path.join(folder, f));
-            return { fileName: f, size: stats.size, createdAt: stats.birthtime, path: path.join(folder, f) };
-        });
-        res.json({ files, currentFolder: folder, defaultFolder: backupDir });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
+    getEffectiveBackupDir(req.query.folder, (err, folder) => {
+        try {
+            if (!fs.existsSync(folder)) return res.json({ files: [], currentFolder: folder, defaultFolder: defaultBackupDir });
+            const files = fs.readdirSync(folder).filter(f => f.endsWith('.db')).map(f => {
+                const stats = fs.statSync(path.join(folder, f));
+                return { fileName: f, size: stats.size, createdAt: stats.birthtime, path: path.join(folder, f) };
+            }).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+            res.json({ files, currentFolder: folder, defaultFolder: defaultBackupDir });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
 });
 
 // Native Windows Folder Browser helper for Admin Backup configuration
@@ -5006,46 +5405,56 @@ app.post('/api/system/browse-folder', authenticateToken, requireAdmin, (req, res
 // ─── COMPREHENSIVE BACKUP & NODEMAILER ONLINE BACKUP ENGINE ─────────────────
 // 1. Backup Status Overview
 app.get('/api/backup/status', authenticateToken, requireAdmin, (req, res) => {
-    const currentDbPath = db.filename || path.join(__dirname, 'wholesale.db');
+    const currentDbPath = getLiveDbPath();
     let dbSize = 0;
     try {
         if (fs.existsSync(currentDbPath)) dbSize = fs.statSync(currentDbPath).size;
     } catch (e) {}
 
-    const folder = backupDir;
-    let localFiles = [];
-    if (fs.existsSync(folder)) {
-        localFiles = fs.readdirSync(folder).filter(f => f.endsWith('.db')).map(f => {
-            const stats = fs.statSync(path.join(folder, f));
-            return { fileName: f, size: stats.size, createdAt: stats.birthtime, path: path.join(folder, f) };
-        }).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    }
+    getEffectiveBackupDir(null, (dirErr, folder) => {
+        let localFiles = [];
+        if (fs.existsSync(folder)) {
+            try {
+                localFiles = fs.readdirSync(folder).filter(f => f.endsWith('.db')).map(f => {
+                    const stats = fs.statSync(path.join(folder, f));
+                    return { fileName: f, size: stats.size, createdAt: stats.birthtime, path: path.join(folder, f) };
+                }).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+            } catch (e) {}
+        }
 
-    db.get(`
-        SELECT 
-            (SELECT COUNT(*) FROM sales) as totalSales,
-            (SELECT COUNT(*) FROM customers) as totalCustomers,
-            (SELECT COUNT(*) FROM products) as totalProducts
-    `, [], (err, counts) => {
-        db.all("SELECT key, value FROM settings WHERE key LIKE 'backup_email_%' OR key = 'backup_last_email_sent_at' OR key = 'shop_name'", [], (sErr, settingsRows) => {
-            const map = {};
-            (settingsRows || []).forEach(r => { map[r.key] = r.value; });
+        db.get(`
+            SELECT 
+                (SELECT COUNT(*) FROM sales) as totalSales,
+                (SELECT COUNT(*) FROM customers) as totalCustomers,
+                (SELECT COUNT(*) FROM products) as totalProducts
+        `, [], (err, counts) => {
+            db.all("SELECT key, value FROM settings WHERE key LIKE 'backup_%' OR key LIKE 'local_backup_%' OR key = 'shop_name'", [], (sErr, settingsRows) => {
+                const map = {};
+                (settingsRows || []).forEach(r => { map[r.key] = r.value; });
 
-            res.json({
-                dbPath: currentDbPath,
-                dbSize,
-                dbSizeFormatted: (dbSize / (1024 * 1024)).toFixed(2) + ' MB',
-                totalSales: counts?.totalSales || 0,
-                totalCustomers: counts?.totalCustomers || 0,
-                totalProducts: counts?.totalProducts || 0,
-                localBackupsCount: localFiles.length,
-                lastLocalBackup: localFiles[0] || null,
-                lastEmailBackupAt: map['backup_last_email_sent_at'] || null,
-                emailConfigured: !!(map['backup_email_user'] && map['backup_email_pass']),
-                recipientEmail: map['backup_email_recipient'] || map['backup_email_user'] || '',
-                senderEmail: map['backup_email_user'] || '',
-                service: map['backup_email_service'] || 'gmail',
-                shopName: map['shop_name'] || 'Hilal Foods Solutions'
+                res.json({
+                    dbPath: currentDbPath,
+                    dbSize,
+                    dbSizeFormatted: (dbSize / (1024 * 1024)).toFixed(2) + ' MB',
+                    totalSales: counts?.totalSales || 0,
+                    totalCustomers: counts?.totalCustomers || 0,
+                    totalProducts: counts?.totalProducts || 0,
+                    localBackupsCount: localFiles.length,
+                    lastLocalBackup: localFiles[0] || null,
+                    localAutoEnabled: map['local_backup_auto_enabled'] !== 'false',
+                    localBackupTime: map['local_backup_time'] || '23:59',
+                    localBackupFolder: map['local_backup_folder'] || folder,
+                    lastLocalBackupAt: map['local_backup_last_run_at'] || (localFiles[0] ? localFiles[0].createdAt : null),
+                    backupDir: folder,
+                    defaultBackupDir,
+                    lastEmailBackupAt: map['backup_last_email_sent_at'] || null,
+                    emailConfigured: !!(map['backup_email_user'] && map['backup_email_pass']),
+                    emailAutoEnabled: map['backup_email_auto_enabled'] === 'true',
+                    recipientEmail: map['backup_email_recipient'] || map['backup_email_user'] || '',
+                    senderEmail: map['backup_email_user'] || '',
+                    service: map['backup_email_service'] || 'gmail',
+                    shopName: map['shop_name'] || 'Hilal Foods Solutions'
+                });
             });
         });
     });
@@ -5096,6 +5505,32 @@ app.post('/api/backup/settings', authenticateToken, requireAdmin, (req, res) => 
             if (err) return res.status(500).json({ error: err.message });
             logAudit(req.user.id, req.user.username, 'UPDATE_BACKUP_SETTINGS', 'settings', null, `Updated email backup settings (service: ${service}, user: ${user})`);
             res.json({ success: true, message: 'Backup email settings saved successfully' });
+        });
+    });
+});
+
+// 3b. Save Backup Schedule Settings (Auto-Backup Time & Toggles)
+app.post('/api/backup/schedule', authenticateToken, requireAdmin, (req, res) => {
+    const { localAutoEnabled, localBackupTime, emailAutoEnabled } = req.body;
+    
+    const updates = [
+        ['local_backup_auto_enabled', String(localAutoEnabled !== false)],
+        ['local_backup_time', (localBackupTime || '23:59').trim()],
+        ['backup_email_auto_enabled', String(emailAutoEnabled === true)]
+    ];
+
+    const stmt = db.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value");
+    db.serialize(() => {
+        updates.forEach(([k, v]) => stmt.run(k, v));
+        stmt.finalize((err) => {
+            if (err) return res.status(500).json({ error: err.message });
+            try {
+                schedulerService.scheduleAutoBackupJob();
+            } catch (e) {
+                console.error('Failed to reschedule auto backup:', e);
+            }
+            logAudit(req.user.id, req.user.username, 'UPDATE_BACKUP_SCHEDULE', 'settings', null, `Auto backup: ${localAutoEnabled}, time: ${localBackupTime}`);
+            res.json({ success: true, message: 'Automated backup schedule saved and active!' });
         });
     });
 });
@@ -5194,8 +5629,8 @@ app.post('/api/backup/send-email', authenticateToken, requireAdmin, async (req, 
         const now = new Date();
         const timestamp = now.toISOString().replace(/[:.]/g, '-').slice(0, 19);
         const backupFileName = `wholesale-backup-${timestamp}.db`;
-        const targetPath = path.join(backupDir, backupFileName);
-        const currentDbPath = db.filename || path.join(__dirname, 'wholesale.db');
+        const targetPath = path.join(defaultBackupDir, backupFileName);
+        const currentDbPath = getLiveDbPath();
 
         await new Promise((resolve, reject) => {
             db.run('VACUUM INTO ?', [targetPath], (vErr) => {
@@ -5251,40 +5686,74 @@ app.post('/api/backup/send-email', authenticateToken, requireAdmin, async (req, 
     }
 });
 
+// 5.5 Direct Download Live Database Backup File (Standard browser download like Restaurant Management System)
+app.get('/api/backup', (req, res) => {
+    const currentDbPath = getLiveDbPath();
+    if (fs.existsSync(currentDbPath)) {
+        const dateStr = new Date().toISOString().slice(0, 10);
+        res.download(currentDbPath, `Hilal_Wholesaler_Backup_${dateStr}.db`, (err) => {
+            if (err) {
+                console.error('[Backup Download Error]:', err);
+                if (!res.headersSent) res.status(500).json({ error: 'Failed to download database backup.' });
+            }
+        });
+    } else {
+        res.status(404).json({ error: 'Live database file not found.' });
+    }
+});
+
 // 6. Direct Browser Download of Backup File
 app.get('/api/backup/download/:fileName', (req, res) => {
     const rawFileName = req.params.fileName;
     const safeFileName = path.basename(rawFileName);
-    const filePath = path.join(backupDir, safeFileName);
 
-    if (!fs.existsSync(filePath)) {
-        return res.status(404).json({ error: 'Requested backup file not found.' });
-    }
+    getEffectiveBackupDir(req.query.folder, (dirErr, effectiveFolder) => {
+        const candidatePaths = [
+            path.join(effectiveFolder, safeFileName),
+            path.join(defaultBackupDir, safeFileName),
+            path.join(appDataDir, 'Backups', safeFileName),
+            path.join(__dirname, '..', 'Backups', safeFileName)
+        ];
 
-    res.download(filePath, safeFileName, (err) => {
-        if (err) {
-            console.error('[Backup Download Error]:', err);
-            if (!res.headersSent) res.status(500).json({ error: err.message });
+        let filePath = candidatePaths.find(p => fs.existsSync(p));
+        if (!filePath) {
+            return res.status(404).json({ error: 'Requested backup file not found.' });
         }
+
+        res.download(filePath, safeFileName, (err) => {
+            if (err) {
+                console.error('[Backup Download Error]:', err);
+                if (!res.headersSent) res.status(500).json({ error: err.message });
+            }
+        });
     });
 });
 
 // 7. Delete Local Backup File
 app.delete('/api/backup/:fileName', authenticateToken, requireAdmin, (req, res) => {
     const safeFileName = path.basename(req.params.fileName);
-    const filePath = path.join(backupDir, safeFileName);
 
-    if (!fs.existsSync(filePath)) {
-        return res.status(404).json({ error: 'Backup file not found.' });
-    }
+    getEffectiveBackupDir(req.query.folder, (dirErr, effectiveFolder) => {
+        const candidatePaths = [
+            path.join(effectiveFolder, safeFileName),
+            path.join(defaultBackupDir, safeFileName),
+            path.join(appDataDir, 'Backups', safeFileName),
+            path.join(__dirname, '..', 'Backups', safeFileName)
+        ];
 
-    try {
-        fs.unlinkSync(filePath);
-        logAudit(req.user.id, req.user.username, 'DELETE_BACKUP', 'system', null, safeFileName);
-        res.json({ success: true, message: `Backup file ${safeFileName} deleted successfully.` });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
+        let filePath = candidatePaths.find(p => fs.existsSync(p));
+        if (!filePath) {
+            return res.status(404).json({ error: 'Backup file not found.' });
+        }
+
+        try {
+            fs.unlinkSync(filePath);
+            logAudit(req.user.id, req.user.username, 'DELETE_BACKUP', 'system', null, safeFileName);
+            res.json({ success: true, message: `Backup file ${safeFileName} deleted successfully.` });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
 });
 
 app.listen(PORT, () => {
@@ -5294,6 +5763,7 @@ app.listen(PORT, () => {
         try {
             whatsappService.initWhatsApp();
             schedulerService.scheduleReminderJob();
+            schedulerService.scheduleAutoBackupJob();
         } catch (e) {
             console.error('[WhatsApp Service] Startup init failed:', e.message);
         }

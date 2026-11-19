@@ -118,4 +118,149 @@ function scheduleReminderJob() {
     });
 }
 
-module.exports = { scheduleReminderJob };
+let backupSchedulerInterval = null;
+let lastBackupFiredKey = '';
+
+/**
+ * Executes an automated database backup (local snapshot and email if configured).
+ */
+async function runAutomaticBackup() {
+    const fs = require('fs');
+    const path = require('path');
+    const emailService = require('./emailService');
+
+    const userDataPath = process.env.APPDATA || (process.platform === 'darwin' ? process.env.HOME + '/Library/Preferences' : process.env.HOME + '/.local/share');
+    const appDataDir = path.join(userDataPath, 'HilalWholesalerShop');
+    const defaultBackupDir = fs.existsSync(path.join(__dirname, '..', '..', 'Backups'))
+        ? path.join(__dirname, '..', '..', 'Backups')
+        : path.join(appDataDir, 'Backups');
+
+    let backupDir = defaultBackupDir;
+    try {
+        const row = await new Promise(res => db.get("SELECT value FROM settings WHERE key = 'local_backup_folder'", [], (err, r) => res(r)));
+        if (row && row.value && row.value.trim()) {
+            const custom = path.resolve(row.value.trim());
+            if (!fs.existsSync(custom)) fs.mkdirSync(custom, { recursive: true });
+            backupDir = custom;
+        }
+    } catch (e) {}
+
+    if (!fs.existsSync(backupDir)) {
+        try { fs.mkdirSync(backupDir, { recursive: true }); } catch (e) {
+            backupDir = path.join(appDataDir, 'Backups');
+            try { if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true }); } catch (e2) {}
+        }
+    }
+
+    const now = new Date();
+    const timestamp = now.toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const backupFileName = `wholesale-autobackup-${timestamp}.db`;
+    const targetPath = path.join(backupDir, backupFileName);
+
+    let currentDbPath = db.filename || db.dbPath;
+    if (!currentDbPath || !fs.existsSync(currentDbPath)) {
+        const candidates = [
+            path.join(appDataDir, 'wholesale.db'),
+            path.join(__dirname, '..', 'wholesale.db'),
+            path.join(__dirname, 'wholesale.db')
+        ];
+        currentDbPath = candidates.find(c => fs.existsSync(c)) || path.join(appDataDir, 'wholesale.db');
+    }
+
+    if (!fs.existsSync(currentDbPath)) {
+        console.error('[Auto-Backup Scheduler] Live database file not found at:', currentDbPath);
+        return { success: false, error: 'Live database file not found' };
+    }
+
+    await new Promise((resolve, reject) => {
+        db.run('VACUUM INTO ?', [targetPath], (vErr) => {
+            if (!vErr && fs.existsSync(targetPath)) return resolve();
+            fs.copyFile(currentDbPath, targetPath, (cErr) => {
+                if (cErr) return reject(cErr);
+                resolve();
+            });
+        });
+    });
+
+    const nowIso = new Date().toISOString();
+    db.run("INSERT INTO settings (key, value) VALUES ('local_backup_last_run_at', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", [nowIso]);
+    const fileStats = fs.existsSync(targetPath) ? fs.statSync(targetPath) : { size: 0 };
+    console.log(`[Auto-Backup Scheduler] ✅ Successfully created local backup: ${backupFileName} (${(fileStats.size / (1024 * 1024)).toFixed(2)} MB)`);
+
+    // If auto email backup is also enabled, send it via email
+    db.all("SELECT key, value FROM settings WHERE key LIKE 'backup_email_%' OR key = 'shop_name'", [], async (sErr, settingsRows) => {
+        if (sErr || !settingsRows) return;
+        const map = {};
+        settingsRows.forEach(r => { map[r.key] = r.value; });
+        if (map['backup_email_auto_enabled'] === 'true' && map['backup_email_user'] && map['backup_email_pass']) {
+            try {
+                const emailConfig = {
+                    service: map['backup_email_service'] || 'gmail',
+                    host: map['backup_email_host'] || 'smtp.gmail.com',
+                    port: parseInt(map['backup_email_port'], 10) || 465,
+                    secure: map['backup_email_secure'] !== 'false',
+                    user: map['backup_email_user'],
+                    pass: map['backup_email_pass']
+                };
+                const recipient = map['backup_email_recipient'] || map['backup_email_user'];
+                await emailService.sendBackupEmail(emailConfig, recipient, targetPath, {
+                    shop_name: map['shop_name'] || 'Hilal Foods Solutions',
+                    customNotes: 'Automated Daily Scheduled Backup'
+                });
+                db.run("INSERT INTO settings (key, value) VALUES ('backup_last_email_sent_at', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", [nowIso]);
+                console.log(`[Auto-Backup Scheduler] 📧 Dispatched automated backup email to ${recipient}`);
+            } catch (emailErr) {
+                console.error('[Auto-Backup Scheduler] Email dispatch error:', emailErr.message);
+            }
+        }
+    });
+
+    return { success: true, fileName: backupFileName, path: targetPath, size: fileStats.size };
+}
+
+/**
+ * Starts or restarts the daily automatic backup scheduler.
+ */
+function scheduleAutoBackupJob() {
+    if (backupSchedulerInterval) {
+        clearInterval(backupSchedulerInterval);
+        backupSchedulerInterval = null;
+    }
+
+    db.all(`SELECT key, value FROM settings WHERE key IN ('local_backup_auto_enabled', 'local_backup_time')`, [], (err, rows) => {
+        let enabled = 'true';
+        let rawTime = '23:59';
+
+        if (!err && rows) {
+            rows.forEach(r => {
+                if (r.key === 'local_backup_auto_enabled') enabled = r.value;
+                if (r.key === 'local_backup_time') rawTime = r.value;
+            });
+        }
+
+        if (enabled !== 'true') {
+            console.log('[Auto-Backup Scheduler] Automatic local backups are currently disabled in settings.');
+            return;
+        }
+
+        const time24 = parseTimeTo24h(rawTime);
+        console.log(`[Auto-Backup Scheduler] ✅ Active — scheduled daily at ${time24} local time.`);
+
+        backupSchedulerInterval = setInterval(async () => {
+            const { date, time24: currentTime } = getNow();
+            const fireKey = buildFiredKey(date, time24);
+
+            if (currentTime === time24 && lastBackupFiredKey !== fireKey) {
+                lastBackupFiredKey = fireKey;
+                console.log(`[Auto-Backup Scheduler] ⏰ Triggered at ${time24} on ${date}. Running daily auto-backup...`);
+                try {
+                    await runAutomaticBackup();
+                } catch (e) {
+                    console.error('[Auto-Backup Scheduler] ❌ Error executing daily backup:', e.message);
+                }
+            }
+        }, 30000); // Check every 30 seconds
+    });
+}
+
+module.exports = { scheduleReminderJob, scheduleAutoBackupJob, runAutomaticBackup };

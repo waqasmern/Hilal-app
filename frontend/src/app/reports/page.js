@@ -18,6 +18,7 @@ import {
     IconEye,
     IconEyeOff,
     IconClose,
+    IconTrendingUp,
     IconPackage,
     IconCheck
 } from '../components/Icons';
@@ -398,7 +399,7 @@ export default function ReportsPage() {
             return Number(financialSummary.newDuesAdded);
         }
         if (salesSummary?.totalPendingDues !== undefined) {
-            return Math.max(0, Number(salesSummary.totalPendingDues) - creditReturns);
+            return Math.max(0, Number(salesSummary.totalPendingDues));
         }
         if (salesList && salesList.length > 0) {
             const rawDue = salesList.reduce((sum, s) => {
@@ -433,8 +434,8 @@ export default function ReportsPage() {
     const stockPaid = Number(financialSummary?.stockPaid || 0);
 
     // Official Realized Gross Revenue Formula:
-    // Gross Revenue = Total Sale + Recovered Dues - New Dues Added - Expenses - Discounts - Stock Paid - Returns
-    const grossRevenue = Number(financialSummary?.grossRevenue ?? (totalSale + recoveredDues - newDuesAdded - expenses - discount - stockPaid - totalReturns));
+    // Gross Revenue = Total Sale + Recovered Dues - New Dues Added - Expenses - Discounts - Stock Paid - Cash Refunds
+    const grossRevenue = Number(financialSummary?.grossRevenue ?? (totalSale + recoveredDues - newDuesAdded - expenses - discount - stockPaid - cashRefunds));
     const saleCount = Number(financialSummary?.saleCount ?? salesSummary?.statusCounts?.ALL ?? (salesList?.length || 0));
 
     // Aggregates for Item Sales
@@ -471,10 +472,15 @@ export default function ReportsPage() {
             ? financialSummary.recoveredDuesProfit
             : Math.round(recoveredDues * overallProfitMargin)
     );
+    const returnedProfit = Number(
+        financialSummary?.returnedProfit !== undefined
+            ? financialSummary.returnedProfit
+            : Math.round(totalReturns * overallProfitMargin)
+    );
     const grossRealizedProfit = Number(
         financialSummary?.grossRealizedProfit !== undefined
             ? financialSummary.grossRealizedProfit
-            : Math.round(totalProfit - pendingProfit + recoveredDuesProfit)
+            : Math.round(totalProfit - pendingProfit + recoveredDuesProfit - returnedProfit)
     );
 
     return (
@@ -682,7 +688,7 @@ export default function ReportsPage() {
                     </button>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                     {/* CARD 1: Total Profit */}
                     <div className="p-4 sm:p-5 rounded-2xl bg-white border border-gray-200 shadow-2xs space-y-1.5 hover:border-emerald-300 transition-all">
                         <div className="flex items-center justify-between">
@@ -724,7 +730,25 @@ export default function ReportsPage() {
                         </div>
                     </div>
 
-                    {/* CARD 3: Realized Gross Profit (The formula requested by the user!) */}
+                    {/* CARD 3: Recovered Profit */}
+                    <div className="p-4 sm:p-5 rounded-2xl bg-white border border-gray-200 shadow-2xs space-y-1.5 hover:border-blue-300 transition-all">
+                        <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+                                Recovered Profit
+                            </span>
+                            <div className="p-2 rounded-xl bg-blue-50 border border-blue-200 text-blue-700">
+                                <IconTrendingUp className="w-4 h-4" />
+                            </div>
+                        </div>
+                        <div className="text-2xl sm:text-3xl font-black text-blue-700 font-mono">
+                            {!showProfit ? '••••••' : `Rs. ${Math.round(recoveredDuesProfit).toLocaleString()}`}
+                        </div>
+                        <div className="text-[11px] text-blue-700 font-medium">
+                            Profit unlocked from recovered dues
+                        </div>
+                    </div>
+
+                    {/* CARD 4: Realized Gross Profit (The formula requested by the user!) */}
                     <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 border border-gray-200 shadow-xs space-y-1.5 hover:border-[#0B3B7B]/40 transition-all">
                         <div className="flex items-center justify-between">
                             <span className="text-[11px] font-extrabold text-[#0B3B7B] uppercase tracking-wider">
@@ -741,9 +765,12 @@ export default function ReportsPage() {
                         </div>
                         <div className="text-[10px] text-gray-600 font-medium flex flex-wrap items-center gap-1">
                             <span className="font-semibold text-gray-700">Formula:</span>
-                            <span>Total Profit - Pending + Recovered Profit</span>
+                            <span>Total Profit - Pending + Recovered - Returned</span>
                             {recoveredDuesProfit > 0 && showProfit && (
                                 <span className="text-emerald-700 font-bold ml-1">(+Rs. {recoveredDuesProfit.toLocaleString()} recovered)</span>
+                            )}
+                            {returnedProfit > 0 && showProfit && (
+                                <span className="text-rose-600 font-bold ml-1">(-Rs. {returnedProfit.toLocaleString()} returned)</span>
                             )}
                         </div>
                     </div>
@@ -945,10 +972,10 @@ export default function ReportsPage() {
                             </span>
                         </div>
                         <div className="text-xl sm:text-2xl font-black text-gray-900">
-                            Rs. {Math.round(totalReturns).toLocaleString()}
+                            Rs. {Math.round(cashRefunds).toLocaleString()}
                         </div>
                         <div className="text-[11px] text-gray-500 font-sans">
-                            {returnCount} return(s)
+                            {returnCount} return(s){creditReturns > 0 ? ` • Khata: Rs. ${Math.round(creditReturns).toLocaleString()}` : ''}
                         </div>
                     </div>
 
@@ -1131,12 +1158,19 @@ export default function ReportsPage() {
                                             const netAmt = Number(sale.net_amount || 0);
                                             const discountAmt = (Number(sale.discount) || 0) + (Number(sale.special_discount) || 0);
                                             const grossAmt = Number(sale.gross_amount || 0) || (netAmt + discountAmt);
-                                            const paidAmt = Number(sale.amount_paid || 0);
-                                            const dueAmt = Number(sale.remaining_balance || 0);
-                                            const isFullyPaid = dueAmt <= 0;
+                                            const initPaid = sale.initial_amount_paid !== undefined && sale.initial_amount_paid !== null ? Number(sale.initial_amount_paid) : Number(sale.amount_paid || 0);
+                                            const settledStr = sale.settled_later_at || sale.settled_later_date || '';
+                                            const settledYMD = settledStr ? String(settledStr).slice(0, 10) : '';
+                                            const isSettledLater = Boolean(sale.is_settled_later) || (Number(sale.amount_paid || 0) > initPaid);
+                                            const isPaidLaterAfterRange = Boolean(
+                                                dateDuration !== 'all' && endDate && isSettledLater && (!settledYMD || settledYMD > endDate)
+                                            );
+                                            const paidAmt = isPaidLaterAfterRange ? initPaid : Number(sale.amount_paid || 0);
+                                            const dueAmt = isPaidLaterAfterRange ? Math.max(0, netAmt - initPaid) : Number(sale.remaining_balance || 0);
+                                            const isFullyPaid = dueAmt <= 0.01;
 
                                             return (
-                                                <tr key={sale.id} className="hover:bg-slate-50 transition-colors">
+                                                <tr key={sale.id} className={`transition-colors ${isPaidLaterAfterRange ? 'bg-red-100/90 hover:bg-red-200/70' : 'hover:bg-slate-50'}`}>
                                                     {/* Invoice # & Date */}
                                                     <td className="p-3 font-sans">
                                                         <div className="font-bold text-gray-900 text-xs font-mono">
@@ -1236,13 +1270,24 @@ export default function ReportsPage() {
 
                                                     {/* Status Badge */}
                                                     <td className="p-3 text-center font-sans">
-                                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                                            isFullyPaid
-                                                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                                                : 'bg-rose-50 text-rose-700 border border-rose-200'
-                                                        }`}>
-                                                            {isFullyPaid ? 'Paid' : 'Unpaid / Due'}
-                                                        </span>
+                                                        <div className="flex flex-col items-center gap-1">
+                                                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                                                isFullyPaid
+                                                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                                                    : 'bg-rose-50 text-rose-700 border border-rose-200'
+                                                            }`}>
+                                                                {isFullyPaid ? 'Paid' : 'Unpaid / Due'}
+                                                            </span>
+                                                            {isSettledLater && (
+                                                                <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded border ${
+                                                                    isPaidLaterAfterRange
+                                                                        ? 'text-rose-900 bg-rose-100 border-rose-300'
+                                                                        : 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                                                                }`}>
+                                                                    Paid later{settledStr ? `: ${new Date(settledStr.replace(' ', 'T')).toLocaleDateString()} • ${new Date(settledStr.replace(' ', 'T')).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}
+                                                                </span>
+                                                            )}
+                                                        </div>
                                                     </td>
 
                                                     {/* Action */}

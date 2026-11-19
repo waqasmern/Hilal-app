@@ -25,15 +25,17 @@ export default function Navbar() {
                     <IconMenu className="w-5 h-5" />
                 </button>
                 <div className="w-10 h-10 rounded-xl bg-white border border-gray-100 flex items-center justify-center shrink-0 shadow-2xs overflow-hidden">
-                    <img 
-                        src="/hfs-logo.png" 
-                        alt="Hilal Foods Solutions" 
-                        className="w-full h-full object-contain p-1"
-                        onError={(e) => {
-                            e.currentTarget.style.display = 'none';
-                            e.currentTarget.parentElement.innerHTML = '<span class="font-black text-[#0B3B7B] text-xs">HFS</span>';
-                        }}
-                    />
+                    {settings?.shop_logo ? (
+                        <img 
+                            src={settings.shop_logo} 
+                            alt={settings?.shop_name || "Hilal Foods"} 
+                            className="w-full h-full object-contain p-1"
+                        />
+                    ) : (
+                        <span className="font-black text-[#0B3B7B] text-xs">
+                            {settings?.shop_name ? settings.shop_name.slice(0, 3).toUpperCase() : 'HFS'}
+                        </span>
+                    )}
                 </div>
                 <div className="min-w-0">
                     <h1 className="text-base sm:text-lg font-black text-[#0B3B7B] tracking-tight leading-tight uppercase truncate">

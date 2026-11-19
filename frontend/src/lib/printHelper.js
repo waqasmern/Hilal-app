@@ -73,7 +73,7 @@ export async function triggerPrint(html, silentMode = false, printerName = null,
 
             const printPayload = {
                 silent: !!silentMode,
-                printerName: silentMode ? (printerName || null) : null,
+                printerName: (printerName && printerName !== 'os_dialog') ? printerName : null,
                 format: format || 'thermal'
             };
             const success = await ipcRenderer.invoke('print-html', cleanedHtml, printPayload);
@@ -117,6 +117,127 @@ export async function triggerPrintHtml(htmlContent, options = {}) {
     const format = options.format || 'thermal';
 
     return await triggerPrint(htmlContent, silent, printerName || null, format);
+}
+
+/**
+ * Export an HTML DOM element to an A4 PDF, download it, and automatically open it in the browser!
+ * 
+ * - In web browser: Creates Blob URL, opens in a new browser tab, and triggers download.
+ * - In Electron desktop: Saves to temporary folder, launches default Windows browser (Edge/Chrome)
+ *   with the PDF open, and saves the file for download.
+ * 
+ * @param {HTMLElement} element - DOM element to render
+ * @param {string} fileName - Destination filename (e.g. INV-1234_A4.pdf)
+ * @returns {Promise<boolean>}
+ */
+export async function downloadAndOpenPdf(element, fileName = 'wholesale_invoice_a4.pdf', { saveFile = true } = {}) {
+    if (!element) return false;
+
+    try {
+        const html2canvasModule = await import('html2canvas-pro');
+        const html2canvas = html2canvasModule.default || html2canvasModule;
+        const { jsPDF } = await import('jspdf');
+
+        const cleanName = String(fileName || 'invoice_a4.pdf').replace(/[^a-zA-Z0-9._-]/g, '_');
+
+        const canvas = await html2canvas(element, {
+            scale: 2,
+            useCORS: true,
+            logging: false,
+            backgroundColor: '#ffffff'
+        });
+
+        const imgData = canvas.toDataURL('image/jpeg', 0.98);
+        const pdf = new jsPDF({
+            orientation: 'portrait',
+            unit: 'mm',
+            format: 'a4'
+        });
+
+        const pdfWidth = pdf.internal.pageSize.getWidth();
+        const pdfHeight = pdf.internal.pageSize.getHeight();
+        const margin = 8;
+        const printWidth = pdfWidth - (margin * 2);
+        const printHeight = (canvas.height * printWidth) / canvas.width;
+
+        pdf.addImage(imgData, 'JPEG', margin, margin, printWidth, Math.min(printHeight, pdfHeight - (margin * 2)));
+
+        // 1. Generate Blob & Blob URL
+        const pdfBlob = pdf.output('blob');
+        const blobUrl = URL.createObjectURL(pdfBlob);
+
+        // 2. Open directly in Google Chrome or default browser
+        let opened = false;
+        if (isElectronRenderer()) {
+            try {
+                const electron = window.require('electron');
+                const fs = window.require('fs');
+                const path = window.require('path');
+                const os = window.require('os');
+                const cp = window.require('child_process');
+                let pathToFileURL = null;
+                try {
+                    pathToFileURL = window.require('url')?.pathToFileURL;
+                } catch (_) {}
+
+                if (fs && path && os) {
+                    const tempDir = os.tmpdir();
+                    const filePath = path.join(tempDir, cleanName);
+                    const arrayBuffer = await pdfBlob.arrayBuffer();
+                    fs.writeFileSync(filePath, Buffer.from(arrayBuffer));
+
+                    // Specifically target Google Chrome so it opens directly in Chrome
+                    const browserCandidates = [
+                        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+                        'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+                        process.env?.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'Google\\Chrome\\Application\\chrome.exe') : null,
+                        process.env?.PROGRAMFILES ? path.join(process.env.PROGRAMFILES, 'Google\\Chrome\\Application\\chrome.exe') : null,
+                        process.env?.['PROGRAMFILES(X86)'] ? path.join(process.env['PROGRAMFILES(X86)'], 'Google\\Chrome\\Application\\chrome.exe') : null,
+                        'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+                        'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe'
+                    ].filter(Boolean);
+
+                    let targetBrowser = null;
+                    for (const cand of browserCandidates) {
+                        if (fs.existsSync(cand)) {
+                            targetBrowser = cand;
+                            break;
+                        }
+                    }
+
+                    if (targetBrowser && cp?.spawn) {
+                        // Open directly in Chrome (or Edge Chromium) where the user can view, print, or download
+                        cp.spawn(targetBrowser, [filePath], { detached: true, stdio: 'ignore' }).unref();
+                        opened = true;
+                    } else if (electron?.shell) {
+                        const fileUrl = pathToFileURL ? pathToFileURL(filePath).href : `file:///${filePath.replace(/\\/g, '/')}`;
+                        electron.shell.openExternal(fileUrl).catch(() => {
+                            electron.shell.openPath(filePath).catch(() => {});
+                        });
+                        opened = true;
+                    }
+                }
+            } catch (e) {
+                console.warn('[printHelper] Chrome/Browser launch fallback:', e);
+            }
+        }
+
+        if (!opened) {
+            // Web browser mode (e.g. running in Chrome): open PDF in a new tab
+            try {
+                window.open(blobUrl, '_blank');
+            } catch (_) {}
+        }
+
+        // 3. Save / Download file (optional)
+        if (saveFile) {
+            pdf.save(cleanName);
+        }
+        return true;
+    } catch (err) {
+        console.error('[printHelper] downloadAndOpenPdf failed:', err);
+        throw err;
+    }
 }
 
 /**
@@ -631,30 +752,46 @@ export function generateWholesaleInvoiceA4Html(inv, settings = {}, prevBal = 0, 
 
         return `
             <tr style="border-bottom: 1px solid #e5e7eb;">
-                <td style="padding: 6px 6px; text-align: center; color: #6b7280; font-family: monospace; font-size: 11px;">${idx + 1}</td>
-                <td style="padding: 6px 8px; font-weight: 600; color: #111827;">
+                <td style="padding: 7px 6px; text-align: center; color: #4b5563; font-family: monospace; font-size: 12.5px; font-weight: 700;">${idx + 1}</td>
+                <td style="padding: 7px 8px; font-weight: 700; color: #111827; font-size: 12.5px;">
                     ${it.product_name}
-                    ${it.variant_name && it.variant_name !== 'Standard' ? `<span style="color: #6b7280; font-weight: normal; margin-left: 4px;">(${it.variant_name})</span>` : ''}
+                    ${it.variant_name && it.variant_name !== 'Standard' ? `<span style="color: #4b5563; font-weight: 600; margin-left: 4px;">(${it.variant_name})</span>` : ''}
                 </td>
-                <td style="padding: 6px 8px; text-align: right; font-family: monospace; color: #111827;">${Number(linePrice).toFixed(0)}</td>
-                <td style="padding: 6px 8px; text-align: center; font-weight: bold; color: #111827;">${qtyDisplay}</td>
-                <td style="padding: 6px 8px; text-align: right; font-family: monospace; color: #111827;">${Number(lineGross).toFixed(2)}</td>
-                <td style="padding: 6px 8px; text-align: center; font-family: monospace; color: #4b5563;">${discPct}</td>
-                <td style="padding: 6px 8px; text-align: right; font-family: monospace; color: #111827;">${Number(lineDiscount).toFixed(0)}</td>
-                <td style="padding: 6px 8px; text-align: right; font-weight: bold; font-family: monospace; color: #111827;">${Number(lineTotal).toFixed(2)}</td>
+                <td style="padding: 7px 8px; text-align: right; font-family: monospace; font-weight: 600; color: #111827; font-size: 12.5px;">${Number(linePrice).toFixed(0)}</td>
+                <td style="padding: 7px 8px; text-align: center; font-weight: 800; color: #111827; font-size: 12.5px;">${qtyDisplay}</td>
+                <td style="padding: 7px 8px; text-align: right; font-family: monospace; font-weight: 600; color: #111827; font-size: 12.5px;">${Number(lineGross).toFixed(2)}</td>
+                <td style="padding: 7px 8px; text-align: center; font-family: monospace; font-weight: 600; color: #374151; font-size: 12.5px;">${discPct}</td>
+                <td style="padding: 7px 8px; text-align: right; font-family: monospace; font-weight: 600; color: #111827; font-size: 12.5px;">${Number(lineDiscount).toFixed(0)}</td>
+                <td style="padding: 7px 8px; text-align: right; font-weight: 800; font-family: monospace; color: #111827; font-size: 12.5px;">${Number(lineTotal).toFixed(2)}</td>
             </tr>
         `;
     }).join('');
 
+    // Filler rows if items count is low so table fills the full A4 page vertically
+    const minRows = 8;
+    const emptyRowsCount = Math.max(0, minRows - items.length);
+    const emptyRowsHtml = Array.from({ length: emptyRowsCount }).map((_, i) => `
+        <tr style="border-bottom: 1px solid #f3f4f6; height: 28px;">
+            <td style="padding: 6px 6px; text-align: center; color: #d1d5db; font-family: monospace; font-size: 12px;">${items.length + i + 1}</td>
+            <td style="padding: 6px 8px;">&nbsp;</td>
+            <td>&nbsp;</td>
+            <td>&nbsp;</td>
+            <td>&nbsp;</td>
+            <td>&nbsp;</td>
+            <td>&nbsp;</td>
+            <td>&nbsp;</td>
+        </tr>
+    `).join('');
+
     const bankCardsHtml = bankAccounts.map(acc => `
-        <div style="border: 1px solid #d1d5db; border-radius: 6px; padding: 6px 8px; background: #f9fafb; font-size: 10px; line-height: 1.35;">
-            <div style="display: flex; justify-content: space-between; font-weight: bold; color: #111827;">
+        <div style="border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 9px; background: #f9fafb; font-size: 11.5px; line-height: 1.4;">
+            <div style="display: flex; justify-content: space-between; font-weight: 800; color: #111827;">
                 <span>${acc.bank_name}</span>
-                ${acc.branch ? `<span style="font-weight: normal; color: #6b7280;">${acc.branch}</span>` : ''}
+                ${acc.branch ? `<span style="font-weight: 600; color: #4b5563;">${acc.branch}</span>` : ''}
             </div>
-            ${acc.account_title ? `<div><span style="color: #6b7280;">Title: </span><span style="font-weight: 600; color: #374151;">${acc.account_title}</span></div>` : ''}
-            <div><span style="color: #6b7280;">A/C #: </span><span style="font-family: monospace; font-weight: bold; color: #111827;">${acc.account_number}</span></div>
-            ${acc.iban ? `<div><span style="color: #6b7280;">IBAN: </span><span style="font-family: monospace; color: #4b5563; font-size: 9.5px;">${acc.iban}</span></div>` : ''}
+            ${acc.account_title ? `<div><span style="color: #4b5563; font-weight: 600;">Title: </span><span style="font-weight: 700; color: #111827;">${acc.account_title}</span></div>` : ''}
+            <div><span style="color: #4b5563; font-weight: 600;">A/C #: </span><span style="font-family: monospace; font-weight: 800; color: #111827;">${acc.account_number}</span></div>
+            ${acc.iban ? `<div><span style="color: #4b5563; font-weight: 600;">IBAN: </span><span style="font-family: monospace; font-weight: 600; color: #374151; font-size: 10.5px;">${acc.iban}</span></div>` : ''}
         </div>
     `).join('');
 
@@ -678,11 +815,12 @@ export function generateWholesaleInvoiceA4Html(inv, settings = {}, prevBal = 0, 
             padding: 0;
             background: #ffffff;
             color: #111827;
+            height: 100%;
         }
         body {
             font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
-            font-size: 11px;
-            line-height: 1.35;
+            font-size: 13px;
+            line-height: 1.4;
             width: 100%;
         }
         table {
@@ -690,146 +828,199 @@ export function generateWholesaleInvoiceA4Html(inv, settings = {}, prevBal = 0, 
             border-collapse: collapse;
         }
         .container {
-            border: 1px solid #d1d5db;
-            border-radius: 10px;
-            padding: 16px 20px;
+            border: 1.5px solid #111827;
+            border-radius: 8px;
+            padding: 14px 18px;
             background: #ffffff;
             max-width: 100%;
             margin: 0 auto;
+            min-height: 272mm;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        .invoice-main-content {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        .table-wrapper {
+            flex-grow: 1;
+        }
+        .invoice-bottom-content {
+            margin-top: auto;
+        }
+        @media print {
+            .container {
+                min-height: 272mm !important;
+                height: 272mm !important;
+            }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <!-- TOP HEADER: SHOP INFO & INVOICE / CUSTOMER META -->
-        <table style="width: 100%; margin-bottom: 12px; border-bottom: 1px solid #d1d5db; padding-bottom: 10px;">
-            <tr>
-                <!-- LEFT SIDE: LOGO & SHOP INFO -->
-                <td style="width: 50%; vertical-align: top; padding-right: 12px;">
-                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px;">
-                        ${shopLogo ? `
-                            <img src="${shopLogo}" alt="Logo" style="height: 44px; width: 44px; object-fit: contain; border-radius: 6px; border: 1px solid #e5e7eb; padding: 2px;" />
-                        ` : `
-                            <div style="height: 40px; width: 40px; border-radius: 8px; background: linear-gradient(135deg, #B8860B, #FFD700); color: #fff; font-weight: 900; font-size: 18px; display: flex; align-items: center; justify-content: center;">
-                                ${shopName.charAt(0)}
+        <div class="invoice-main-content">
+            <!-- TOP HEADER: SHOP INFO & INVOICE / CUSTOMER META -->
+            <table style="width: 100%; margin-bottom: 14px; border-bottom: 1.5px solid #d1d5db; padding-bottom: 12px;">
+                <tr>
+                    <!-- LEFT SIDE: LOGO & SHOP INFO -->
+                    <td style="width: 50%; vertical-align: top; padding-right: 12px;">
+                        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+                            ${shopLogo ? `
+                                <img src="${shopLogo}" alt="Logo" style="height: 48px; width: 48px; object-fit: contain; border-radius: 6px; border: 1px solid #e5e7eb; padding: 2px;" />
+                            ` : `
+                                <div style="height: 46px; width: 46px; border-radius: 8px; background: linear-gradient(135deg, #B8860B, #FFD700); color: #fff; font-weight: 900; font-size: 20px; display: flex; align-items: center; justify-content: center;">
+                                    ${shopName.charAt(0)}
+                                </div>
+                            `}
+                            <div>
+                                <div style="font-size: 18px; font-weight: 900; text-transform: uppercase; color: #111827; letter-spacing: 0.3px;">
+                                    ${shopName}
+                                </div>
+                                <div style="font-size: 11px; font-weight: 800; color: #B8860B; text-transform: uppercase; letter-spacing: 0.8px;">
+                                    DISTRIBUTION NETWORK
+                                </div>
                             </div>
-                        `}
-                        <div>
-                            <div style="font-size: 14px; font-weight: 900; text-transform: uppercase; color: #111827; letter-spacing: 0.3px;">
-                                ${shopName}
+                        </div>
+                        <div style="font-size: 12.5px; font-weight: 700; color: #111827; line-height: 1.45;">
+                            <div><strong style="font-weight: 800; color: #111827;">Address: </strong>${shopAddress}</div>
+                            <div><strong style="font-weight: 800; color: #111827;">Phone: </strong><span style="font-family: monospace; font-weight: 700;">${shopPhone}</span></div>
+                            <div><strong style="font-weight: 800; color: #111827;">Email: </strong><span style="font-family: monospace; font-weight: 700; color: #111827;">${shopEmail}</span></div>
+                        </div>
+                    </td>
+
+                    <!-- RIGHT SIDE: INVOICE META & CUSTOMER DETAILS -->
+                    <td style="width: 50%; vertical-align: top; text-align: right; padding-left: 12px;">
+                        <div style="background: #f9fafb; border: 1px solid #d1d5db; border-radius: 8px; padding: 9px 12px; margin-bottom: 9px; text-align: right;">
+                            <div style="margin-bottom: 4px;">
+                                <span style="font-weight: 800; color: #374151; font-size: 12.5px;">INVOICE # : </span>
+                                <span style="font-family: monospace; font-weight: 900; font-size: 16px; color: #B8860B;">${inv.invoice_no || inv.id}</span>
                             </div>
-                            <div style="font-size: 9.5px; font-weight: bold; color: #B8860B; text-transform: uppercase; letter-spacing: 0.8px;">
-                                DISTRIBUTION NETWORK
+                            <div style="margin-bottom: 4px;">
+                                <span style="font-weight: 800; color: #111827; font-size: 12.5px;">Invoice Date: </span>
+                                <span style="font-family: monospace; font-weight: 900; font-size: 12.5px; color: #111827;">${formattedDate}</span>
+                            </div>
+                            <div>
+                                <span style="font-weight: 800; color: #111827; font-size: 12.5px;">Payment Status: </span>
+                                <span style="display: inline-block; padding: 2px 9px; border-radius: 4px; font-size: 11.5px; font-weight: 900; text-transform: uppercase; background: ${statusBg}; color: ${statusColor}; border: 1px solid ${statusBorder};">
+                                    ${status}
+                                </span>
                             </div>
                         </div>
-                    </div>
-                    <div style="font-size: 10.5px; color: #374151; line-height: 1.35;">
-                        <div><strong style="color: #111827;">Address: </strong>${shopAddress}</div>
-                        <div><strong style="color: #111827;">Phone: </strong><span style="font-family: monospace;">${shopPhone}</span></div>
-                        <div><strong style="color: #111827;">Email: </strong><span style="font-family: monospace; color: #4b5563;">${shopEmail}</span></div>
-                    </div>
-                </td>
 
-                <!-- RIGHT SIDE: INVOICE META & CUSTOMER DETAILS -->
-                <td style="width: 50%; vertical-align: top; text-align: right; padding-left: 12px;">
-                    <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; text-align: right;">
-                        <div style="margin-bottom: 3px;">
-                            <span style="font-weight: bold; color: #6b7280; font-size: 10.5px;">INVOICE # : </span>
-                            <span style="font-family: monospace; font-weight: 900; font-size: 13px; color: #B8860B;">${inv.invoice_no || inv.id}</span>
+                        <div style="border-top: 1px solid #d1d5db; padding-top: 7px; font-size: 12.5px; font-weight: 700; color: #111827; line-height: 1.45;">
+                            <div style="font-weight: 900; font-size: 13px; color: #111827; text-transform: uppercase; margin-bottom: 3px;">
+                                BILLED TO (${fullCustomerTitle})
+                            </div>
+                            <div><strong style="font-weight: 800; color: #111827;">Mobile / Phone: </strong><span style="font-family: monospace; font-weight: 700;">${customerPhone || '—'}</span></div>
+                            <div><strong style="font-weight: 800; color: #111827;">Address: </strong><span style="font-weight: 700;">${customerAddress || '—'}</span></div>
+                            ${remarks ? `<div><strong style="font-weight: 800; color: #111827;">Remarks: </strong><span style="font-style: italic; font-weight: 700; color: #1f2937;">${remarks}</span></div>` : ''}
                         </div>
-                        <div style="margin-bottom: 3px;">
-                            <span style="font-weight: 600; color: #4b5563; font-size: 10.5px;">Invoice Date: </span>
-                            <span style="font-family: monospace; font-weight: bold; color: #111827;">${formattedDate}</span>
-                        </div>
-                        <div>
-                            <span style="font-weight: 600; color: #4b5563; font-size: 10.5px;">Payment Status: </span>
-                            <span style="display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 900; text-transform: uppercase; background: ${statusBg}; color: ${statusColor}; border: 1px solid ${statusBorder};">
-                                ${status}
-                            </span>
-                        </div>
-                    </div>
-
-                    <div style="border-top: 1px solid #e5e7eb; padding-top: 6px; font-size: 10.5px; line-height: 1.35;">
-                        <div style="font-weight: 800; color: #111827; text-transform: uppercase; margin-bottom: 2px;">
-                            BILLED TO (${fullCustomerTitle})
-                        </div>
-                        <div><strong style="color: #4b5563;">Mobile / Phone: </strong><span style="font-family: monospace;">${customerPhone || '—'}</span></div>
-                        <div><strong style="color: #4b5563;">Address: </strong><span>${customerAddress || '—'}</span></div>
-                        ${remarks ? `<div><strong style="color: #4b5563;">Remarks: </strong><span style="font-style: italic; color: #4b5563;">${remarks}</span></div>` : ''}
-                    </div>
-                </td>
-            </tr>
-        </table>
-
-        <!-- ITEMS TABLE -->
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 11px;">
-            <thead>
-                <tr style="background: #f9fafb; border-top: 1px solid #d1d5db; border-bottom: 1px solid #d1d5db; color: #047857; font-weight: bold;">
-                    <th style="padding: 6px 6px; text-align: center; width: 30px;">#</th>
-                    <th style="padding: 6px 8px; text-align: left;">Product Description</th>
-                    <th style="padding: 6px 8px; text-align: right; width: 65px;">Price</th>
-                    <th style="padding: 6px 8px; text-align: center; width: 120px;">Quantity</th>
-                    <th style="padding: 6px 8px; text-align: right; width: 85px;">Gross Amount</th>
-                    <th style="padding: 6px 8px; text-align: center; width: 50px;">Disc.%</th>
-                    <th style="padding: 6px 8px; text-align: right; width: 60px;">Disc.</th>
-                    <th style="padding: 6px 8px; text-align: right; width: 85px;">Net Amount</th>
+                    </td>
                 </tr>
-            </thead>
-            <tbody>
-                ${rowsHtml}
-            </tbody>
-        </table>
+            </table>
 
-        <!-- BALANCES & FINANCIAL SUMMARY -->
-        <table style="width: 100%; margin-bottom: 10px; font-size: 11px;">
-            <tr>
-                <!-- LEFT BOX: RUNNING BALANCES -->
-                <td style="width: 50%; vertical-align: top; padding-right: 14px; line-height: 1.55;">
-                    <div><span style="font-weight: 600; color: #374151;">Current Invoice: </span><span style="color: #111827;">Rs. ${Number(netVal).toFixed(2)}</span></div>
-                    <div><span style="font-weight: 600; color: #374151;">Paid Amount: </span><span style="font-weight: 600; color: #047857;">Rs. ${Number(paidVal).toFixed(2)}</span></div>
-                    <div><span style="font-weight: 600; color: #374151;">Invoice Due: </span><span style="font-weight: 600; color: ${remainingVal > 0 ? '#be123c' : '#111827'};">Rs. ${Number(remainingVal).toFixed(2)}</span></div>
-                    <div><span style="font-weight: bold; color: #111827;">Previous Balance : </span><span style="font-weight: bold; color: #111827;">Rs. ${Number(pBal).toFixed(2)}</span></div>
-                    <div style="border-bottom: 2px solid #111827; display: inline-block; padding-bottom: 2px; margin-top: 2px;">
-                        <span style="font-weight: bold; color: #111827;">New Balance: </span>
-                        <span style="font-weight: bold; color: #111827;">Rs. ${Number(fBal).toFixed(0)}</span>
-                    </div>
-                </td>
-
-                <!-- RIGHT BOX: TOTALS & NET VALUE -->
-                <td style="width: 50%; vertical-align: top; text-align: right; padding-left: 14px; line-height: 1.55;">
-                    <div><span style="font-weight: 600; color: #374151;">Gross Amount: </span><span style="color: #111827;">Rs. ${Number(grossVal).toFixed(2)}</span></div>
-                    <div><span style="font-weight: 600; color: #374151;">Less Disc.: </span><span style="color: #111827;">Rs. ${Number(discVal).toFixed(2)}</span></div>
-                    <div><span style="font-weight: 600; color: #374151;">Less Special Disc.: </span><span style="color: #111827;">Rs. ${specialDiscVal % 1 === 0 ? Number(specialDiscVal).toFixed(0) : Number(specialDiscVal).toFixed(2)}</span></div>
-                    <div><span style="font-weight: 600; color: #374151;">Add Charges : </span><span style="color: #111827;">Rs. ${chargesVal % 1 === 0 ? Number(chargesVal).toFixed(0) : Number(chargesVal).toFixed(2)}</span></div>
-                    <div style="border-top: 1px solid #d1d5db; margin-top: 4px; padding-top: 4px;">
-                        <span style="font-size: 13px; font-weight: bold; color: #111827;">Net Value: </span>
-                        <span style="font-size: 13px; font-weight: 900; color: #111827;">Rs. ${Number(netVal).toFixed(2)}</span>
-                    </div>
-                </td>
-            </tr>
-        </table>
-
-        <!-- AMOUNT IN WORDS -->
-        <div style="border-top: 1px solid #d1d5db; padding-top: 8px; margin-bottom: 10px; font-size: 11px;">
-            <strong style="color: #374151;">Invoice Amount In Words: </strong>
-            <span style="font-weight: bold; color: #111827;">${numberToWords(netVal)}</span>
+            <!-- ITEMS TABLE -->
+            <div class="table-wrapper">
+                <table style="width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 12.5px;">
+                    <thead>
+                        <tr style="background: #f3f4f6; border-top: 1.5px solid #d1d5db; border-bottom: 1.5px solid #d1d5db; color: #047857; font-weight: 800;">
+                            <th style="padding: 8px 6px; text-align: center; width: 32px;">#</th>
+                            <th style="padding: 8px 8px; text-align: left;">Product Description</th>
+                            <th style="padding: 8px 8px; text-align: right; width: 68px;">Price</th>
+                            <th style="padding: 8px 8px; text-align: center; width: 125px;">Quantity</th>
+                            <th style="padding: 8px 8px; text-align: right; width: 90px;">Gross Amount</th>
+                            <th style="padding: 8px 8px; text-align: center; width: 55px;">Disc.%</th>
+                            <th style="padding: 8px 8px; text-align: right; width: 65px;">Disc.</th>
+                            <th style="padding: 8px 8px; text-align: right; width: 90px;">Net Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rowsHtml}
+                        ${emptyRowsHtml}
+                    </tbody>
+                </table>
+            </div>
         </div>
 
-        <!-- BANK DETAILS -->
-        ${bankAccounts.length > 0 ? `
-            <div style="border-top: 1px solid #d1d5db; padding-top: 8px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                    <span style="font-weight: 900; font-size: 10.5px; text-transform: uppercase; color: #111827; letter-spacing: 0.5px;">
-                        <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #B8860B; margin-right: 4px;"></span>
-                        BANK DETAILS FOR ONLINE PAYMENT / TRANSFER
-                    </span>
-                    <span style="font-size: 9.5px; color: #6b7280;">WhatsApp proof: ${shopPhone}</span>
+        <div class="invoice-bottom-content">
+            <!-- BALANCES & FINANCIAL SUMMARY -->
+            <table style="width: 100%; margin-bottom: 10px; font-size: 13px;">
+                <tr>
+                    <!-- LEFT BOX: RUNNING BALANCES -->
+                    <td style="width: 50%; vertical-align: top; padding-right: 14px; line-height: 1.6;">
+                        <div><span style="font-weight: 700; color: #1f2937;">Current Invoice: </span><span style="font-weight: 700; color: #111827;">Rs. ${Number(netVal).toFixed(2)}</span></div>
+                        <div><span style="font-weight: 700; color: #1f2937;">Paid Amount: </span><span style="font-weight: 700; color: #047857;">Rs. ${Number(paidVal).toFixed(2)}</span></div>
+                        <div><span style="font-weight: 700; color: #1f2937;">Invoice Due: </span><span style="font-weight: 700; color: ${remainingVal > 0 ? '#be123c' : '#111827'};">Rs. ${Number(remainingVal).toFixed(2)}</span></div>
+                        <div><span style="font-weight: 800; color: #111827;">Previous Balance : </span><span style="font-weight: 800; color: #111827;">Rs. ${Number(pBal).toFixed(2)}</span></div>
+                        <div style="border-bottom: 2px solid #111827; display: inline-block; padding-bottom: 2px; margin-top: 2px; font-size: 14px;">
+                            <span style="font-weight: 900; color: #111827;">New Balance: </span>
+                            <span style="font-weight: 900; color: #111827;">Rs. ${Number(fBal).toFixed(0)}</span>
+                        </div>
+                    </td>
+
+                    <!-- RIGHT BOX: TOTALS & NET VALUE -->
+                    <td style="width: 50%; vertical-align: top; text-align: right; padding-left: 14px; line-height: 1.6;">
+                        <div><span style="font-weight: 700; color: #1f2937;">Gross Amount: </span><span style="font-weight: 700; color: #111827;">Rs. ${Number(grossVal).toFixed(2)}</span></div>
+                        <div><span style="font-weight: 700; color: #1f2937;">Less Disc.: </span><span style="font-weight: 700; color: #111827;">Rs. ${Number(discVal).toFixed(2)}</span></div>
+                        <div><span style="font-weight: 700; color: #1f2937;">Less Special Disc.: </span><span style="font-weight: 700; color: #111827;">Rs. ${specialDiscVal % 1 === 0 ? Number(specialDiscVal).toFixed(0) : Number(specialDiscVal).toFixed(2)}</span></div>
+                        <div><span style="font-weight: 700; color: #1f2937;">Add Charges : </span><span style="font-weight: 700; color: #111827;">Rs. ${chargesVal % 1 === 0 ? Number(chargesVal).toFixed(0) : Number(chargesVal).toFixed(2)}</span></div>
+                        <div style="border-top: 1.5px solid #d1d5db; margin-top: 4px; padding-top: 5px;">
+                            <span style="font-size: 16px; font-weight: 900; color: #111827;">Net Value: </span>
+                            <span style="font-size: 16px; font-weight: 900; color: #111827;">Rs. ${Number(netVal).toFixed(2)}</span>
+                        </div>
+                    </td>
+                </tr>
+            </table>
+
+            <!-- AMOUNT IN WORDS -->
+            <div style="border-top: 1px solid #d1d5db; padding-top: 8px; margin-bottom: 10px; font-size: 13px;">
+                <strong style="color: #1f2937; font-weight: 700;">Invoice Amount In Words: </strong>
+                <span style="font-weight: 900; color: #111827;">${numberToWords(netVal)}</span>
+            </div>
+
+            <!-- BANK DETAILS -->
+            ${bankAccounts.length > 0 ? `
+                <div style="border-top: 1px solid #d1d5db; padding-top: 8px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <span style="font-weight: 900; font-size: 12px; text-transform: uppercase; color: #111827; letter-spacing: 0.5px;">
+                            <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #B8860B; margin-right: 4px;"></span>
+                            BANK DETAILS FOR ONLINE PAYMENT / TRANSFER
+                        </span>
+                        <span style="font-size: 11px; font-weight: 600; color: #4b5563;">WhatsApp proof: ${shopPhone}</span>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(${Math.min(bankAccounts.length, 3)}, 1fr); gap: 8px;">
+                        ${bankCardsHtml}
+                    </div>
                 </div>
-                <div style="display: grid; grid-template-columns: repeat(${Math.min(bankAccounts.length, 3)}, 1fr); gap: 8px;">
-                    ${bankCardsHtml}
+            ` : ''}
+
+            <!-- TERMS & SIGNATURES -->
+            <div style="border-top: 1px solid #d1d5db; margin-top: 12px; padding-top: 8px;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-end; padding-top: 24px;">
+                    <div style="text-align: center; width: 30%;">
+                        <div style="border-top: 1.5px solid #111827; padding-top: 4px; font-weight: bold; font-size: 11.5px; color: #111827;">
+                            Prepared By (Cashier)
+                        </div>
+                    </div>
+                    <div style="text-align: center; width: 30%;">
+                        <div style="border-top: 1.5px solid #111827; padding-top: 4px; font-weight: bold; font-size: 11.5px; color: #111827;">
+                            Checked &amp; Approved By
+                        </div>
+                    </div>
+                    <div style="text-align: center; width: 30%;">
+                        <div style="border-top: 1.5px solid #111827; padding-top: 4px; font-weight: bold; font-size: 11.5px; color: #111827;">
+                            Customer Signature &amp; Stamp
+                        </div>
+                    </div>
+                </div>
+                <div style="text-align: center; font-size: 10.5px; font-weight: 600; color: #4b5563; margin-top: 10px;">
+                    Thank you for your business! • Goods once sold can be exchanged in original packaging within 7 days.
                 </div>
             </div>
-        ` : ''}
+        </div>
     </div>
     <script>window.onload = function() { window.print(); window.close(); }</script>
 </body>
@@ -1095,7 +1286,7 @@ export function generateTestPrintHtml(settings = {}, targetPrinter = '', isSilen
             <div style="font-size: 10.5px; color: #4b5563;">${shopAddress}</div>
             <div style="font-size: 10.5px; color: #4b5563;">Tel: ${shopPhone}</div>
             <div>
-                <span class="badge">PRINTER DIAGNOSTIC TEST</span>
+                <span class="badge">${format === 'a4' ? 'A4 WHOLESALE BILL TEST (A4 Format)' : 'PRINTER DIAGNOSTIC TEST'}</span>
             </div>
         </div>
 
@@ -1103,6 +1294,10 @@ export function generateTestPrintHtml(settings = {}, targetPrinter = '', isSilen
             <tr>
                 <td class="label">Target Printer:</td>
                 <td class="val">${printerLabel}</td>
+            </tr>
+            <tr>
+                <td class="label">Paper Format:</td>
+                <td class="val">${format === 'a4' ? 'Standard A4 Sheet (210mm x 297mm)' : 'Default Page Size'}</td>
             </tr>
             <tr>
                 <td class="label">Silent Print Mode:</td>
@@ -1132,4 +1327,135 @@ export function generateTestPrintHtml(settings = {}, targetPrinter = '', isSilen
 </body>
 </html>
     `;
+}
+
+/**
+ * Generate a crisp 80mm thermal Sales Return / Credit Note receipt HTML document.
+ * @param {Object} ret - Return payload / response object
+ * @param {Object} settings - Shop settings
+ * @param {string} cashierName - Cashier username
+ * @returns {string} HTML string
+ */
+export function generateThermalReturnReceiptHtml(ret, settings = {}, cashierName = 'Cashier') {
+    if (!ret) return '';
+
+    const shopName = (settings?.shop_name || 'HILAL FOODS SOLUTIONS').trim();
+    const shopAddress = (settings?.shop_address || 'Main Bazaar, Timergara, KP').trim();
+    const shopPhone = (settings?.shop_phone || '+92 300 1234567').trim();
+    const cnNo = ret.cnNumber || `CN-${String(ret.returnId || '00000').padStart(5, '0')}`;
+    const customerName = ret.customer_name || 'Walk-in Customer';
+    const invRef = ret.invoice_no || 'Walk-in / Direct Return';
+    const refundMethodLabel = ret.refund_method === 'cash' ? 'CASH REFUND (DRAWER)' : 'KHATA / STORE CREDIT';
+    const conditionLabel = ret.return_type === 'damaged' ? 'Damaged / Scrap' : 'Saleable (Restocked)';
+    const items = Array.isArray(ret.items) ? ret.items : [];
+    const totalRefund = Number(ret.total_refund) || 0;
+    const timestamp = new Date().toLocaleString('en-PK', { hour12: true });
+
+    const rowsHtml = items.map((it, idx) => {
+        const qty = Number(it.quantity) || 0;
+        const rate = Number(it.refund_price) || 0;
+        const lineAmt = qty * rate;
+        return `
+            <tr>
+                <td style="padding: 4px 2px; border: 1px solid #000; text-align: center;">${idx + 1}</td>
+                <td style="padding: 4px 3px; border: 1px solid #000; font-weight: bold;">
+                    ${it.product_name || 'Item'}
+                    ${it.variant_name && it.variant_name !== 'Standard' ? `<div style="font-size: 9px; font-weight: normal;">(${it.variant_name})</div>` : ''}
+                </td>
+                <td style="padding: 4px 2px; border: 1px solid #000; text-align: center; font-weight: bold;">${qty} ${it.packaging_name || ''}</td>
+                <td style="padding: 4px 2px; border: 1px solid #000; text-align: right;">${rate.toFixed(0)}</td>
+                <td style="padding: 4px 3px; border: 1px solid #000; text-align: right; font-weight: bold;">${lineAmt.toFixed(0)}</td>
+            </tr>
+        `;
+    }).join('');
+
+    return `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Return Receipt ${cnNo}</title>
+    <style>
+        @page { size: 78mm auto; margin: 0; }
+        * { box-sizing: border-box; color: #000000 !important; }
+        body {
+            width: 72mm;
+            margin: 0 auto;
+            padding: 3mm 2mm;
+            font-family: Arial, Helvetica, sans-serif;
+            font-size: 10.5px;
+            line-height: 1.3;
+            background: #ffffff;
+        }
+    </style>
+</head>
+<body>
+    <div style="text-align: center; border-bottom: 1.5px solid #000; padding-bottom: 5px; margin-bottom: 5px;">
+        <div style="font-size: 15px; font-weight: 900; text-transform: uppercase;">${shopName}</div>
+        <div style="font-size: 9.5px; font-weight: 600;">${shopAddress}</div>
+        <div style="font-size: 9.5px; font-weight: bold;">Tel: ${shopPhone}</div>
+        <div style="margin-top: 4px; padding: 3px 6px; border: 1.5px solid #000; font-weight: 900; font-size: 11px; letter-spacing: 0.5px;">
+            SALES RETURN RECEIPT
+        </div>
+    </div>
+
+    <table style="width: 100%; border-collapse: collapse; font-size: 10px; margin-bottom: 5px;">
+        <tr>
+            <td style="font-weight: bold; padding: 1.5px 0;">Return #:</td>
+            <td style="text-align: right; font-weight: 900;">${cnNo}</td>
+        </tr>
+        <tr>
+            <td style="font-weight: bold; padding: 1.5px 0;">Date:</td>
+            <td style="text-align: right;">${timestamp}</td>
+        </tr>
+        <tr>
+            <td style="font-weight: bold; padding: 1.5px 0;">Customer:</td>
+            <td style="text-align: right; font-weight: bold;">${customerName}</td>
+        </tr>
+        <tr>
+            <td style="font-weight: bold; padding: 1.5px 0;">Ref Bill:</td>
+            <td style="text-align: right;">${invRef}</td>
+        </tr>
+        <tr>
+            <td style="font-weight: bold; padding: 1.5px 0;">Condition:</td>
+            <td style="text-align: right;">${conditionLabel}</td>
+        </tr>
+        <tr>
+            <td style="font-weight: bold; padding: 1.5px 0;">Cashier:</td>
+            <td style="text-align: right;">${cashierName}</td>
+        </tr>
+    </table>
+
+    <table style="width: 100%; border-collapse: collapse; font-size: 10px; border: 1px solid #000; margin-bottom: 6px;">
+        <thead>
+            <tr>
+                <th style="padding: 3px 2px; border: 1px solid #000; width: 8%;">#</th>
+                <th style="padding: 3px 3px; border: 1px solid #000; text-align: left; width: 38%;">Item</th>
+                <th style="padding: 3px 2px; border: 1px solid #000; width: 20%;">Qty</th>
+                <th style="padding: 3px 2px; border: 1px solid #000; text-align: right; width: 15%;">Rate</th>
+                <th style="padding: 3px 3px; border: 1px solid #000; text-align: right; width: 19%;">Refund</th>
+            </tr>
+        </thead>
+        <tbody>${rowsHtml}</tbody>
+    </table>
+
+    <table style="width: 100%; border-collapse: collapse; font-size: 11px; border: 1.5px solid #000; margin-bottom: 6px;">
+        <tr>
+            <td style="padding: 4px; font-weight: bold; border-bottom: 1px solid #000;">SETTLEMENT:</td>
+            <td style="padding: 4px; text-align: right; font-weight: bold; border-bottom: 1px solid #000;">${refundMethodLabel}</td>
+        </tr>
+        <tr>
+            <td style="padding: 5px 4px; font-weight: 900; font-size: 12.5px;">TOTAL REFUND:</td>
+            <td style="padding: 5px 4px; text-align: right; font-weight: 900; font-size: 12.5px;">Rs. ${totalRefund.toLocaleString()}</td>
+        </tr>
+    </table>
+
+    ${ret.remarks ? `<div style="font-size: 9.5px; margin-bottom: 5px;"><strong>Note:</strong> ${ret.remarks}</div>` : ''}
+
+    <div style="text-align: center; font-size: 9.5px; border-top: 1px dashed #000; padding-top: 5px;">
+        <div style="font-weight: bold;">*** RETURN PROCESSED ***</div>
+        <div>Thank you for shopping with ${shopName}</div>
+    </div>
+    <script>window.onload = function() { window.print(); window.close(); }</script>
+</body>
+</html>`;
 }

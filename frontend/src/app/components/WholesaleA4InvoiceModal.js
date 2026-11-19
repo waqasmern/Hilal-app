@@ -1,9 +1,9 @@
 'use client';
 import React, { useState } from 'react';
 import {
-    IconPrinter, IconWhatsApp, IconDownload, IconReceipt, IconClose, IconSpinner
+    IconPrinter, IconWhatsApp, IconDownload, IconReceipt, IconClose, IconSpinner, IconExternalLink
 } from './Icons';
-import { triggerPrintHtml, generateWholesaleInvoiceA4Html, generateThermalReceiptHtml } from '../../lib/printHelper';
+import { triggerPrintHtml, generateWholesaleInvoiceA4Html, generateThermalReceiptHtml, downloadAndOpenPdf } from '../../lib/printHelper';
 
 export function parseDate(dateInput) {
     if (!dateInput) return null;
@@ -74,6 +74,7 @@ export default function WholesaleA4InvoiceModal({
     elemId = "printable-invoice-a4"
 }) {
     const [internalDownloadingPdf, setInternalDownloadingPdf] = useState(false);
+    const [openingInChrome, setOpeningInChrome] = useState(false);
 
     if (!isOpen || !invoice) return null;
 
@@ -149,39 +150,24 @@ export default function WholesaleA4InvoiceModal({
         }
 
         const a4Printer = (settings?.selected_a4_printer || '').trim();
-        const thermalPrinter = (settings?.selected_printer || '').trim();
-        const isThermalTarget = (!a4Printer || a4Printer === 'same_as_thermal') && 
-            /pos|80|receipt|thermal|blackcopper|xp-|xprinter|rpp/i.test(thermalPrinter);
-
-        const targetPrinter = a4Printer && a4Printer !== 'same_as_thermal' ? a4Printer : thermalPrinter;
+        const targetPrinter = a4Printer && a4Printer !== 'same_as_thermal' ? a4Printer : '';
         const isSilent = settings?.silent_print === 'true' && targetPrinter !== 'os_dialog';
 
-        let htmlContent = '';
-        if (isThermalTarget) {
-            htmlContent = generateThermalReceiptHtml(
-                invoice,
-                settings,
-                'Cashier',
-                calculatedPrevBalance,
-                calculatedNewBalance
-            );
-        } else {
-            htmlContent = generateWholesaleInvoiceA4Html(
-                invoice,
-                settings,
-                calculatedPrevBalance,
-                calculatedNewBalance
-            );
-        }
+        const htmlContent = generateWholesaleInvoiceA4Html(
+            invoice,
+            settings,
+            calculatedPrevBalance,
+            calculatedNewBalance
+        );
 
         await triggerPrintHtml(htmlContent, {
             silent: isSilent,
             printerName: targetPrinter !== 'os_dialog' ? targetPrinter : '',
-            format: isThermalTarget ? 'thermal' : 'a4'
+            format: 'a4'
         });
     };
 
-    // Fallback Download PDF Handler
+    // Fallback Download PDF Handler (Downloads & Opens in Browser)
     const handleDownloadPdfInternal = async () => {
         if (onDownloadPdf) {
             onDownloadPdf();
@@ -193,35 +179,9 @@ export default function WholesaleA4InvoiceModal({
 
         setInternalDownloadingPdf(true);
         try {
-            const html2canvasModule = await import('html2canvas-pro');
-            const html2canvas = html2canvasModule.default || html2canvasModule;
-            const { jsPDF } = await import('jspdf');
-
             const rawInv = invoice.invoice_no || 'INVOICE';
             const cleanInv = String(rawInv).replace(/[^a-zA-Z0-9_-]/g, '_');
-
-            const canvas = await html2canvas(element, {
-                scale: 2,
-                useCORS: true,
-                logging: false,
-                backgroundColor: '#ffffff'
-            });
-
-            const imgData = canvas.toDataURL('image/jpeg', 0.98);
-            const pdf = new jsPDF({
-                orientation: 'portrait',
-                unit: 'mm',
-                format: 'a4'
-            });
-
-            const pdfWidth = pdf.internal.pageSize.getWidth();
-            const pdfHeight = pdf.internal.pageSize.getHeight();
-            const margin = 8;
-            const printWidth = pdfWidth - (margin * 2);
-            const printHeight = (canvas.height * printWidth) / canvas.width;
-
-            pdf.addImage(imgData, 'JPEG', margin, margin, printWidth, Math.min(printHeight, pdfHeight - (margin * 2)));
-            pdf.save(`${cleanInv}_A4.pdf`);
+            await downloadAndOpenPdf(element, `${cleanInv}_A4.pdf`);
         } catch (err) {
             console.error('PDF export error:', err);
         } finally {
@@ -230,6 +190,23 @@ export default function WholesaleA4InvoiceModal({
     };
 
     const isPdfLoading = downloadingPdf || internalDownloadingPdf;
+
+    // Open A4 Bill PDF directly in Google Chrome (for viewing, printing, or downloading from Chrome)
+    const handleOpenInChrome = async () => {
+        const element = document.getElementById(elemId);
+        if (!element) return;
+
+        setOpeningInChrome(true);
+        try {
+            const rawInv = invoice.invoice_no || 'INVOICE';
+            const cleanInv = String(rawInv).replace(/[^a-zA-Z0-9_-]/g, '_');
+            await downloadAndOpenPdf(element, `${cleanInv}_A4.pdf`, { saveFile: false });
+        } catch (err) {
+            console.error('Open in Chrome error:', err);
+        } finally {
+            setOpeningInChrome(false);
+        }
+    };
 
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-1.5 sm:p-4 md:p-6 overflow-hidden animate-in fade-in duration-150">
@@ -279,7 +256,7 @@ export default function WholesaleA4InvoiceModal({
                             title="Print standard A4 Wholesale Invoice"
                         >
                             <IconPrinter className="w-3.5 h-3.5 text-white shrink-0" />
-                            <span className="truncate">Print Invoice</span>
+                            <span className="truncate">Print A4 Bill</span>
                         </button>
 
                         <button
@@ -299,6 +276,27 @@ export default function WholesaleA4InvoiceModal({
                                 <>
                                     <IconDownload className="w-3.5 h-3.5 text-white shrink-0" />
                                     <span className="truncate">PDF (A4)</span>
+                                </>
+                            )}
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={handleOpenInChrome}
+                            disabled={openingInChrome}
+                            style={{ backgroundColor: '#1a73e8', color: '#ffffff', border: '1px solid #1a73e8' }}
+                            className="px-2.5 sm:px-3 py-1.5 rounded-xl font-bold text-xs shadow-xs flex items-center justify-center gap-1.5 hover:opacity-90 active:scale-95 transition-all cursor-pointer disabled:opacity-50 text-center"
+                            title="Open this A4 bill directly in Google Chrome"
+                        >
+                            {openingInChrome ? (
+                                <>
+                                    <IconSpinner className="w-3.5 h-3.5 text-white shrink-0" />
+                                    <span className="truncate">Opening...</span>
+                                </>
+                            ) : (
+                                <>
+                                    <IconExternalLink className="w-3.5 h-3.5 text-white shrink-0" />
+                                    <span className="truncate">Open in Chrome</span>
                                 </>
                             )}
                         </button>
@@ -334,67 +332,67 @@ export default function WholesaleA4InvoiceModal({
                 <div className="flex-1 min-h-0 overflow-y-auto p-2 sm:p-5 md:p-6 bg-gray-100/70">
                     <div
                         id={elemId}
-                        className="bg-white p-3 sm:p-6 border border-gray-300 rounded-xl space-y-3.5 text-gray-900 text-xs font-sans shadow-xs max-w-4xl mx-auto overflow-x-hidden"
+                        className="bg-white p-4 sm:p-7 border border-gray-300 rounded-xl space-y-4 text-gray-900 text-sm font-sans shadow-xs max-w-4xl mx-auto overflow-x-hidden"
                     >
                         {/* Bill Header: Left Side (Shop Info & Logo) | Right Side (Invoice & Customer Details) */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-3 border-b border-gray-300">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-3.5 border-b-2 border-gray-300">
                             {/* LEFT SIDE: Shop Logo, Shop Name, Address, Phone, Email */}
-                            <div className="space-y-1.5 text-xs">
-                                <div className="flex items-center gap-2.5">
+                            <div className="space-y-2 text-sm">
+                                <div className="flex items-center gap-3">
                                     {settings?.shop_logo ? (
                                         <img
                                             src={settings.shop_logo}
                                             alt={settings.shop_name || 'Shop Logo'}
-                                            className="h-11 w-11 object-contain rounded-lg border border-gray-200 bg-white p-0.5 shadow-2xs shrink-0"
+                                            className="h-12 w-12 object-contain rounded-lg border border-gray-200 bg-white p-0.5 shadow-2xs shrink-0"
                                         />
                                     ) : (
-                                        <div className="w-10 h-10 rounded-xl gold-gradient text-white flex items-center justify-center font-black text-lg shadow-2xs shrink-0">
+                                        <div className="w-12 h-12 rounded-xl gold-gradient text-white flex items-center justify-center font-black text-xl shadow-2xs shrink-0">
                                             {(settings?.shop_name || 'H').charAt(0).toUpperCase()}
                                         </div>
                                     )}
                                     <div>
-                                        <h2 className="text-sm sm:text-base font-black text-gray-900 tracking-tight leading-tight uppercase">
+                                        <h2 className="text-lg sm:text-xl font-black text-gray-900 tracking-tight leading-tight uppercase">
                                             {settings?.shop_name || 'Hilal Wholesaler Shop'}
                                         </h2>
-                                        <div className="text-[10px] font-bold text-[#0B3B7B] uppercase tracking-wider">
+                                        <div className="text-xs font-extrabold text-[#0B3B7B] uppercase tracking-wider">
                                             {settings?.shop_tagline || settings?.shop_subtitle || 'Wholesale & Retail Distribution'}
                                         </div>
                                     </div>
                                 </div>
 
-                                <div className="text-gray-700 text-[11px] leading-tight space-y-0.5 pl-0.5">
+                                <div className="text-gray-900 text-xs sm:text-sm font-bold leading-snug space-y-1 pl-0.5">
                                     <div>
-                                        <span className="font-semibold text-gray-800">Address: </span>
-                                        <span>{settings?.shop_address || 'Main Bazaar, Timergara, KP, Pakistan'}</span>
+                                        <span className="font-extrabold text-gray-900">Address: </span>
+                                        <span className="font-bold text-gray-900">{settings?.shop_address || 'Main Bazaar, Timergara, KP, Pakistan'}</span>
                                     </div>
                                     <div>
-                                        <span className="font-semibold text-gray-800">Phone: </span>
-                                        <span className="font-mono">{settings?.shop_phone || '+92 300 1234567'}</span>
+                                        <span className="font-extrabold text-gray-900">Phone: </span>
+                                        <span className="font-mono font-bold text-gray-900">{settings?.shop_phone || '+92 300 1234567'}</span>
                                     </div>
                                     <div>
-                                        <span className="font-semibold text-gray-800">Email: </span>
-                                        <span className="font-mono text-gray-600">{settings?.shop_email || 'hilalwholesaler@gmail.com'}</span>
+                                        <span className="font-extrabold text-gray-900">Email: </span>
+                                        <span className="font-mono font-bold text-gray-900">{settings?.shop_email || 'hilalwholesaler@gmail.com'}</span>
                                     </div>
                                 </div>
                             </div>
 
                             {/* RIGHT SIDE: Invoice Meta & Customer Details */}
-                            <div className="space-y-2 text-xs text-left md:text-right flex flex-col justify-between">
+                            <div className="space-y-2.5 text-sm text-left md:text-right flex flex-col justify-between">
                                 {/* Invoice Meta Box */}
-                                <div className="bg-gray-50/90 border border-gray-200 rounded-xl p-2.5 space-y-1.5 shadow-2xs">
+                                <div className="bg-gray-50/90 border border-gray-300 rounded-xl p-3 space-y-1.5 shadow-2xs">
                                     <div className="flex justify-between md:justify-end md:gap-4 items-center">
-                                        <span className="font-bold text-gray-500 text-[11px] uppercase tracking-wider">INVOICE # :</span>
-                                        <span className="font-black font-mono text-sm text-[#B8860B]">{invoice.invoice_no || invoice.id}</span>
+                                        <span className="font-extrabold text-gray-800 text-xs sm:text-sm uppercase tracking-wider">INVOICE # :</span>
+                                        <span className="font-black font-mono text-base sm:text-lg text-[#B8860B]">{invoice.invoice_no || invoice.id}</span>
                                     </div>
                                     <div className="flex justify-between md:justify-end md:gap-4 items-center">
-                                        <span className="font-semibold text-gray-600 text-[11px]">Invoice Date:</span>
-                                        <span className="font-bold text-gray-900 font-mono">
+                                        <span className="font-extrabold text-gray-800 text-xs sm:text-sm">Invoice Date:</span>
+                                        <span className="font-black text-gray-900 font-mono text-xs sm:text-sm">
                                             {parseDate(invoice.created_at)?.toLocaleDateString() || new Date().toLocaleDateString()}
                                         </span>
                                     </div>
                                     <div className="flex justify-between md:justify-end md:gap-4 items-center">
-                                        <span className="font-semibold text-gray-600 text-[11px]">Payment Status:</span>
-                                        <span className={`px-2.5 py-0.5 rounded-md text-[10.5px] font-black uppercase tracking-wider border shadow-2xs ${
+                                        <span className="font-extrabold text-gray-800 text-xs sm:text-sm">Payment Status:</span>
+                                        <span className={`px-2.5 py-0.5 rounded-md text-xs font-black uppercase tracking-wider border shadow-2xs ${
                                             status === 'PAID'
                                                 ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
                                                 : status === 'PARTIAL'
@@ -407,22 +405,22 @@ export default function WholesaleA4InvoiceModal({
                                 </div>
 
                                 {/* Customer Details Box */}
-                                <div className="space-y-1 pt-1 border-t border-gray-200">
-                                    <div className="font-bold text-[11px] text-gray-900 uppercase tracking-wider text-left md:text-right border-b border-gray-100 pb-0.5">
+                                <div className="space-y-1 pt-1.5 border-t border-gray-300 text-xs sm:text-sm font-bold text-gray-900">
+                                    <div className="font-black text-sm text-gray-900 uppercase tracking-wider text-left md:text-right border-b border-gray-200 pb-0.5">
                                         BILLED TO ({invoice.customer_name || invoice.walkin_name || 'Walk-in Customer'} {(invoice.business_name || invoice.customer_business) && `(${invoice.business_name || invoice.customer_business})`})
                                     </div>
                                     <div>
-                                        <span className="font-semibold text-gray-700">Mobile / Phone: </span>
-                                        <span className="font-mono">{invoice.customer_phone || invoice.customer_mobile || invoice.walkin_phone || invoice.phone || '—'}</span>
+                                        <span className="font-extrabold text-gray-900">Mobile / Phone: </span>
+                                        <span className="font-mono font-bold text-gray-900">{invoice.customer_phone || invoice.customer_mobile || invoice.walkin_phone || invoice.phone || '—'}</span>
                                     </div>
                                     <div>
-                                        <span className="font-semibold text-gray-700">Address: </span>
-                                        <span>{invoice.customer_address || invoice.walkin_address || invoice.address || '—'}</span>
+                                        <span className="font-extrabold text-gray-900">Address: </span>
+                                        <span className="font-bold text-gray-900">{invoice.customer_address || invoice.walkin_address || invoice.address || '—'}</span>
                                     </div>
                                     {invoice.remarks && (
                                         <div>
-                                            <span className="font-semibold text-gray-700">Remarks: </span>
-                                            <span className="italic text-gray-600">{invoice.remarks}</span>
+                                            <span className="font-extrabold text-gray-900">Remarks: </span>
+                                            <span className="font-bold italic text-gray-800">{invoice.remarks}</span>
                                         </div>
                                     )}
                                 </div>
@@ -430,18 +428,18 @@ export default function WholesaleA4InvoiceModal({
                         </div>
 
                         {/* Line Items Table with Unified Quantity Column & Responsive Horizontal Scroll */}
-                        <div className="overflow-x-auto w-full border border-gray-200 rounded-lg my-2">
-                            <table className="w-full text-left text-xs border-collapse min-w-[580px] sm:min-w-[640px]">
+                        <div className="overflow-x-auto w-full border border-gray-300 rounded-lg my-2">
+                            <table className="w-full text-left text-xs sm:text-sm border-collapse min-w-[580px] sm:min-w-[640px]">
                                 <thead>
-                                    <tr className="border-b border-gray-300 font-bold text-emerald-700 bg-gray-50/70">
-                                        <th className="py-2 px-2 text-center w-8">#</th>
-                                        <th className="py-2 px-2">Product Description</th>
-                                        <th className="py-2 px-2 text-right">Price</th>
-                                        <th className="py-2 px-2 text-center">Quantity</th>
-                                        <th className="py-2 px-2 text-right">Gross Amount</th>
-                                        <th className="py-2 px-2 text-center">Disc.%</th>
-                                        <th className="py-2 px-2 text-right">Disc.</th>
-                                        <th className="py-2 px-2 text-right">Net Amount</th>
+                                    <tr className="border-b border-gray-300 font-extrabold text-emerald-800 bg-gray-100/80">
+                                        <th className="py-2.5 px-2 text-center w-9">#</th>
+                                        <th className="py-2.5 px-2.5">Product Description</th>
+                                        <th className="py-2.5 px-2 text-right">Price</th>
+                                        <th className="py-2.5 px-2 text-center">Quantity</th>
+                                        <th className="py-2.5 px-2 text-right">Gross Amount</th>
+                                        <th className="py-2.5 px-2 text-center">Disc.%</th>
+                                        <th className="py-2.5 px-2 text-right">Disc.</th>
+                                        <th className="py-2.5 px-2.5 text-right">Net Amount</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-200">
@@ -460,19 +458,19 @@ export default function WholesaleA4InvoiceModal({
 
                                         return (
                                             <tr key={idx} className="hover:bg-gray-50/50">
-                                                <td className="py-1.5 px-2 text-center font-bold text-gray-500 font-mono">{idx + 1}</td>
-                                                <td className="py-1.5 px-2 font-medium">
+                                                <td className="py-2 px-2 text-center font-bold text-gray-600 font-mono">{idx + 1}</td>
+                                                <td className="py-2 px-2.5 font-semibold">
                                                     <span className="font-bold text-gray-900">{item.product_name}</span>
                                                     {item.variant_name && item.variant_name !== 'Standard' && (
-                                                        <span className="text-gray-600 ml-1">({item.variant_name})</span>
+                                                        <span className="text-gray-700 font-semibold ml-1">({item.variant_name})</span>
                                                     )}
                                                 </td>
-                                                <td className="py-1.5 px-2 text-right font-mono">{Number(linePrice).toFixed(0)}</td>
-                                                <td className="py-1.5 px-2 text-center font-bold text-gray-900">{qtyDisplay}</td>
-                                                <td className="py-1.5 px-2 text-right font-mono">{Number(lineGross).toFixed(2)}</td>
-                                                <td className="py-1.5 px-2 text-center font-mono">{discPct}</td>
-                                                <td className="py-1.5 px-2 text-right font-mono">{Number(lineDiscount).toFixed(0)}</td>
-                                                <td className="py-1.5 px-2 text-right font-bold text-gray-900 font-mono">{Number(lineTotal).toFixed(2)}</td>
+                                                <td className="py-2 px-2 text-right font-mono font-semibold">{Number(linePrice).toFixed(0)}</td>
+                                                <td className="py-2 px-2 text-center font-bold text-gray-900">{qtyDisplay}</td>
+                                                <td className="py-2 px-2 text-right font-mono font-semibold">{Number(lineGross).toFixed(2)}</td>
+                                                <td className="py-2 px-2 text-center font-mono font-semibold">{discPct}</td>
+                                                <td className="py-2 px-2 text-right font-mono font-semibold">{Number(lineDiscount).toFixed(0)}</td>
+                                                <td className="py-2 px-2.5 text-right font-extrabold text-gray-900 font-mono">{Number(lineTotal).toFixed(2)}</td>
                                             </tr>
                                         );
                                     })}
@@ -483,93 +481,93 @@ export default function WholesaleA4InvoiceModal({
                         {/* Balances & Financial Summary Section */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 pt-2">
                             {/* Left Box: Running Balances */}
-                            <div className="space-y-1 text-xs">
+                            <div className="space-y-1.5 text-sm">
                                 <div>
-                                    <span className="font-semibold">Current Invoice: </span>
-                                    <span>Rs. {Number(netVal).toFixed(2)}</span>
+                                    <span className="font-bold text-gray-800">Current Invoice: </span>
+                                    <span className="font-bold text-gray-900">Rs. {Number(netVal).toFixed(2)}</span>
                                 </div>
                                 <div>
-                                    <span className="font-semibold">Paid Amount: </span>
-                                    <span className="font-semibold text-emerald-700">Rs. {Number(paidVal).toFixed(2)}</span>
+                                    <span className="font-bold text-gray-800">Paid Amount: </span>
+                                    <span className="font-bold text-emerald-700">Rs. {Number(paidVal).toFixed(2)}</span>
                                 </div>
                                 <div>
-                                    <span className="font-semibold">Invoice Due: </span>
-                                    <span className={`font-semibold ${Number(remainingVal) > 0 ? 'text-rose-700' : 'text-gray-800'}`}>Rs. {Number(remainingVal).toFixed(2)}</span>
+                                    <span className="font-bold text-gray-800">Invoice Due: </span>
+                                    <span className={`font-bold ${Number(remainingVal) > 0 ? 'text-rose-700' : 'text-gray-900'}`}>Rs. {Number(remainingVal).toFixed(2)}</span>
                                 </div>
                                 <div>
-                                    <span className="font-bold text-gray-900">Previous Balance : </span>
-                                    <span className="font-bold text-gray-900 font-sans">Rs. {Number(calculatedPrevBalance).toFixed(2)}</span>
+                                    <span className="font-extrabold text-gray-900">Previous Balance : </span>
+                                    <span className="font-extrabold text-gray-900 font-sans">Rs. {Number(calculatedPrevBalance).toFixed(2)}</span>
                                 </div>
-                                <div className="border-b-2 border-gray-900 pb-0.5 inline-block">
-                                    <span className="font-bold">New Balance: </span>
-                                    <span className="font-bold">Rs. {Number(calculatedNewBalance).toFixed(0)}</span>
+                                <div className="border-b-2 border-gray-900 pb-0.5 inline-block text-base">
+                                    <span className="font-black">New Balance: </span>
+                                    <span className="font-black">Rs. {Number(calculatedNewBalance).toFixed(0)}</span>
                                 </div>
                             </div>
 
                             {/* Right Box: Gross, Discounts & Net Value */}
-                            <div className="space-y-1 text-xs text-left md:text-right">
+                            <div className="space-y-1.5 text-sm text-left md:text-right">
                                 <div>
-                                    <span className="font-semibold">Gross Amount: </span>
-                                    <span>Rs. {Number(grossVal).toFixed(2)}</span>
+                                    <span className="font-bold text-gray-800">Gross Amount: </span>
+                                    <span className="font-bold text-gray-900">Rs. {Number(grossVal).toFixed(2)}</span>
                                 </div>
                                 <div>
-                                    <span className="font-semibold">Less Disc.: </span>
-                                    <span>Rs. {Number(discVal).toFixed(2)}</span>
+                                    <span className="font-bold text-gray-800">Less Disc.: </span>
+                                    <span className="font-bold text-gray-900">Rs. {Number(discVal).toFixed(2)}</span>
                                 </div>
                                 <div>
-                                    <span className="font-semibold">Less Special Disc.: </span>
-                                    <span>Rs. {specialDiscVal % 1 === 0 ? Number(specialDiscVal).toFixed(0) : Number(specialDiscVal).toFixed(2)}</span>
+                                    <span className="font-bold text-gray-800">Less Special Disc.: </span>
+                                    <span className="font-bold text-gray-900">Rs. {specialDiscVal % 1 === 0 ? Number(specialDiscVal).toFixed(0) : Number(specialDiscVal).toFixed(2)}</span>
                                 </div>
                                 <div>
-                                    <span className="font-semibold">Add Charges : </span>
-                                    <span>Rs. {chargesVal % 1 === 0 ? Number(chargesVal).toFixed(0) : Number(chargesVal).toFixed(2)}</span>
+                                    <span className="font-bold text-gray-800">Add Charges : </span>
+                                    <span className="font-bold text-gray-900">Rs. {chargesVal % 1 === 0 ? Number(chargesVal).toFixed(0) : Number(chargesVal).toFixed(2)}</span>
                                 </div>
                                 <div className="pt-1.5 border-t border-gray-300">
-                                    <div className="font-bold text-sm text-gray-900">
+                                    <div className="font-black text-base sm:text-lg text-gray-900">
                                         <span>Net Value: </span>
-                                        <span className="text-gray-900 font-extrabold">Rs. {Number(netVal).toFixed(2)}</span>
+                                        <span className="text-gray-900 font-black">Rs. {Number(netVal).toFixed(2)}</span>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
                         {/* Amount in Words Footer */}
-                        <div className="pt-3 border-t border-gray-300 text-xs font-semibold text-gray-800">
+                        <div className="pt-3 border-t border-gray-300 text-sm font-bold text-gray-900">
                             <span>Invoice Amount In Words: </span>
-                            <span className="font-bold">{numberToWords(netVal)}</span>
+                            <span className="font-black">{numberToWords(netVal)}</span>
                         </div>
 
                         {/* Bank Account Details for Online Payment / Transfer */}
                         {bankAccounts.length > 0 && (
-                            <div className="pt-2 border-t border-gray-300">
-                                <div className="flex items-center justify-between mb-1.5">
-                                    <span className="font-extrabold text-[11px] uppercase tracking-wider text-gray-900 flex items-center gap-1.5">
-                                        <span className="w-2 h-2 rounded-full bg-[#B8860B]"></span>
+                            <div className="pt-2.5 border-t border-gray-300">
+                                <div className="flex items-center justify-between mb-2">
+                                    <span className="font-extrabold text-xs uppercase tracking-wider text-gray-900 flex items-center gap-1.5">
+                                        <span className="w-2.5 h-2.5 rounded-full bg-[#B8860B]"></span>
                                         Bank Details for Online Payment / Transfer
                                     </span>
-                                    <span className="text-[10px] text-gray-500 font-medium">WhatsApp proof: {settings?.shop_phone || ''}</span>
+                                    <span className="text-xs text-gray-700 font-bold">WhatsApp proof: {settings?.shop_phone || ''}</span>
                                 </div>
-                                <div className="grid gap-2 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+                                <div className="grid gap-2.5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
                                     {bankAccounts.map((acc, idx) => (
-                                        <div key={idx} className="p-2 border border-gray-300 rounded-lg bg-gray-50/70 text-[10.5px] leading-tight space-y-0.5">
-                                            <div className="font-bold text-gray-900 flex items-center justify-between">
+                                        <div key={idx} className="p-2.5 border border-gray-300 rounded-lg bg-gray-50/70 text-xs leading-snug space-y-0.5">
+                                            <div className="font-extrabold text-gray-900 flex items-center justify-between">
                                                 <span>{acc.bank_name}</span>
-                                                {acc.branch && <span className="text-[9.5px] text-gray-500 font-normal truncate max-w-[120px]">{acc.branch}</span>}
+                                                {acc.branch && <span className="text-[11px] text-gray-600 font-semibold truncate max-w-[120px]">{acc.branch}</span>}
                                             </div>
                                             {acc.account_title && (
-                                                <div className="text-gray-700">
-                                                    <span className="text-gray-500">Title: </span>
-                                                    <span className="font-semibold">{acc.account_title}</span>
+                                                <div className="text-gray-800">
+                                                    <span className="text-gray-600 font-semibold">Title: </span>
+                                                    <span className="font-bold">{acc.account_title}</span>
                                                 </div>
                                             )}
                                             <div className="text-gray-900">
-                                                <span className="text-gray-500">A/C #: </span>
-                                                <span className="font-mono font-bold text-gray-900">{acc.account_number}</span>
+                                                <span className="text-gray-600 font-semibold">A/C #: </span>
+                                                <span className="font-mono font-extrabold text-gray-900">{acc.account_number}</span>
                                             </div>
                                             {acc.iban && (
-                                                <div className="text-gray-600 text-[9.5px]">
-                                                    <span className="text-gray-500">IBAN: </span>
-                                                    <span className="font-mono">{acc.iban}</span>
+                                                <div className="text-gray-700 text-[11px]">
+                                                    <span className="text-gray-600 font-semibold">IBAN: </span>
+                                                    <span className="font-mono font-semibold">{acc.iban}</span>
                                                 </div>
                                             )}
                                         </div>

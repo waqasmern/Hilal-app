@@ -14,7 +14,8 @@ export default function CustomModalAlert({
     message,
     confirmText = 'OK',
     cancelText = 'Cancel',
-    onConfirm
+    onConfirm,
+    onCancel
 }) {
     if (!isOpen) return null;
 
@@ -60,9 +61,17 @@ export default function CustomModalAlert({
 
     const currentConfig = typeConfig[type] || typeConfig.info;
 
+    const handleClose = () => {
+        if (typeof onClose === 'function') {
+            onClose();
+        } else if (typeof onCancel === 'function') {
+            onCancel();
+        }
+    };
+
     const handleConfirm = () => {
-        if (onConfirm) onConfirm();
-        onClose();
+        if (typeof onConfirm === 'function') onConfirm();
+        handleClose();
     };
 
     return (
@@ -85,7 +94,7 @@ export default function CustomModalAlert({
                     </div>
                     <button
                         type="button"
-                        onClick={onClose}
+                        onClick={handleClose}
                         className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer shrink-0"
                     >
                         <IconClose className="w-4 h-4" />
@@ -96,7 +105,7 @@ export default function CustomModalAlert({
                     {isConfirm && (
                         <button
                             type="button"
-                            onClick={onClose}
+                            onClick={handleClose}
                             className="px-4 py-2 text-xs font-bold rounded-xl border border-gray-200 text-gray-700 bg-white hover:bg-gray-50 transition-all cursor-pointer"
                         >
                             {cancelText}

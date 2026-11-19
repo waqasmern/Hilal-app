@@ -7,7 +7,7 @@ import {
     IconSettings, IconWhatsApp, IconUpload, IconPrinter, 
     IconTrash, IconCheckCircle, IconCrossCircle, IconRefresh, 
     IconEye, IconEyeOff, IconBank, IconPlus, IconEdit, IconClose,
-    IconWarning, IconCheck, IconSync
+    IconWarning, IconCheck, IconSync, IconReceipt
 } from '../components/Icons';
 import { getInstalledPrinters, triggerPrintHtml, generateTestPrintHtml, isElectronRenderer } from '../../lib/printHelper';
 
@@ -46,7 +46,9 @@ export default function SettingsPage() {
         selected_a4_printer: '',
         silent_print: 'false',
         auto_print_sale: 'false',
-        default_print_format: 'a4'
+        auto_print_format: 'a4',
+        default_print_format: 'a4',
+        auto_scale_item_discount: 'true'
     });
 
     const [saving, setSaving] = useState(false);
@@ -55,7 +57,11 @@ export default function SettingsPage() {
     // Printer & Silent Print State
     const [printers, setPrinters] = useState([]);
     const [detectingPrinters, setDetectingPrinters] = useState(false);
-    const [testPrinting, setTestPrinting] = useState(false);
+    const [testPrintingThermal, setTestPrintingThermal] = useState(false);
+    const [testPrintingA4, setTestPrintingA4] = useState(false);
+    // TODO: Remove before production
+    const [clearingTransactions, setClearingTransactions] = useState(false);
+    const [confirmClearModalOpen, setConfirmClearModalOpen] = useState(false);
 
     // Bank Accounts Manager State
     const [bankModalOpen, setBankModalOpen] = useState(false);
@@ -105,6 +111,29 @@ export default function SettingsPage() {
         setTimeout(() => setAlertState(prev => ({ ...prev, isOpen: false })), 4500);
     };
 
+    // TODO: Remove before production
+    const handleClearAllTransactions = async () => {
+        setClearingTransactions(true);
+        try {
+            const token = localStorage.getItem('token');
+            const res = await fetch('http://localhost:5000/api/admin/clear-transactions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                setConfirmClearModalOpen(false);
+                showAlert('Transactions Cleared', 'All sales, returns, ledgers, and payments have been cleared.', 'success');
+            } else {
+                showAlert('Clear Failed', data.error || 'Failed to clear transactions.', 'error');
+            }
+        } catch (err) {
+            showAlert('Error', err.message || 'Network error while clearing transactions.', 'error');
+        } finally {
+            setClearingTransactions(false);
+        }
+    };
+
     const fetchPrinters = async () => {
         setDetectingPrinters(true);
         try {
@@ -117,8 +146,8 @@ export default function SettingsPage() {
         }
     };
 
-    const handleTestPrint = async () => {
-        setTestPrinting(true);
+    const handleTestPrintThermal = async () => {
+        setTestPrintingThermal(true);
         try {
             const isSilent = settings.silent_print === 'true';
             const printFormat = 'thermal';
@@ -129,14 +158,38 @@ export default function SettingsPage() {
                 format: printFormat
             });
             if (success) {
-                showAlert('Test Slip Sent', `Sent 80mm test slip to ${settings.selected_printer || 'System Default Thermal Printer'} (${isSilent ? 'Silent Mode' : 'Standard Dialog Mode'}).`, 'success');
+                showAlert('Test Slip Sent', `Sent 80mm test slip to ${settings.selected_printer || 'System Default Thermal Printer'} (${isSilent ? 'Silent Direct' : 'Dialog Mode'}).`, 'success');
             } else {
                 showAlert('Test Slip Dispatched', 'Thermal test print request dispatched to printer.', 'info');
             }
         } catch (err) {
             showAlert('Test Print Failed', err.message, 'error');
         } finally {
-            setTestPrinting(false);
+            setTestPrintingThermal(false);
+        }
+    };
+
+    const handleTestPrintA4 = async () => {
+        setTestPrintingA4(true);
+        try {
+            const isSilent = settings.silent_print === 'true';
+            const printFormat = 'a4';
+            const targetPrinter = (settings.selected_a4_printer || '').trim();
+            const html = generateTestPrintHtml(settings, targetPrinter, isSilent, printFormat);
+            const success = await triggerPrintHtml(html, {
+                silent: isSilent,
+                printerName: targetPrinter !== 'os_dialog' ? targetPrinter : '',
+                format: printFormat
+            });
+            if (success) {
+                showAlert('Test A4 Bill Sent', `Sent A4 test bill to ${targetPrinter || 'System Default A4 Printer'} (${isSilent ? 'Silent Direct' : 'Dialog Mode'}).`, 'success');
+            } else {
+                showAlert('Test A4 Bill Dispatched', 'A4 test print request dispatched to printer.', 'info');
+            }
+        } catch (err) {
+            showAlert('Test Print Failed', err.message, 'error');
+        } finally {
+            setTestPrintingA4(false);
         }
     };
 
@@ -1321,7 +1374,7 @@ export default function SettingsPage() {
                         {/* CARD 2: TARGET A4 PRINTER (INVOICES & WHOLESALE BILLS) */}
                         <div className="border border-gray-200 rounded-xl p-4 bg-gray-50/50 space-y-3.5">
                             <label className="block font-bold text-xs text-gray-900">
-                                Target A4 Printer (Wholesale Invoices & Bills)
+                                Target A4 Printer (Wholesale Invoices &amp; Bills)
                             </label>
 
                             <select
@@ -1329,7 +1382,7 @@ export default function SettingsPage() {
                                 onChange={(e) => setSettings({ ...settings, selected_a4_printer: e.target.value })}
                                 className="w-full p-2.5 border border-gray-300 rounded-lg font-bold text-xs bg-white text-gray-900 focus:ring-1 focus:ring-gray-900 outline-none"
                             >
-                                <option value="">Auto-Format for 80mm Thermal (POS-80) / Safe Default</option>
+                                <option value="">Default Windows Printer (System Default A4)</option>
                                 <option value="os_dialog">Always Show Windows Print Dialog (Prompt Every Time)</option>
                                 {printers && printers.length > 0 && (
                                     <optgroup label="Installed Printers on this Machine">
@@ -1348,7 +1401,7 @@ export default function SettingsPage() {
                                         A4 Target: {settings.selected_a4_printer}
                                     </span>
                                 ) : (
-                                    'When no separate A4 printer is configured, bills automatically format for your 80mm thermal printer without feeding empty paper.'
+                                    'When set to Default, wholesale bills send directly to your Windows system default printer in standard A4 format.'
                                 )}
                             </div>
                         </div>
@@ -1397,7 +1450,7 @@ export default function SettingsPage() {
                                     <div>
                                         <div className="font-bold text-xs">A4 Wholesale Bill</div>
                                         <div className={`text-[10px] ${settings.default_print_format === 'a4' ? 'text-gray-300' : 'text-gray-500'}`}>
-                                            Supports Direct Silent Print & Dialog
+                                            Supports Direct Silent Print &amp; Dialog
                                         </div>
                                     </div>
                                 </label>
@@ -1407,12 +1460,12 @@ export default function SettingsPage() {
 
                     {/* TOGGLES SECTION */}
                     <div className="border border-gray-200 rounded-xl divide-y divide-gray-100 bg-white">
-                        {/* TOGGLE 1: THERMAL SILENT PRINT MODE */}
+                        {/* TOGGLE 1: SILENT DIRECT PRINT MODE */}
                         <div className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                             <div className="space-y-0.5">
                                 <div className="flex items-center gap-2">
                                     <span className="font-bold text-xs text-gray-900">
-                                        Thermal Silent Print Mode (80mm Receipts Only)
+                                        Direct Silent Print Mode (No OS Dialog)
                                     </span>
                                     {settings.silent_print === 'true' && (
                                         <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-extrabold rounded">
@@ -1421,7 +1474,7 @@ export default function SettingsPage() {
                                     )}
                                 </div>
                                 <p className="text-[11.5px] text-gray-500 max-w-xl">
-                                    When enabled, clicking &quot;Print 80mm Slip&quot; sends the thermal receipt directly to your selected thermal printer in the background without opening the Windows print dialog. (Does not apply to A4 bills).
+                                    When enabled, clicking print sends documents directly to the configured printer device in the background without opening the Windows print dialog.
                                 </p>
                             </div>
 
@@ -1445,56 +1498,160 @@ export default function SettingsPage() {
                             </button>
                         </div>
 
-                        {/* TOGGLE 2: AUTO-PRINT ON SALE COMPLETION */}
-                        <div className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                            <div className="space-y-0.5">
-                                <div className="flex items-center gap-2">
-                                    <span className="font-bold text-xs text-gray-900">
-                                        Auto-Print Thermal Receipt on POS Checkout
-                                    </span>
-                                    {settings.auto_print_sale === 'true' && (
-                                        <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-extrabold rounded">
-                                            AUTO ON
+                        {/* TOGGLE 2: AUTO-PRINT ON SALE COMPLETION (A4 & THERMAL) */}
+                        <div className="p-4 space-y-3">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                <div className="space-y-0.5">
+                                    <div className="flex items-center gap-2">
+                                        <span className="font-bold text-xs text-gray-900">
+                                            Auto-Print Bill / Receipt on POS Checkout
                                         </span>
-                                    )}
+                                        {settings.auto_print_sale === 'true' && (
+                                            <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-extrabold rounded">
+                                                AUTO ON
+                                            </span>
+                                        )}
+                                    </div>
+                                    <p className="text-[11.5px] text-gray-500 max-w-xl">
+                                        Automatically dispatch the bill or receipt immediately after the cashier finishes a sale checkout.
+                                    </p>
                                 </div>
-                                <p className="text-[11.5px] text-gray-500 max-w-xl">
-                                    Automatically dispatch the 80mm thermal receipt to your thermal printer immediately after the cashier finishes a sale checkout.
-                                </p>
+
+                                <button
+                                    type="button"
+                                    onClick={() => setSettings(prev => ({ 
+                                        ...prev, 
+                                        auto_print_sale: prev.auto_print_sale === 'true' ? 'false' : 'true' 
+                                    }))}
+                                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                        settings.auto_print_sale === 'true' ? 'bg-emerald-600' : 'bg-gray-300'
+                                    }`}
+                                    role="switch"
+                                    aria-checked={settings.auto_print_sale === 'true'}
+                                >
+                                    <span
+                                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                            settings.auto_print_sale === 'true' ? 'translate-x-5' : 'translate-x-0'
+                                        }`}
+                                    />
+                                </button>
                             </div>
 
-                            <button
-                                type="button"
-                                onClick={() => setSettings(prev => ({ 
-                                    ...prev, 
-                                    auto_print_sale: prev.auto_print_sale === 'true' ? 'false' : 'true' 
-                                }))}
-                                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                                    settings.auto_print_sale === 'true' ? 'bg-emerald-600' : 'bg-gray-300'
-                                }`}
-                                role="switch"
-                                aria-checked={settings.auto_print_sale === 'true'}
-                            >
-                                <span
-                                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                                        settings.auto_print_sale === 'true' ? 'translate-x-5' : 'translate-x-0'
+                            {settings.auto_print_sale === 'true' && (
+                                <div className="pt-2.5 border-t border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                                    <div>
+                                        <span className="text-xs font-bold text-gray-800 block">Auto-Print Document Format:</span>
+                                        <span className="text-[11px] text-gray-500">
+                                            Select which format to print automatically when checkout is completed
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <label className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold cursor-pointer transition-all ${
+                                            (settings.auto_print_format || settings.default_print_format || 'a4') === 'a4'
+                                                ? 'bg-black text-white border-black shadow-xs'
+                                                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                                        }`}>
+                                            <input
+                                                type="radio"
+                                                name="auto_print_format"
+                                                value="a4"
+                                                checked={(settings.auto_print_format || settings.default_print_format || 'a4') === 'a4'}
+                                                onChange={() => setSettings({ ...settings, auto_print_format: 'a4' })}
+                                                className="sr-only"
+                                            />
+                                            <IconPrinter className="w-3.5 h-3.5" />
+                                            <span>A4 Size Wholesale Bill</span>
+                                        </label>
+                                        <label className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold cursor-pointer transition-all ${
+                                            (settings.auto_print_format || settings.default_print_format) === 'thermal'
+                                                ? 'bg-black text-white border-black shadow-xs'
+                                                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                                        }`}>
+                                            <input
+                                                type="radio"
+                                                name="auto_print_format"
+                                                value="thermal"
+                                                checked={(settings.auto_print_format || settings.default_print_format) === 'thermal'}
+                                                onChange={() => setSettings({ ...settings, auto_print_format: 'thermal' })}
+                                                className="sr-only"
+                                            />
+                                            <IconReceipt className="w-3.5 h-3.5" />
+                                            <span>80mm Thermal Slip</span>
+                                        </label>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Auto-Scale Item Rs Discount with Quantity */}
+                        <div className="p-3.5 rounded-xl border border-gray-200 bg-white space-y-3 shadow-2xs">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                <div className="space-y-0.5">
+                                    <div className="flex items-center gap-2">
+                                        <span className="font-bold text-xs text-gray-900">
+                                            Auto-Scale Item Rs Discount with Quantity
+                                        </span>
+                                        {settings.auto_scale_item_discount !== 'false' ? (
+                                            <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-extrabold rounded">
+                                                ON
+                                            </span>
+                                        ) : (
+                                            <span className="px-2 py-0.5 bg-gray-100 text-gray-600 text-[10px] font-extrabold rounded">
+                                                OFF
+                                            </span>
+                                        )}
+                                    </div>
+                                    <p className="text-[11.5px] text-gray-500 max-w-xl">
+                                        When ON, entering an item Rs discount (e.g. Rs. 50 on 1 pc) automatically multiplies when you increase quantity (e.g. Rs. 100 for 2 pcs). Turn OFF to keep the Rs discount fixed regardless of quantity.
+                                    </p>
+                                </div>
+
+                                <button
+                                    type="button"
+                                    onClick={() => setSettings(prev => ({
+                                        ...prev,
+                                        auto_scale_item_discount: prev.auto_scale_item_discount !== 'false' ? 'false' : 'true'
+                                    }))}
+                                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                        settings.auto_scale_item_discount !== 'false' ? 'bg-emerald-600' : 'bg-gray-300'
                                     }`}
-                                />
-                            </button>
+                                    role="switch"
+                                    aria-checked={settings.auto_scale_item_discount !== 'false'}
+                                >
+                                    <span
+                                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                            settings.auto_scale_item_discount !== 'false' ? 'translate-x-5' : 'translate-x-0'
+                                        }`}
+                                    />
+                                </button>
+                            </div>
                         </div>
                     </div>
 
                     {/* ACTION BUTTONS */}
                     <div className="pt-3 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-3">
-                        <button
-                            type="button"
-                            onClick={handleTestPrint}
-                            disabled={testPrinting}
-                            className="w-full sm:w-auto px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg font-bold text-xs transition-colors cursor-pointer border border-gray-300 flex items-center justify-center gap-1.5 shadow-2xs disabled:opacity-50"
-                        >
-                            <IconPrinter className="w-3.5 h-3.5 text-gray-700" />
-                            <span>{testPrinting ? 'Dispatching Test...' : 'Test Thermal Slip Print'}</span>
-                        </button>
+                        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                            <button
+                                type="button"
+                                onClick={handleTestPrintThermal}
+                                disabled={testPrintingThermal}
+                                className="flex-1 sm:flex-initial px-3.5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg font-bold text-xs transition-colors cursor-pointer border border-gray-300 flex items-center justify-center gap-1.5 shadow-2xs disabled:opacity-50"
+                                title="Print test slip to 80mm thermal printer"
+                            >
+                                <IconReceipt className="w-3.5 h-3.5 text-gray-700" />
+                                <span>{testPrintingThermal ? 'Dispatching 80mm...' : 'Test 80mm Slip Print'}</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleTestPrintA4}
+                                disabled={testPrintingA4}
+                                className="flex-1 sm:flex-initial px-3.5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg font-bold text-xs transition-colors cursor-pointer border border-gray-300 flex items-center justify-center gap-1.5 shadow-2xs disabled:opacity-50"
+                                title="Print test bill to A4 printer"
+                            >
+                                <IconPrinter className="w-3.5 h-3.5 text-gray-700" />
+                                <span>{testPrintingA4 ? 'Dispatching A4...' : 'Test A4 Bill Print'}</span>
+                            </button>
+                        </div>
 
                         <button
                             type="submit"
@@ -1506,6 +1663,63 @@ export default function SettingsPage() {
                     </div>
                 </form>
             )}
+
+            {/* TODO: Remove before production - Temporary Pre-Production Testing Reset */}
+            <div className="bg-rose-50/60 border border-rose-200 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                        <span className="font-extrabold text-xs text-rose-900">
+                            Clear Test Data (Sales, Ledgers &amp; Payments)
+                        </span>
+                        <span className="px-2 py-0.5 bg-rose-100 text-rose-800 text-[10px] font-extrabold rounded">
+                            PRE-PRODUCTION
+                        </span>
+                    </div>
+                    <p className="text-[11px] text-rose-700">
+                        Clears all sales, returns, customer/supplier ledgers, and payments while keeping products, stock, customers, and settings.
+                    </p>
+                </div>
+                <button
+                    type="button"
+                    onClick={() => setConfirmClearModalOpen(true)}
+                    disabled={clearingTransactions}
+                    className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold text-xs shadow-xs transition-all cursor-pointer disabled:opacity-50 shrink-0"
+                >
+                    Clear All Sales, Ledgers &amp; Payments
+                </button>
+            </div>
+
+            {confirmClearModalOpen && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl border border-rose-200">
+                        <div className="space-y-1">
+                            <h3 className="font-extrabold text-rose-800 text-sm">Confirm Clear All Transactions</h3>
+                            <p className="text-xs text-gray-600">
+                                This will permanently delete all <strong>sales, sales returns, customer &amp; supplier ledgers, and payments</strong>, and reset all customer/supplier balances to <strong>Rs. 0</strong>. Products, stock, and settings will not be deleted.
+                            </p>
+                        </div>
+                        <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+                            <button
+                                type="button"
+                                onClick={() => setConfirmClearModalOpen(false)}
+                                disabled={clearingTransactions}
+                                className="px-4 py-2 border border-gray-300 rounded-xl text-xs font-bold text-gray-700 hover:bg-gray-50 cursor-pointer"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleClearAllTransactions}
+                                disabled={clearingTransactions}
+                                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer disabled:opacity-50"
+                            >
+                                {clearingTransactions ? 'Clearing...' : 'Yes, Clear All'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* MODAL: ADD / EDIT BANK ACCOUNT */}
             {bankModalOpen && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">

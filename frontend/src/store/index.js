@@ -34,9 +34,10 @@ function recalculateItem(item) {
     const rawQty = parseFloat(item.quantity);
     const qty = isNaN(rawQty) ? 0 : Math.max(0, rawQty);
     const price = Math.max(0, parseFloat(item.price) || 0);
+    const costPrice = Math.max(0, parseFloat(item.cost_price) || 0);
     const lineGross = qty * price;
     const type = item.discount_type || 'direct';
-    const val = Math.max(0, parseFloat(item.discount_value) || 0);
+    let val = Math.max(0, parseFloat(item.discount_value) || 0);
 
     let calculatedDisc = 0;
     if (type === 'percent') {
@@ -45,14 +46,45 @@ function recalculateItem(item) {
         calculatedDisc = Math.min(lineGross, val);
     }
 
+    // Prevent discount from exceeding profit margin (never sell below cost price)
+    let discountCapped = false;
+    if (costPrice > 0 && qty > 0) {
+        const maxProfitDiscount = Math.max(0, lineGross - (costPrice * qty));
+        if (calculatedDisc > maxProfitDiscount) {
+            discountCapped = true;
+            calculatedDisc = maxProfitDiscount;
+            if (type === 'percent') {
+                val = lineGross > 0 ? Math.round(((maxProfitDiscount / lineGross) * 100) * 100) / 100 : 0;
+            } else {
+                val = Math.round(maxProfitDiscount * 100) / 100;
+                item.unit_discount = Math.max(0, price - costPrice);
+            }
+        }
+    }
+
     if (typeof item.quantity === 'number') {
         item.quantity = qty;
     }
     item.price = price;
+    item.cost_price = costPrice;
     item.discount_type = type;
     item.discount_value = val;
+    item.discount_capped = discountCapped;
     item.discount = calculatedDisc;
     item.total = Math.max(0, lineGross - calculatedDisc);
+}
+
+/**
+ * Scale direct (Rs) discount proportionally when quantity changes, using tracked per-unit discount.
+ */
+function syncDirectDiscountForQty(item, rawQty, autoScale = true) {
+    if (!autoScale) return;
+    if ((item.discount_type || 'direct') === 'direct' && (item.unit_discount || 0) > 0) {
+        const parsedQty = parseFloat(rawQty);
+        item.discount_value = (!isNaN(parsedQty) && parsedQty > 0)
+            ? Math.round((item.unit_discount * parsedQty) * 100) / 100
+            : 0;
+    }
 }
 
 function mapSaleToCartState(sale) {
@@ -84,6 +116,7 @@ function mapSaleToCartState(sale) {
                 price: price,
                 discount_type: 'direct',
                 discount_value: disc,
+                unit_discount: qty > 0 ? (disc / qty) : disc,
                 discount: disc,
                 total: parseFloat(it.total) || ((qty * price) - disc)
             };
@@ -91,7 +124,8 @@ function mapSaleToCartState(sale) {
         discount: parseFloat(sale.discount) || 0,
         special_discount: parseFloat(sale.special_discount) || 0,
         additional_charges: parseFloat(sale.additional_charges) || 0,
-        amount_paid: parseFloat(sale.amount_paid) || 0,
+        amount_paid: parseFloat(sale.amount_paid !== undefined ? sale.amount_paid : (sale.paid_amount || 0)) || 0,
+        originalAmountPaid: parseFloat(sale.amount_paid !== undefined ? sale.amount_paid : (sale.paid_amount || 0)) || 0,
         payment_method: sale.payment_method || 'cash',
         remarks: sale.remarks || ''
     };
@@ -106,6 +140,7 @@ const defaultCartState = {
     special_discount: 0,
     additional_charges: 0,
     amount_paid: 0,
+    originalAmountPaid: 0,
     payment_method: 'cash',
     remarks: ''
 };
@@ -141,15 +176,23 @@ const cartSlice = createSlice({
             );
 
             if (existingIndex >= 0) {
-                state.items[existingIndex].quantity += (newItem.quantity || 1);
-                recalculateItem(state.items[existingIndex]);
+                const existing = state.items[existingIndex];
+                const newQty = (parseFloat(existing.quantity) || 0) + (newItem.quantity || 1);
+                const autoScale = newItem.autoScale !== undefined ? newItem.autoScale : true;
+                existing.quantity = newQty;
+                syncDirectDiscountForQty(existing, newQty, autoScale);
+                recalculateItem(existing);
             } else {
+                const initQty = newItem.quantity || 1;
+                const initDiscVal = newItem.discount_value || 0;
+                const initType = newItem.discount_type || 'direct';
                 const item = {
                     ...newItem,
-                    quantity: newItem.quantity || 1,
+                    quantity: initQty,
                     price: newItem.price || 0,
-                    discount_type: newItem.discount_type || 'direct',
-                    discount_value: newItem.discount_value || 0,
+                    discount_type: initType,
+                    discount_value: initDiscVal,
+                    unit_discount: initType === 'direct' && initQty > 0 ? (initDiscVal / initQty) : 0,
                     discount: 0,
                     total: 0
                 };
@@ -158,14 +201,16 @@ const cartSlice = createSlice({
             }
         },
         updateItemQty: (state, action) => {
-            const { index, quantity } = action.payload;
-            if (state.items[index]) {
+            const { index, quantity, autoScale = true } = action.payload;
+            const item = state.items[index];
+            if (item) {
                 if (typeof quantity === 'number' && quantity <= 0) {
                     state.items.splice(index, 1);
                     return;
                 }
-                state.items[index].quantity = quantity;
-                recalculateItem(state.items[index]);
+                item.quantity = quantity;
+                syncDirectDiscountForQty(item, quantity, autoScale);
+                recalculateItem(item);
             }
         },
         updateItemPrice: (state, action) => {
@@ -177,10 +222,20 @@ const cartSlice = createSlice({
         },
         updateItemDiscount: (state, action) => {
             const { index, discount_value, discount_type } = action.payload;
-            if (state.items[index]) {
-                if (discount_type !== undefined) state.items[index].discount_type = discount_type;
-                if (discount_value !== undefined) state.items[index].discount_value = discount_value;
-                recalculateItem(state.items[index]);
+            const item = state.items[index];
+            if (item) {
+                if (discount_type !== undefined) item.discount_type = discount_type;
+                if (discount_value !== undefined) item.discount_value = discount_value;
+
+                if ((item.discount_type || 'direct') === 'direct') {
+                    const parsedVal = Math.max(0, parseFloat(item.discount_value) || 0);
+                    const parsedQty = parseFloat(item.quantity);
+                    item.unit_discount = (!isNaN(parsedQty) && parsedQty > 0) ? (parsedVal / parsedQty) : parsedVal;
+                } else {
+                    item.unit_discount = 0;
+                }
+
+                recalculateItem(item);
             }
         },
         removeItem: (state, action) => {
@@ -269,6 +324,7 @@ const initialSettings = {
     silent_print: 'true',
     auto_print_sale: 'true',
     default_print_format: 'thermal',
+    auto_scale_item_discount: 'true',
     loaded: false
 };
 

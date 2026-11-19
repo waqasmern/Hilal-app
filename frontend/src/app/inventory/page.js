@@ -2,12 +2,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import CustomModalAlert from '../components/CustomModalAlert';
 import { apiUrl, resolveMediaUrl } from '../../lib/api';
-import { 
-    IconPlus, IconClose, IconInventory, IconSuppliers, 
+import {
+    IconPlus, IconClose, IconInventory, IconSuppliers,
     IconProducts, IconCheck, IconWarning, IconSearch,
     IconBill, IconPOS, IconPrinter, IconEye, IconSync,
     IconReceipt, IconEdit, IconTrash, IconDotsVertical,
-    IconBox, IconBolt, IconLayers, IconPackage, IconTag, 
+    IconBox, IconBolt, IconLayers, IconPackage, IconTag,
     IconBarcode, IconArrowRight, IconSparkles,
     IconChevronLeft, IconChevronRight, IconChevronDoubleLeft, IconChevronDoubleRight
 } from '../components/Icons';
@@ -411,14 +411,14 @@ export default function InventoryPage() {
             const foundUnit = units.find(u => {
                 const uSym = (u.symbol || '').trim().toLowerCase();
                 const uNm = (u.name || '').trim().toLowerCase();
-                return (sym && uSym === sym) || 
-                       (nm && uNm === nm) || 
-                       (sym && uNm === sym) || 
-                       (nm && uSym === nm) ||
-                       (sym === 'pcs' && (uNm === 'piece' || uNm === 'pieces')) ||
-                       (nm === 'piece' && uSym === 'pcs') ||
-                       (nm === 'pieces' && uSym === 'pcs') ||
-                       (sym === 'pc' && (uSym === 'pcs' || uNm === 'piece'));
+                return (sym && uSym === sym) ||
+                    (nm && uNm === nm) ||
+                    (sym && uNm === sym) ||
+                    (nm && uSym === nm) ||
+                    (sym === 'pcs' && (uNm === 'piece' || uNm === 'pieces')) ||
+                    (nm === 'piece' && uSym === 'pcs') ||
+                    (nm === 'pieces' && uSym === 'pcs') ||
+                    (sym === 'pc' && (uSym === 'pcs' || uNm === 'piece'));
             });
             if (foundUnit) matchedUnitId = foundUnit.id;
         }
@@ -437,7 +437,7 @@ export default function InventoryPage() {
                         isEss = true;
                     }
                 }
-            } catch (e) {}
+            } catch (e) { }
         }
         setEditIsEssential(isEss);
 
@@ -783,9 +783,9 @@ export default function InventoryPage() {
         const packagingsList = [];
 
         if (editHasCartonPackaging) {
-            const cartonPackType = packagingTypes.find(p => p.id === parseInt(editBulkPackagingTypeId)) 
-                || packagingTypes.find(p => p.name.toLowerCase() === 'carton') 
-                || packagingTypes[1] 
+            const cartonPackType = packagingTypes.find(p => p.id === parseInt(editBulkPackagingTypeId))
+                || packagingTypes.find(p => p.name.toLowerCase() === 'carton')
+                || packagingTypes[1]
                 || pieceType;
             const cartonBarcode = editCartonBarcode.trim() || generateBarcode('897');
 
@@ -888,7 +888,7 @@ export default function InventoryPage() {
                         }
                         localStorage.setItem('pos_essential_ids', JSON.stringify(ids));
                         window.dispatchEvent(new Event('storage'));
-                    } catch (e) {}
+                    } catch (e) { }
                 }
 
                 setEditItemModalOpen(false);
@@ -1122,7 +1122,7 @@ export default function InventoryPage() {
                 setCategories(data);
                 if (data.length > 0 && !newCategoryId) setNewCategoryId(data[0].id);
             }
-        } catch (err) {}
+        } catch (err) { }
     };
 
     const fetchUnits = async () => {
@@ -1133,7 +1133,7 @@ export default function InventoryPage() {
                 setUnits(data);
                 if (data.length > 0 && !newBaseUnitId) setNewBaseUnitId(data[0].id);
             }
-        } catch (err) {}
+        } catch (err) { }
     };
 
     const fetchPackagingTypes = async () => {
@@ -1147,21 +1147,21 @@ export default function InventoryPage() {
                     if (!newPackagingTypeId) setNewPackagingTypeId(data[0].id);
                 }
             }
-        } catch (err) {}
+        } catch (err) { }
     };
 
     // Helper to format stock into wholesale breakdown: e.g. "3 Ctns + 2 Pkts + 11 pcs (Total: 711 pcs)"
     const formatStockBreakdown = (stockItem) => {
         if (!stockItem) return { formatted: '0 pcs', ctnCount: 0, looseCount: 0, totalPcs: 0, bulkName: 'Ctn', unitName: 'pcs', hasBulk: false };
-        
+
         const totalPcs = parseFloat(stockItem.current_stock) || 0;
         const unitName = stockItem.unit_symbol || stockItem.unit_name || 'pcs';
-        
+
         // Find all bulk packagings with factor > 1 sorted descending (Carton x200, Packet x50, etc.)
         const bulkPacks = (stockItem.packagings || [])
             .filter(p => (p.conversion_factor || 1) > 1)
             .sort((a, b) => (b.conversion_factor || 1) - (a.conversion_factor || 1));
-        
+
         if (bulkPacks.length === 0) {
             return {
                 formatted: `${Number(totalPcs).toLocaleString()} ${unitName}`,
@@ -1174,12 +1174,12 @@ export default function InventoryPage() {
                 hasBulk: false
             };
         }
-        
+
         const isNegative = totalPcs < 0;
         let rem = Math.abs(totalPcs);
         let parts = [];
         let primaryBulkCount = 0;
-        
+
         bulkPacks.forEach((bp, index) => {
             const f = bp.conversion_factor || 1;
             const count = Math.floor(rem / f);
@@ -1191,7 +1191,7 @@ export default function InventoryPage() {
                 parts.push(`${count} ${bulkName}${count > 1 ? 's' : ''}`);
             }
         });
-        
+
         if (rem > 0) {
             parts.push(`${rem} ${unitName}`);
         }
@@ -1201,11 +1201,11 @@ export default function InventoryPage() {
             const bulkName = rawBulkName.replace(/s$/i, '');
             parts.push(`0 ${bulkName}s`);
         }
-        
+
         const prefix = isNegative ? '-' : '';
         const breakdownStr = prefix + parts.join(' + ');
         const fullDisplay = `${breakdownStr} (Total: ${Number(totalPcs).toLocaleString()} ${unitName})`;
-        
+
         const primaryBulk = bulkPacks[0];
         const rawBulkName = primaryBulk.packaging_name || 'Carton';
         const bulkName = rawBulkName.replace(/s$/i, '');
@@ -1305,7 +1305,7 @@ export default function InventoryPage() {
     const handleSaveInwardStock = async (e) => {
         e.preventDefault();
         if (!inwardSupplierId || !inwardVariantId) return showAlert('Supplier and Product Variant required', 'warning');
-        
+
         const qty = parseFloat(inwardQuantity) || 1;
         const rate = parseFloat(inwardPurchasePrice) || 0;
         const gross = qty * rate;
@@ -1384,9 +1384,9 @@ export default function InventoryPage() {
         const packagingsList = [];
 
         if (hasCartonPackaging) {
-            const cartonPackType = packagingTypes.find(p => p.id === parseInt(newBulkPackagingTypeId)) 
-                || packagingTypes.find(p => p.name.toLowerCase() === 'carton') 
-                || packagingTypes[1] 
+            const cartonPackType = packagingTypes.find(p => p.id === parseInt(newBulkPackagingTypeId))
+                || packagingTypes.find(p => p.name.toLowerCase() === 'carton')
+                || packagingTypes[1]
                 || pieceType;
             const cartonBarcode = newCartonBarcode.trim() || generateBarcode('897');
 
@@ -1492,7 +1492,7 @@ export default function InventoryPage() {
                         if (!ids.includes(addResData.variantId)) ids.push(addResData.variantId);
                         localStorage.setItem('pos_essential_ids', JSON.stringify(ids));
                         window.dispatchEvent(new Event('storage'));
-                    } catch (e) {}
+                    } catch (e) { }
                 }
 
                 setAddItemModalOpen(false);
@@ -1795,11 +1795,10 @@ export default function InventoryPage() {
                                     setStockStatusFilter('ALL');
                                     setCurrentPage(1);
                                 }}
-                                className={`px-2 py-1 rounded-md transition-all cursor-pointer whitespace-nowrap ${
-                                    stockStatusFilter === 'ALL'
-                                        ? 'bg-[#0B3B7B] text-white font-bold shadow-2xs'
-                                        : 'text-gray-600 hover:text-gray-900'
-                                }`}
+                                className={`px-2 py-1 rounded-md transition-all cursor-pointer whitespace-nowrap ${stockStatusFilter === 'ALL'
+                                    ? 'bg-[#0B3B7B] text-white font-bold shadow-2xs'
+                                    : 'text-gray-600 hover:text-gray-900'
+                                    }`}
                             >
                                 All ({totalCatalogItems})
                             </button>
@@ -1808,11 +1807,10 @@ export default function InventoryPage() {
                                     setStockStatusFilter('IN_STOCK');
                                     setCurrentPage(1);
                                 }}
-                                className={`px-2 py-1 rounded-md transition-all cursor-pointer flex items-center gap-1 whitespace-nowrap ${
-                                    stockStatusFilter === 'IN_STOCK'
-                                        ? 'bg-emerald-700 text-white font-bold shadow-2xs'
-                                        : 'text-gray-600 hover:text-gray-900'
-                                }`}
+                                className={`px-2 py-1 rounded-md transition-all cursor-pointer flex items-center gap-1 whitespace-nowrap ${stockStatusFilter === 'IN_STOCK'
+                                    ? 'bg-emerald-700 text-white font-bold shadow-2xs'
+                                    : 'text-gray-600 hover:text-gray-900'
+                                    }`}
                             >
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
                                 In Stock ({inStockCount})
@@ -1822,11 +1820,10 @@ export default function InventoryPage() {
                                     setStockStatusFilter('LOW_STOCK');
                                     setCurrentPage(1);
                                 }}
-                                className={`px-2 py-1 rounded-md transition-all cursor-pointer flex items-center gap-1 whitespace-nowrap ${
-                                    stockStatusFilter === 'LOW_STOCK'
-                                        ? 'bg-amber-600 text-white font-bold shadow-2xs'
-                                        : 'text-gray-600 hover:text-gray-900'
-                                }`}
+                                className={`px-2 py-1 rounded-md transition-all cursor-pointer flex items-center gap-1 whitespace-nowrap ${stockStatusFilter === 'LOW_STOCK'
+                                    ? 'bg-amber-600 text-white font-bold shadow-2xs'
+                                    : 'text-gray-600 hover:text-gray-900'
+                                    }`}
                             >
                                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
                                 Low Stock ({lowStockCount})
@@ -1836,11 +1833,10 @@ export default function InventoryPage() {
                                     setStockStatusFilter('OUT_OF_STOCK');
                                     setCurrentPage(1);
                                 }}
-                                className={`px-2 py-1 rounded-md transition-all cursor-pointer flex items-center gap-1 whitespace-nowrap ${
-                                    stockStatusFilter === 'OUT_OF_STOCK'
-                                        ? 'bg-rose-700 text-white font-bold shadow-2xs'
-                                        : 'text-gray-600 hover:text-gray-900'
-                                }`}
+                                className={`px-2 py-1 rounded-md  transition-all cursor-pointer flex items-center gap-1 whitespace-nowrap ${stockStatusFilter === 'OUT_OF_STOCK'
+                                    ? 'bg-rose-700 text-white font-bold shadow-2xs'
+                                    : 'text-gray-600 hover:text-gray-900'
+                                    }`}
                             >
                                 <span className="w-1.5 h-1.5 rounded-full bg-rose-400"></span>
                                 Out of Stock ({outOfStockCount})
@@ -1891,8 +1887,8 @@ export default function InventoryPage() {
                             const stockInfo = formatStockBreakdown(item);
 
                             return (
-                                <div 
-                                    key={item.variant_id} 
+                                <div
+                                    key={item.variant_id}
                                     className="p-3.5 space-y-2.5 bg-white rounded-xl border border-gray-200/80 shadow-[0_2px_8px_rgba(0,0,0,0.04)] hover:shadow-[0_4px_14px_rgba(0,0,0,0.08)] transition-all"
                                 >
                                     {/* Top Row: Product Name + Category + Status */}
@@ -1942,9 +1938,8 @@ export default function InventoryPage() {
                                     <div className="grid grid-cols-3 gap-1.5 bg-slate-50/80 p-2 rounded-xl border border-slate-200/60 text-[10px]">
                                         <div>
                                             <div className="text-gray-400 uppercase text-[8px] font-bold tracking-wider">Current Stock</div>
-                                            <div className={`font-black text-xs leading-tight mt-0.5 ${
-                                                isOut ? 'text-rose-600' : isLow ? 'text-amber-600' : 'text-emerald-700'
-                                            }`}>
+                                            <div className={`font-black text-xs leading-tight mt-0.5 ${isOut ? 'text-rose-600' : isLow ? 'text-amber-600' : 'text-emerald-700'
+                                                }`}>
                                                 {stockInfo.hasBulk ? stockInfo.breakdownStr : `${Number(item.current_stock).toLocaleString()} ${item.unit_symbol || 'Units'}`}
                                             </div>
                                             {stockInfo.hasBulk && (
@@ -1974,13 +1969,21 @@ export default function InventoryPage() {
                                     {/* Packaging Rates Preview */}
                                     {item.packagings && item.packagings.length > 0 && (
                                         <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-                                            {item.packagings.map((pk, idx) => (
-                                                <span key={idx} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-100 text-[9.5px] text-gray-700 font-mono border border-slate-200/80">
-                                                    <span className="font-bold text-gray-900">{pk.packaging_name}</span>
-                                                    <span className="text-gray-400">x{pk.conversion_factor}</span>
-                                                    <span className="text-emerald-700 font-extrabold">Rs.{Number(pk.selling_price || 0).toLocaleString()}</span>
-                                                </span>
-                                            ))}
+                                            {item.packagings.map((pk, idx) => {
+                                                const pkCost = Number(pk.purchase_price || 0);
+                                                const pkSell = Number(pk.selling_price || 0);
+                                                const pkProfit = pkSell - pkCost;
+                                                return (
+                                                    <span key={idx} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-100 text-[9.5px] text-gray-700 font-mono border border-slate-200/80">
+                                                        <span className="font-bold text-gray-900">{pk.packaging_name}</span>
+                                                        <span className="text-gray-400">x{pk.conversion_factor}</span>
+                                                        <span className="text-emerald-700 font-extrabold">Rs.{pkSell.toLocaleString()}</span>
+                                                        <span className={`font-extrabold px-1 rounded ${pkProfit > 0 ? 'bg-blue-50 text-blue-700' : pkProfit < 0 ? 'bg-rose-50 text-rose-700' : 'bg-gray-200 text-gray-600'}`}>
+                                                            {pkProfit > 0 ? `+Rs.${pkProfit.toLocaleString()}` : pkProfit < 0 ? `-Rs.${Math.abs(pkProfit).toLocaleString()}` : 'Rs.0'}
+                                                        </span>
+                                                    </span>
+                                                );
+                                            })}
                                         </div>
                                     )}
 
@@ -2033,8 +2036,8 @@ export default function InventoryPage() {
                                     const isNonStandardVariant = item.variant_name && item.variant_name.toLowerCase() !== 'standard' && item.variant_name.toLowerCase() !== item.product_name.toLowerCase();
 
                                     return (
-                                        <tr 
-                                            key={item.variant_id} 
+                                        <tr
+                                            key={item.variant_id}
                                             className="bg-white hover:bg-blue-50/20 transition-all duration-200 group shadow-[0_2px_8px_rgba(0,0,0,0.04)] hover:shadow-[0_6px_18px_rgba(0,0,0,0.07)]"
                                         >
                                             {/* Column 1: Product & SKU */}
@@ -2103,25 +2106,41 @@ export default function InventoryPage() {
                                             <td className="py-3 px-3.5 bg-white group-hover:bg-blue-50/20 border-y border-gray-200/80 group-hover:border-blue-200/80 transition-all duration-150">
                                                 <div className="space-y-1">
                                                     {item.packagings && item.packagings.length > 0 ? (
-                                                        item.packagings.map((pk, idx) => (
-                                                            <div 
-                                                                key={idx}
-                                                                className="flex items-center justify-between gap-2.5 text-[10.5px] py-1 px-2 rounded-lg bg-slate-50/80 border border-slate-200/60 transition-colors"
-                                                            >
-                                                                <div className="flex items-center gap-1.5 min-w-[95px]">
-                                                                    <span className="font-bold text-gray-900">{pk.packaging_name}</span>
-                                                                    <span className="text-[9px] text-gray-500 font-mono bg-white px-1 py-0.2 rounded border border-gray-200">x{pk.conversion_factor}</span>
+                                                        item.packagings.map((pk, idx) => {
+                                                            const pkCost = Number(pk.purchase_price || 0);
+                                                            const pkSell = Number(pk.selling_price || 0);
+                                                            const pkProfit = pkSell - pkCost;
+                                                            return (
+                                                                <div
+                                                                    key={idx}
+                                                                    className="flex items-center justify-between gap-2.5 text-[10.5px] py-1 px-2 rounded-lg bg-slate-50/80 border border-slate-200/60 transition-colors"
+                                                                >
+                                                                    <div className="flex items-center gap-1.5 min-w-[95px]">
+                                                                        <span className="font-bold text-gray-900">{pk.packaging_name}</span>
+                                                                        <span className="text-[9px] text-gray-500 font-mono bg-white px-1 py-0.2 rounded border border-gray-200">x{pk.conversion_factor}</span>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-2 text-right font-mono text-[10.5px] flex-wrap justify-end">
+                                                                        <span className="text-gray-500 text-[10px]">
+                                                                            Cost: <strong className="text-gray-700 font-semibold">Rs.{pkCost.toLocaleString()}</strong>
+                                                                        </span>
+                                                                        <span className="font-extrabold text-emerald-700 text-[11px] bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200/60">
+                                                                            Sell: Rs.{pkSell.toLocaleString()}
+                                                                        </span>
+                                                                        <span
+                                                                            className={`font-extrabold text-[10.5px] px-1.5 py-0.2 rounded border ${pkProfit > 0
+                                                                                ? 'text-blue-700 bg-blue-50 border-blue-200/70'
+                                                                                : pkProfit < 0
+                                                                                    ? 'text-rose-700 bg-rose-50 border-rose-200/70'
+                                                                                    : 'text-gray-600 bg-gray-100 border-gray-200'
+                                                                                }`}
+                                                                            title={`Profit per ${pk.packaging_name}: Rs.${pkProfit.toLocaleString()}`}
+                                                                        >
+                                                                            Profit: {pkProfit > 0 ? `+Rs.${pkProfit.toLocaleString()}` : pkProfit < 0 ? `-Rs.${Math.abs(pkProfit).toLocaleString()}` : 'Rs.0'}
+                                                                        </span>
+                                                                    </div>
                                                                 </div>
-                                                                <div className="flex items-center gap-2.5 text-right font-mono text-[10.5px]">
-                                                                    <span className="text-gray-500 text-[10px]">
-                                                                        Cost: <strong className="text-gray-700 font-semibold">Rs.{Number(pk.purchase_price || 0).toLocaleString()}</strong>
-                                                                    </span>
-                                                                    <span className="font-extrabold text-emerald-700 text-[11px] bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200/60">
-                                                                        Sell: Rs.{Number(pk.selling_price || 0).toLocaleString()}
-                                                                    </span>
-                                                                </div>
-                                                            </div>
-                                                        ))
+                                                            );
+                                                        })
                                                     ) : (
                                                         <span className="text-gray-400 text-[10.5px] italic">1 {item.unit_name || 'Piece'} (Standard)</span>
                                                     )}
@@ -2153,7 +2172,7 @@ export default function InventoryPage() {
                                             {/* Column 6: Status */}
                                             <td className="py-3 px-3.5 text-center bg-white group-hover:bg-blue-50/20 border-y border-gray-200/80 group-hover:border-blue-200/80 transition-all duration-150">
                                                 {isOut ? (
-                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200 shadow-2xs">
+                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[6px] font-bold bg-rose-50 text-rose-700 border border-rose-200 shadow-2xs">
                                                         <span className="w-1.5 h-1.5 rounded-full bg-rose-600 animate-pulse"></span>
                                                         Out of Stock
                                                     </span>
@@ -2231,11 +2250,10 @@ export default function InventoryPage() {
                             <button
                                 onClick={() => setCurrentPage(1)}
                                 disabled={validCurrentPage <= 1}
-                                className={`p-1.5 rounded-lg border text-xs transition-all ${
-                                    validCurrentPage <= 1
-                                        ? 'bg-gray-50 border-gray-200 text-gray-300 cursor-not-allowed'
-                                        : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-100 hover:text-gray-900 cursor-pointer shadow-2xs active:scale-95'
-                                }`}
+                                className={`p-1.5 rounded-lg border text-xs transition-all ${validCurrentPage <= 1
+                                    ? 'bg-gray-50 border-gray-200 text-gray-300 cursor-not-allowed'
+                                    : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-100 hover:text-gray-900 cursor-pointer shadow-2xs active:scale-95'
+                                    }`}
                                 title="First Page"
                             >
                                 <IconChevronDoubleLeft className="w-3.5 h-3.5" />
@@ -2245,11 +2263,10 @@ export default function InventoryPage() {
                             <button
                                 onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                                 disabled={validCurrentPage <= 1}
-                                className={`p-1.5 rounded-lg border text-xs transition-all ${
-                                    validCurrentPage <= 1
-                                        ? 'bg-gray-50 border-gray-200 text-gray-300 cursor-not-allowed'
-                                        : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-100 hover:text-gray-900 cursor-pointer shadow-2xs active:scale-95'
-                                }`}
+                                className={`p-1.5 rounded-lg border text-xs transition-all ${validCurrentPage <= 1
+                                    ? 'bg-gray-50 border-gray-200 text-gray-300 cursor-not-allowed'
+                                    : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-100 hover:text-gray-900 cursor-pointer shadow-2xs active:scale-95'
+                                    }`}
                                 title="Previous Page"
                             >
                                 <IconChevronLeft className="w-3.5 h-3.5" />
@@ -2270,11 +2287,10 @@ export default function InventoryPage() {
                                         <button
                                             key={`page-${p}`}
                                             onClick={() => setCurrentPage(p)}
-                                            className={`min-w-[28px] h-7 px-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                                                isActive
-                                                    ? 'bg-[#0B3B7B] text-white shadow-2xs font-bold'
-                                                    : 'bg-white border border-gray-200 text-gray-700 hover:bg-blue-50 hover:text-[#0B3B7B]'
-                                            }`}
+                                            className={`min-w-[28px] h-7 px-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${isActive
+                                                ? 'bg-[#0B3B7B] text-white shadow-2xs font-bold'
+                                                : 'bg-white border border-gray-200 text-gray-700 hover:bg-blue-50 hover:text-[#0B3B7B]'
+                                                }`}
                                         >
                                             {p}
                                         </button>
@@ -2286,11 +2302,10 @@ export default function InventoryPage() {
                             <button
                                 onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
                                 disabled={validCurrentPage >= totalPages}
-                                className={`p-1.5 rounded-lg border text-xs transition-all ${
-                                    validCurrentPage >= totalPages
-                                        ? 'bg-gray-50 border-gray-200 text-gray-300 cursor-not-allowed'
-                                        : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-100 hover:text-gray-900 cursor-pointer shadow-2xs active:scale-95'
-                                }`}
+                                className={`p-1.5 rounded-lg border text-xs transition-all ${validCurrentPage >= totalPages
+                                    ? 'bg-gray-50 border-gray-200 text-gray-300 cursor-not-allowed'
+                                    : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-100 hover:text-gray-900 cursor-pointer shadow-2xs active:scale-95'
+                                    }`}
                                 title="Next Page"
                             >
                                 <IconChevronRight className="w-3.5 h-3.5" />
@@ -2300,11 +2315,10 @@ export default function InventoryPage() {
                             <button
                                 onClick={() => setCurrentPage(totalPages)}
                                 disabled={validCurrentPage >= totalPages}
-                                className={`p-1.5 rounded-lg border text-xs transition-all ${
-                                    validCurrentPage >= totalPages
-                                        ? 'bg-gray-50 border-gray-200 text-gray-300 cursor-not-allowed'
-                                        : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-100 hover:text-gray-900 cursor-pointer shadow-2xs active:scale-95'
-                                }`}
+                                className={`p-1.5 rounded-lg border text-xs transition-all ${validCurrentPage >= totalPages
+                                    ? 'bg-gray-50 border-gray-200 text-gray-300 cursor-not-allowed'
+                                    : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-100 hover:text-gray-900 cursor-pointer shadow-2xs active:scale-95'
+                                    }`}
                                 title="Last Page"
                             >
                                 <IconChevronDoubleRight className="w-3.5 h-3.5" />
@@ -2318,11 +2332,11 @@ export default function InventoryPage() {
             {/* MODAL: ITEM ROW ACTIONS MODAL (CLICKED FROM 3-DOTS)           */}
             {/* ───────────────────────────────────────────────────────────── */}
             {actionModalItem && (
-                <div 
+                <div
                     className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-[75] p-2 sm:p-4 animate-in fade-in duration-150 overflow-y-auto"
                     onClick={() => setActionModalItem(null)}
                 >
-                    <div 
+                    <div
                         className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-gray-200 overflow-hidden transform transition-all max-h-[94vh] flex flex-col"
                         onClick={(e) => e.stopPropagation()}
                     >
@@ -2561,12 +2575,11 @@ export default function InventoryPage() {
                                                             {new Date(m.created_at).toLocaleString()}
                                                         </td>
                                                         <td className="p-2.5">
-                                                            <span className={`px-2 py-0.5 rounded text-[10px] font-black whitespace-nowrap ${
-                                                                m.movement_type === 'PURCHASE' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' :
+                                                            <span className={`px-2 py-0.5 rounded text-[10px] font-black whitespace-nowrap ${m.movement_type === 'PURCHASE' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' :
                                                                 m.movement_type === 'SALE' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
-                                                                m.movement_type === 'DAMAGE' ? 'bg-rose-50 text-rose-700 border border-rose-200' :
-                                                                'bg-amber-50 text-amber-800 border border-amber-200'
-                                                            }`}>
+                                                                    m.movement_type === 'DAMAGE' ? 'bg-rose-50 text-rose-700 border border-rose-200' :
+                                                                        'bg-amber-50 text-amber-800 border border-amber-200'
+                                                                }`}>
                                                                 {m.movement_type}
                                                             </span>
                                                         </td>
@@ -2624,9 +2637,9 @@ export default function InventoryPage() {
                                     Record incoming vendor stock invoice to increase physical warehouse inventory & update supplier ledger
                                 </p>
                             </div>
-                            <button 
-                                type="button" 
-                                onClick={() => setInwardModalOpen(false)} 
+                            <button
+                                type="button"
+                                onClick={() => setInwardModalOpen(false)}
                                 className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-all cursor-pointer shrink-0"
                             >
                                 <IconClose className="w-5 h-5" />
@@ -2729,9 +2742,9 @@ export default function InventoryPage() {
                                             <label className="block font-bold text-gray-700 mb-1">Packaging Unit *</label>
                                             {(() => {
                                                 const currentItem = stocks.find(s => s.variant_id === inwardVariantId);
-                                                const availablePacks = currentItem?.packagings?.length > 0 
-                                                    ? currentItem.packagings 
-                                                     : packagingTypes.map(pt => ({ packaging_type_id: pt.id, packaging_name: pt.name, conversion_factor: 1, purchase_price: 0 }));
+                                                const availablePacks = currentItem?.packagings?.length > 0
+                                                    ? currentItem.packagings
+                                                    : packagingTypes.map(pt => ({ packaging_type_id: pt.id, packaging_name: pt.name, conversion_factor: 1, purchase_price: 0 }));
                                                 return (
                                                     <select
                                                         value={inwardPackagingId}
@@ -2746,7 +2759,7 @@ export default function InventoryPage() {
                                                         className="w-full p-2 sm:p-2.5 border border-gray-200 rounded-xl font-bold text-xs bg-white text-[#0B3B7B] focus:outline-none"
                                                     >
                                                         {availablePacks.map(pk => (
-                                                             <option key={pk.packaging_type_id} value={pk.packaging_type_id}>
+                                                            <option key={pk.packaging_type_id} value={pk.packaging_type_id}>
                                                                 {pk.packaging_name} {pk.conversion_factor > 1 ? `(x${pk.conversion_factor})` : `(Piece)`} — Rs. {Number(pk.purchase_price || 0).toLocaleString()}
                                                             </option>
                                                         ))}
@@ -2914,9 +2927,9 @@ export default function InventoryPage() {
                                     Auto barcodes, dual Carton & Piece pricing, conversion ratios & 0 initial stock (Inwarded from suppliers)
                                 </p>
                             </div>
-                            <button 
-                                type="button" 
-                                onClick={() => setAddItemModalOpen(false)} 
+                            <button
+                                type="button"
+                                onClick={() => setAddItemModalOpen(false)}
                                 className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-all cursor-pointer shrink-0"
                             >
                                 <IconClose className="w-5 h-5" />
@@ -3084,7 +3097,7 @@ export default function InventoryPage() {
                                 const baseUnitName = selectedBaseUnit?.name || 'Pieces';
                                 const baseUnitSymbol = selectedBaseUnit?.symbol || baseUnitName || 'Unit';
 
-                                const totalCartonPieces = hasInnerPackaging 
+                                const totalCartonPieces = hasInnerPackaging
                                     ? ((parseFloat(newCartonPacketsCount) || 1) * (parseFloat(newInnerPiecesCount) || 1))
                                     : (parseFloat(newConversionFactor) || 1);
 
@@ -3776,9 +3789,9 @@ export default function InventoryPage() {
                                     Update product name, classification, packaging conversion rules, barcodes, and buy/sell pricing tiers
                                 </p>
                             </div>
-                            <button 
-                                type="button" 
-                                onClick={() => setEditItemModalOpen(false)} 
+                            <button
+                                type="button"
+                                onClick={() => setEditItemModalOpen(false)}
                                 className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-all cursor-pointer shrink-0"
                             >
                                 <IconClose className="w-5 h-5" />
@@ -4712,22 +4725,20 @@ export default function InventoryPage() {
                                     <button
                                         type="button"
                                         onClick={() => setAdjustmentType('DAMAGE')}
-                                        className={`py-2 rounded-xl text-xs font-bold transition-all border ${
-                                            adjustmentType === 'DAMAGE'
-                                                ? 'bg-rose-50 border-rose-300 text-rose-700 shadow-xs'
-                                                : 'bg-white border-gray-200 text-gray-600'
-                                        }`}
+                                        className={`py-2 rounded-xl text-xs font-bold transition-all border ${adjustmentType === 'DAMAGE'
+                                            ? 'bg-rose-50 border-rose-300 text-rose-700 shadow-xs'
+                                            : 'bg-white border-gray-200 text-gray-600'
+                                            }`}
                                     >
                                         Damage / Waste (-)
                                     </button>
                                     <button
                                         type="button"
                                         onClick={() => setAdjustmentType('ADD')}
-                                        className={`py-2 rounded-xl text-xs font-bold transition-all border ${
-                                            adjustmentType === 'ADD'
-                                                ? 'bg-emerald-50 border-emerald-300 text-emerald-700 shadow-xs'
-                                                : 'bg-white border-gray-200 text-gray-600'
-                                        }`}
+                                        className={`py-2 rounded-xl text-xs font-bold transition-all border ${adjustmentType === 'ADD'
+                                            ? 'bg-emerald-50 border-emerald-300 text-emerald-700 shadow-xs'
+                                            : 'bg-white border-gray-200 text-gray-600'
+                                            }`}
                                     >
                                         Physical Found (+)
                                     </button>

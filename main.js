@@ -1,6 +1,7 @@
-const { app, BrowserWindow, protocol, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, protocol, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const http = require('http');
+const fs = require('fs');
 
 if (app && app.commandLine) {
   app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
@@ -138,6 +139,89 @@ ipcMain.handle('select-backup-folder', async () => {
   }
 });
 
+// ─── Save Database Backup As (Choose Destination Folder / USB) ─────────────────
+ipcMain.handle('save-backup-as', async () => {
+  try {
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const defaultName = `Hilal_Wholesaler_Backup_${dateStr}.db`;
+    const result = await dialog.showSaveDialog(mainWindow || null, {
+      title: 'Save Database Backup To Computer / USB',
+      defaultPath: defaultName,
+      filters: [{ name: 'SQLite Database (*.db)', extensions: ['db'] }]
+    });
+    if (result.canceled || !result.filePath) {
+      return { canceled: true };
+    }
+
+    const userDataPath = process.env.APPDATA || (process.platform === 'darwin' ? process.env.HOME + '/Library/Preferences' : process.env.HOME + '/.local/share');
+    const appDataDir = path.join(userDataPath, 'HilalWholesalerShop');
+    const candidates = [
+      path.join(appDataDir, 'wholesale.db'),
+      path.join(__dirname, 'backend', 'wholesale.db'),
+      path.join(__dirname, 'wholesale.db')
+    ];
+    const liveDb = candidates.find(c => fs.existsSync(c)) || path.join(appDataDir, 'wholesale.db');
+    if (!fs.existsSync(liveDb)) {
+      return { canceled: true, error: 'Live database file not found.' };
+    }
+
+    fs.copyFileSync(liveDb, result.filePath);
+    return { canceled: false, filePath: result.filePath };
+  } catch (err) {
+    console.error('[IPC save-backup-as] Error:', err);
+    return { canceled: true, error: err.message };
+  }
+});
+
+// ─── Open PDF in External Browser (Chrome / Edge) ─────────────────────────
+ipcMain.handle('open-pdf-in-browser', async (event, pdfBase64, fileName) => {
+  try {
+    const { pathToFileURL } = require('url');
+    const fs = require('fs');
+    const cp = require('child_process');
+    const tempDir = app.getPath('temp');
+    const safeName = (fileName || 'wholesale_invoice_a4.pdf').replace(/[^a-zA-Z0-9._-]/g, '_');
+    const filePath = path.join(tempDir, safeName);
+    fs.writeFileSync(filePath, Buffer.from(pdfBase64, 'base64'));
+    
+    // Explicitly target Google Chrome or Edge to guarantee full PDF viewing & download controls
+    const browserCandidates = [
+      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+      process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'Google\\Chrome\\Application\\chrome.exe') : null,
+      process.env.PROGRAMFILES ? path.join(process.env.PROGRAMFILES, 'Google\\Chrome\\Application\\chrome.exe') : null,
+      process.env['PROGRAMFILES(X86)'] ? path.join(process.env['PROGRAMFILES(X86)'], 'Google\\Chrome\\Application\\chrome.exe') : null,
+      'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+      'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe'
+    ].filter(Boolean);
+
+    for (const cand of browserCandidates) {
+      if (fs.existsSync(cand)) {
+        cp.spawn(cand, [filePath], { detached: true, stdio: 'ignore' }).unref();
+        console.log('[main.js open-pdf-in-browser] Opened directly in browser:', cand, filePath);
+        return { success: true, filePath, browser: cand };
+      }
+    }
+
+    // Fallback: Open using default shell external association
+    const fileUrl = pathToFileURL(filePath).href;
+    console.log('[main.js open-pdf-in-browser] Opening PDF via shell.openExternal:', fileUrl);
+    await shell.openExternal(fileUrl);
+    return { success: true, filePath };
+  } catch (err) {
+    console.error('[main.js open-pdf-in-browser] Error:', err);
+    try {
+      const tempDir = app.getPath('temp');
+      const safeName = (fileName || 'wholesale_invoice_a4.pdf').replace(/[^a-zA-Z0-9._-]/g, '_');
+      const filePath = path.join(tempDir, safeName);
+      await shell.openPath(filePath);
+      return { success: true, filePath };
+    } catch (e2) {
+      return { success: false, error: err.message };
+    }
+  }
+});
+
 // ─── Silent / Native Print via IPC ──────────────────────────────────────────
 // Renderer sends raw HTML + optional printerName (or options object).
 //   printerName provided  → silent: true  (NO dialog, NO extra window)
@@ -163,7 +247,24 @@ ipcMain.handle('print-html', async (event, html, printerNameOrOptions) => {
 
   console.log('[main.js print-html] Received print request. Target Printer:', printerName, 'Silent:', isSilent, 'isA4:', isA4);
 
-  // If a printer device is requested for silent printing, match against Windows installed printers
+  // If A4 format is requested and no specific printer was selected, auto-target installed A4/Laser printer
+  // so it never accidentally routes A4 documents to an 80mm thermal receipt roll printer (e.g. POS-80)!
+  if (isA4 && (!printerName || printerName === '')) {
+    try {
+      const printers = mainWindow && !mainWindow.isDestroyed() ? await mainWindow.webContents.getPrintersAsync() : [];
+      const a4Match = printers.find(p => /laser|deskjet|inkjet|officejet|canon|epson|brother|hp/i.test(p.name) && !/pos|80|receipt|thermal|barcode/i.test(p.name)) ||
+                      printers.find(p => !/pos|80|receipt|thermal|barcode/i.test(p.name) && !/onenote|xps|fax/i.test(p.name)) ||
+                      printers.find(p => /pdf/i.test(p.name));
+      if (a4Match) {
+        printerName = a4Match.name;
+        console.log('[main.js print-html] Auto-selected A4 printer device for A4 format:', printerName);
+      }
+    } catch (e) {
+      console.warn('[main.js print-html] Failed to auto-detect A4 printer:', e.message);
+    }
+  }
+
+  // If a printer device is requested for printing, match against Windows installed printers
   if (printerName) {
     try {
       const printers = mainWindow && !mainWindow.isDestroyed() ? await mainWindow.webContents.getPrintersAsync() : [];

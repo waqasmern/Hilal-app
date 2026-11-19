@@ -36,7 +36,7 @@ import CustomModalAlert from '../components/CustomModalAlert';
 import ThermalReceipt from '../components/ThermalReceipt';
 import WholesaleA4InvoiceModal from '../components/WholesaleA4InvoiceModal';
 import CreditNoteModal from '../components/CreditNoteModal';
-import { triggerPrintHtml, generateThermalReceiptHtml, generateWholesaleInvoiceA4Html, truncateItemName, formatPackShort } from '../../lib/printHelper';
+import { triggerPrintHtml, generateThermalReceiptHtml, generateThermalReturnReceiptHtml, generateWholesaleInvoiceA4Html, truncateItemName, formatPackShort, downloadAndOpenPdf } from '../../lib/printHelper';
 import { apiUrl } from '../../lib/api';
 
 function getPageNumbers(current, total) {
@@ -104,18 +104,24 @@ export default function SalesHistoryPage() {
     const [serverSummary, setServerSummary] = useState(null);
     const [tableLoading, setTableLoading] = useState(false);
 
-    // Feed Type Filter & Wasooli Recovery State
-    const [feedType, setFeedType] = useState('ALL'); // 'ALL' | 'INVOICES' | 'WASOOLI'
+    // Feed Type Filter & Wasooli Recovery / Returns State
+    const [feedType, setFeedType] = useState('ALL'); // 'ALL' | 'INVOICES' | 'WASOOLI' | 'RETURNS'
     const [serverRecoveredPayments, setServerRecoveredPayments] = useState([]);
+    const [serverReturns, setServerReturns] = useState([]);
     const [selectedWasooli, setSelectedWasooli] = useState(null);
     const [wasooliModalOpen, setWasooliModalOpen] = useState(false);
 
-    // Sales Return Modal State
+    // Sales Return Modal State (Supports both Walk-in No-Invoice Return & Invoice-linked Return)
     const [returnModalOpen, setReturnModalOpen] = useState(false);
+    const [returnMode, setReturnMode] = useState('walkin'); // 'walkin' | 'invoice'
     const [returnType, setReturnType] = useState('saleable'); // 'saleable' | 'damaged'
-    const [refundMethod, setRefundMethod] = useState('credit'); // 'credit' (Khata) | 'cash' (Drawer)
+    const [refundMethod, setRefundMethod] = useState('cash'); // 'cash' (Drawer) | 'credit' (Khata)
     const [returnItems, setReturnItems] = useState([]);
     const [refundAmount, setRefundAmount] = useState(0);
+    const [returnCatalogProducts, setReturnCatalogProducts] = useState([]);
+    const [returnProductSearch, setReturnProductSearch] = useState('');
+    const [returnRemarks, setReturnRemarks] = useState('');
+    const [autoPrintReturnThermal, setAutoPrintReturnThermal] = useState(true);
 
     // Credit Note Modal State (Official A4 PDF, WhatsApp & Print)
     const [creditNoteModalOpen, setCreditNoteModalOpen] = useState(false);
@@ -207,6 +213,9 @@ export default function SalesHistoryPage() {
                     if (result.recoveredPayments) {
                         setServerRecoveredPayments(result.recoveredPayments);
                     }
+                    if (result.returnsList) {
+                        setServerReturns(result.returnsList);
+                    }
                     setTotalServerSales(result.pagination.total);
                     setTotalServerPages(result.pagination.totalPages);
                     if (result.summary) {
@@ -216,6 +225,9 @@ export default function SalesHistoryPage() {
                     setSales(result.data || result.sales || []);
                     if (result.recoveredPayments) {
                         setServerRecoveredPayments(result.recoveredPayments);
+                    }
+                    if (result.returnsList) {
+                        setServerReturns(result.returnsList);
                     }
                     setTotalServerSales(result.total ?? result.pagination?.total ?? 0);
                     setTotalServerPages(result.totalPages ?? result.pagination?.totalPages ?? 1);
@@ -397,7 +409,20 @@ export default function SalesHistoryPage() {
         return 'PAID';
     };
 
-    // Helper to determine historical Point-in-Time status and metrics on the order creation date
+    // Compute end date of active filter (used to determine if an invoice was still Pending on that date and Paid Later)
+    const activeFilterEndYMD = useMemo(() => {
+        const now = new Date();
+        if (dateFilter === 'today' || dateFilter === 'week' || dateFilter === 'month') return toYMD(now);
+        if (dateFilter === 'yesterday') {
+            const y = new Date(now);
+            y.setDate(y.getDate() - 1);
+            return toYMD(y);
+        }
+        if (dateFilter === 'custom') return customEndDate || customStartDate || null;
+        return null; // 'all'
+    }, [dateFilter, customStartDate, customEndDate]);
+
+    // Helper to determine historical Point-in-Time status and metrics on the order creation date / filtered date
     const getSaleHistoricalMetrics = (s) => {
         const net = Number(s.net_amount) || 0;
         let checkoutPaid = (s.initial_amount_paid !== undefined && s.initial_amount_paid !== null)
@@ -423,15 +448,24 @@ export default function SalesHistoryPage() {
             : Math.max(0, net - livePaid);
         const isSettledLater = Boolean(s.is_settled_later) || (livePaid > checkoutPaid);
 
-        let settledDate = s.settled_later_date || null;
-        if (!settledDate && isSettledLater) {
+        let settledAt = s.settled_later_at || s.settled_later_date || null;
+        if (!settledAt && isSettledLater) {
+            const saleYMD = toYMD(s.created_at);
             const laterPay = payments
-                .filter(p => p.party_type === 'customer' && p.reference_no === s.invoice_no && toYMD(p.payment_date || p.created_at) > toYMD(s.created_at))
-                .sort((a, b) => new Date(b.payment_date || b.created_at) - new Date(a.payment_date || a.created_at));
+                .filter(p => p.party_type === 'customer' && p.amount > 0 && (
+                    p.reference_no === s.invoice_no ||
+                    (s.customer_id && p.party_id === s.customer_id && !p.reference_no && (p.created_at > s.created_at || toYMD(p.payment_date || p.created_at) > saleYMD))
+                ))
+                .sort((a, b) => new Date(b.created_at || b.payment_date) - new Date(a.created_at || a.payment_date));
             if (laterPay.length > 0) {
-                settledDate = toYMD(laterPay[0].payment_date || laterPay[0].created_at);
+                settledAt = laterPay[0].created_at || laterPay[0].payment_date;
             }
         }
+
+        const settledYMD = settledAt ? toYMD(settledAt) : null;
+        const isPaidLaterAfterRange = Boolean(
+            activeFilterEndYMD && isSettledLater && (!settledYMD || settledYMD > activeFilterEndYMD)
+        );
 
         let currentStatus = 'PENDING';
         if (liveDue <= 0.01 && (net > 0 || livePaid > 0)) {
@@ -451,15 +485,30 @@ export default function SalesHistoryPage() {
             historicalStatus = 'PENDING';
         }
 
+        const displayStatus = isPaidLaterAfterRange ? historicalStatus : currentStatus;
+        const displayPaid = isPaidLaterAfterRange ? checkoutPaid : livePaid;
+        const displayDue = isPaidLaterAfterRange ? checkoutDue : liveDue;
+
+        const settledParsed = settledAt ? parseDate(settledAt) : null;
+        const settledLaterLabel = settledParsed && !isNaN(settledParsed.getTime())
+            ? `${settledParsed.toLocaleDateString()} • ${settledParsed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+            : (settledYMD || '');
+
         return {
             checkoutPaid,
             checkoutDue,
             livePaid,
             liveDue,
+            displayPaid,
+            displayDue,
             isSettledLater,
-            settledDate,
+            isPaidLaterAfterRange,
+            settledDate: settledYMD,
+            settledAt,
+            settledLaterLabel,
             historicalStatus,
-            currentStatus
+            currentStatus,
+            displayStatus
         };
     };
 
@@ -528,29 +577,41 @@ export default function SalesHistoryPage() {
         ? serverSummary.totalRecoveredDues
         : computedRecoveredDues;
 
-    const totalSale = serverSummary?.totalSale !== undefined ? serverSummary.totalSale : salesInDate.reduce((sum, s) => sum + (Number(s.net_amount) || 0), 0);
+    const totalSale = serverSummary?.totalSale !== undefined 
+        ? serverSummary.totalSale 
+        : salesInDate.reduce((sum, s) => sum + (Number(s.gross_amount !== undefined ? s.gross_amount : (Number(s.net_amount || 0) + Number(s.discount || 0)))) || 0, 0);
     const checkoutCashInDate = serverSummary?.checkoutCollected !== undefined
         ? serverSummary.checkoutCollected
         : salesInDate.reduce((sum, s) => sum + getSaleHistoricalMetrics(s).checkoutPaid, 0);
 
-    // Total Cash Inflow = Checkout Cash + Recovered Dues (Naqd Wasooli jo dukan me aya)
-    const totalCollected = (serverSummary?.totalCollected !== undefined && (serverSummary?.totalRecoveredDues > 0 || computedRecoveredDues === 0))
-        ? serverSummary.totalCollected
-        : (checkoutCashInDate + totalRecoveredDues);
+    const totalCashRefunds = Number(serverSummary?.totalCashRefunds || 0);
 
-    const totalPendingDues = serverSummary?.totalPendingDues !== undefined
-        ? serverSummary.totalPendingDues
-        : salesInDate.reduce((sum, s) => sum + getSaleHistoricalMetrics(s).liveDue, 0);
+    // Total Cash Inflow = Checkout Cash + Recovered Dues - Cash Refunds
+    const totalCollected = serverSummary?.totalCollected !== undefined
+        ? Number(serverSummary.totalCollected)
+        : Math.max(0, checkoutCashInDate + totalRecoveredDues - totalCashRefunds);
+
+    const newDuesAdded = serverSummary?.newDuesAdded !== undefined
+        ? Number(serverSummary.newDuesAdded)
+        : salesInDate.reduce((sum, s) => sum + getSaleHistoricalMetrics(s).checkoutDue, 0);
+
+    const hasHistoricalPaidLater = salesInDate.some(s => getSaleHistoricalMetrics(s).isPaidLaterAfterRange);
+
+    const totalPendingDues = hasHistoricalPaidLater
+        ? salesInDate.reduce((sum, s) => sum + getSaleHistoricalMetrics(s).displayDue, 0)
+        : (serverSummary?.totalPendingDues !== undefined
+            ? serverSummary.totalPendingDues
+            : salesInDate.reduce((sum, s) => sum + getSaleHistoricalMetrics(s).liveDue, 0));
 
     const totalDiscount = serverSummary?.totalDiscount !== undefined
         ? serverSummary.totalDiscount
         : salesInDate.reduce((sum, s) => sum + (Number(s.discount) || 0) + (Number(s.special_discount) || 0), 0);
 
-    const statusCounts = (serverSummary?.statusCounts && serverSummary?.totalRecoveredDues > 0) ? serverSummary.statusCounts : {
+    const statusCounts = (!hasHistoricalPaidLater && serverSummary?.statusCounts && serverSummary?.totalRecoveredDues > 0) ? serverSummary.statusCounts : {
         ALL: salesInDate.length + activeRecoveredDues.length,
-        PAID: salesInDate.filter(s => getSaleHistoricalMetrics(s).currentStatus === 'PAID').length + activeRecoveredDues.length,
-        PARTIAL: salesInDate.filter(s => getSaleHistoricalMetrics(s).currentStatus === 'PARTIAL').length,
-        PENDING: salesInDate.filter(s => getSaleHistoricalMetrics(s).currentStatus === 'PENDING').length
+        PAID: salesInDate.filter(s => getSaleHistoricalMetrics(s).displayStatus === 'PAID').length + activeRecoveredDues.length,
+        PARTIAL: salesInDate.filter(s => getSaleHistoricalMetrics(s).displayStatus === 'PARTIAL').length,
+        PENDING: salesInDate.filter(s => getSaleHistoricalMetrics(s).displayStatus === 'PENDING').length
     };
 
     // Active rows and pagination numbers (Server-Side Paginated)
@@ -566,10 +627,10 @@ export default function SalesHistoryPage() {
         const items = [];
 
         // 1. Invoices
-        if (feedType !== 'WASOOLI') {
+        if (feedType === 'ALL' || feedType === 'INVOICES') {
             paginatedSales.forEach(s => {
                 const metrics = getSaleHistoricalMetrics(s);
-                if (statusFilter !== 'ALL' && statusFilter !== metrics.currentStatus) return;
+                if (statusFilter !== 'ALL' && statusFilter !== metrics.displayStatus) return;
                 items.push({
                     type: 'invoice',
                     isRecovery: false,
@@ -583,7 +644,7 @@ export default function SalesHistoryPage() {
         }
 
         // 2. Recovered Dues (Wasooli)
-        if (feedType !== 'INVOICES' && (statusFilter === 'ALL' || statusFilter === 'PAID')) {
+        if ((feedType === 'ALL' || feedType === 'WASOOLI') && (statusFilter === 'ALL' || statusFilter === 'PAID')) {
             activeRecoveredDues.forEach(p => {
                 if (searchQuery && searchQuery.trim()) {
                     const q = searchQuery.toLowerCase();
@@ -607,29 +668,97 @@ export default function SalesHistoryPage() {
             });
         }
 
+        // 3. Sales Returns / Credit Notes
+        if ((feedType === 'ALL' || feedType === 'RETURNS') && statusFilter === 'ALL') {
+            serverReturns.forEach(ret => {
+                const cnNo = `CN-${String(ret.return_id).padStart(5, '0')}`;
+                if (searchQuery && searchQuery.trim()) {
+                    const q = searchQuery.toLowerCase();
+                    const cust = (ret.customer_name || '').toLowerCase();
+                    const biz = (ret.customer_business || '').toLowerCase();
+                    const inv = (ret.original_invoice_no || '').toLowerCase();
+                    const rem = (ret.remarks || '').toLowerCase();
+                    const cashier = (ret.cashier_name || '').toLowerCase();
+                    if (!cnNo.toLowerCase().includes(q) && !cust.includes(q) && !biz.includes(q) && !inv.includes(q) && !rem.includes(q) && !cashier.includes(q)) return;
+                }
+                items.push({
+                    type: 'return',
+                    isReturn: true,
+                    id: `ret-${ret.return_id}`,
+                    timestamp: ret.created_at,
+                    sortDate: parseDate(ret.created_at) || new Date(ret.created_at),
+                    ret: { ...ret, cnNumber: cnNo }
+                });
+            });
+        }
+
         items.sort((a, b) => b.sortDate - a.sortDate);
         return items;
-    }, [paginatedSales, activeRecoveredDues, feedType, statusFilter, searchQuery, payments]);
+    }, [paginatedSales, activeRecoveredDues, serverReturns, feedType, statusFilter, searchQuery, payments]);
 
-    // Return Modal Handlers
+    // Return Modal Handlers (Walk-in No-Invoice Return + Invoice-linked Return)
+    const ensureReturnCatalogLoaded = async () => {
+        if (returnCatalogProducts.length > 0) return;
+        try {
+            const res = await fetch(apiUrl('/api/products'));
+            if (res.ok) {
+                const data = await res.json();
+                setReturnCatalogProducts(Array.isArray(data) ? data : []);
+            }
+        } catch (err) {
+            console.error('Failed to load products for walk-in return:', err);
+        }
+    };
+
+    const handleOpenWalkinReturn = async () => {
+        setReturnMode('walkin');
+        setSelectedSale(null);
+        setReturnItems([]);
+        setRefundAmount(0);
+        setRefundMethod('cash');
+        setReturnType('saleable');
+        setReturnProductSearch('');
+        setReturnRemarks('');
+        setAutoPrintReturnThermal(true);
+        setReturnModalOpen(true);
+        await ensureReturnCatalogLoaded();
+    };
+
+    // F5 Shortcut: Opens Walk-in Sales Return modal directly on Sales page
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (e.key === 'F5') {
+                e.preventDefault();
+                handleOpenWalkinReturn();
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [returnCatalogProducts.length]);
+
     const openReturnModal = async (sale) => {
         try {
             const fullSale = await fetchSaleDetails(sale.id, false);
             if (fullSale) {
+                setReturnMode('invoice');
                 const initialReturnItems = (fullSale.items || []).map(it => ({
                     variant_id: it.variant_id,
                     packaging_type_id: it.packaging_type_id,
                     product_name: it.product_name,
                     variant_name: it.variant_name,
                     packaging_name: it.packaging_name,
-                    max_quantity: it.quantity,
+                    sold_quantity: it.quantity,
+                    already_returned: it.already_returned || 0,
+                    max_quantity: it.remaining_returnable !== undefined ? it.remaining_returnable : it.quantity,
                     return_quantity: 0,
                     unit_price: it.price,
-                    conversion_factor: 1
+                    conversion_factor: it.conversion_factor || 1
                 }));
                 setReturnItems(initialReturnItems);
                 setRefundAmount(0);
-                setRefundMethod('credit');
+                setRefundMethod(sale.customer_id ? 'credit' : 'cash');
+                setReturnType('saleable');
+                setReturnRemarks('');
                 setReturnModalOpen(true);
             }
         } catch (err) {
@@ -637,24 +766,95 @@ export default function SalesHistoryPage() {
         }
     };
 
+    const recalculateWalkinReturnTotal = (itemsList) => {
+        const total = itemsList.reduce((sum, it) => sum + ((parseFloat(it.return_quantity) || 0) * (parseFloat(it.unit_price) || 0)), 0);
+        setRefundAmount(Math.round(total * 100) / 100);
+    };
+
+    const handleAddWalkinReturnProduct = (product) => {
+        const packList = (product.packagings && product.packagings.length > 0)
+            ? product.packagings
+            : [{
+                packaging_type_id: 1,
+                packaging_name: product.unit_symbol || product.unit_name || 'PCS',
+                conversion_factor: 1,
+                selling_price: product.selling_price || 0
+            }];
+        const defaultPack = packList.find(pk => pk.is_default) || packList[0];
+
+        const existingIdx = returnItems.findIndex(
+            it => it.variant_id === product.variant_id && it.packaging_type_id === (defaultPack.packaging_type_id || defaultPack.id)
+        );
+        if (existingIdx >= 0) {
+            const updated = [...returnItems];
+            updated[existingIdx].return_quantity = (parseFloat(updated[existingIdx].return_quantity) || 0) + 1;
+            setReturnItems(updated);
+            recalculateWalkinReturnTotal(updated);
+            return;
+        }
+
+        const newItem = {
+            variant_id: product.variant_id,
+            packaging_type_id: defaultPack.packaging_type_id || defaultPack.id,
+            product_name: product.product_name,
+            variant_name: product.variant_name,
+            packaging_name: defaultPack.packaging_name || product.unit_name || 'PCS',
+            packagings: packList,
+            return_quantity: 1,
+            unit_price: parseFloat(defaultPack.selling_price) || 0,
+            conversion_factor: parseFloat(defaultPack.conversion_factor) || 1
+        };
+        const updated = [...returnItems, newItem];
+        setReturnItems(updated);
+        recalculateWalkinReturnTotal(updated);
+    };
+
+    const handleUpdateWalkinReturnItem = (idx, field, value) => {
+        const updated = [...returnItems];
+        const item = { ...updated[idx] };
+        if (field === 'packaging_type_id') {
+            const selectedPack = (item.packagings || []).find(p => String(p.packaging_type_id || p.id) === String(value));
+            if (selectedPack) {
+                item.packaging_type_id = selectedPack.packaging_type_id || selectedPack.id;
+                item.packaging_name = selectedPack.packaging_name;
+                item.conversion_factor = parseFloat(selectedPack.conversion_factor) || 1;
+                item.unit_price = parseFloat(selectedPack.selling_price) || 0;
+            }
+        } else if (field === 'return_quantity') {
+            item.return_quantity = Math.max(0, parseFloat(value) || 0);
+        } else if (field === 'unit_price') {
+            item.unit_price = Math.max(0, parseFloat(value) || 0);
+        }
+        updated[idx] = item;
+        setReturnItems(updated);
+        recalculateWalkinReturnTotal(updated);
+    };
+
+    const handleRemoveWalkinReturnItem = (idx) => {
+        const updated = returnItems.filter((_, i) => i !== idx);
+        setReturnItems(updated);
+        recalculateWalkinReturnTotal(updated);
+    };
+
     const handleUpdateReturnQty = (idx, qty) => {
         const updated = [...returnItems];
         const val = Math.min(updated[idx].max_quantity, Math.max(0, parseFloat(qty) || 0));
         updated[idx].return_quantity = val;
         setReturnItems(updated);
-
-        const total = updated.reduce((sum, it) => sum + (it.return_quantity * it.unit_price), 0);
-        setRefundAmount(total);
+        recalculateWalkinReturnTotal(updated);
     };
 
     const handleSubmitReturn = async (e) => {
         e.preventDefault();
-        const activeItems = returnItems.filter(it => it.return_quantity > 0).map(it => ({
+        const activeItems = returnItems.filter(it => (parseFloat(it.return_quantity) || 0) > 0).map(it => ({
             variant_id: it.variant_id,
             packaging_type_id: it.packaging_type_id,
-            quantity: it.return_quantity,
-            refund_price: it.unit_price,
-            conversion_factor: it.conversion_factor
+            product_name: it.product_name,
+            variant_name: it.variant_name,
+            packaging_name: it.packaging_name,
+            quantity: parseFloat(it.return_quantity),
+            refund_price: parseFloat(it.unit_price) || 0,
+            conversion_factor: parseFloat(it.conversion_factor) || 1
         }));
 
         if (activeItems.length === 0 || refundAmount <= 0) {
@@ -668,17 +868,22 @@ export default function SalesHistoryPage() {
             const localDate = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
             const localDateTime = `${localDate} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
 
+            const isInvoiceReturn = returnMode === 'invoice' && selectedSale;
+            const defaultRemarks = isInvoiceReturn
+                ? `Customer return for invoice ${selectedSale.invoice_no} (${refundMethod === 'cash' ? 'Cash Refund' : 'Khata Adjustment'})`
+                : `Walk-in return without invoice (${refundMethod === 'cash' ? 'Cash Refund' : 'Store Credit'})`;
+
             const res = await fetch(apiUrl('/api/sales/returns'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 body: JSON.stringify({
-                    sale_id: selectedSale.id,
-                    customer_id: selectedSale.customer_id,
+                    sale_id: isInvoiceReturn ? selectedSale.id : null,
+                    customer_id: isInvoiceReturn ? selectedSale.customer_id : null,
                     return_type: returnType,
                     refund_method: refundMethod,
                     items: activeItems,
                     total_refund: refundAmount,
-                    remarks: `Customer return for invoice ${selectedSale.invoice_no} (${refundMethod === 'cash' ? 'Cash Refund' : 'Khata Adjustment'})`,
+                    remarks: returnRemarks.trim() || defaultRemarks,
                     payment_date: localDate,
                     created_at: localDateTime
                 })
@@ -688,11 +893,36 @@ export default function SalesHistoryPage() {
                 const data = await res.json();
                 setReturnModalOpen(false);
                 loadData();
-                if (data.returnId) {
+
+                // Print 80mm thermal return receipt for customer if enabled
+                if (autoPrintReturnThermal) {
+                    try {
+                        const thermalHtml = generateThermalReturnReceiptHtml({
+                            returnId: data.returnId,
+                            cnNumber: data.cnNumber,
+                            customer_name: isInvoiceReturn ? (selectedSale.customer_name || 'Walk-in Customer') : 'Walk-in Customer',
+                            invoice_no: isInvoiceReturn ? selectedSale.invoice_no : 'Walk-in Return (No Invoice)',
+                            return_type: returnType,
+                            refund_method: refundMethod,
+                            total_refund: refundAmount,
+                            remarks: returnRemarks.trim() || '',
+                            items: activeItems
+                        }, settings, user?.full_name || user?.username || 'Cashier');
+                        const isSilent = settings?.silent_print === 'true' || settings?.silent_print === true;
+                        const thermalPrinter = (settings?.selected_printer && settings.selected_printer !== 'os_dialog')
+                            ? settings.selected_printer
+                            : null;
+                        triggerPrintHtml(thermalHtml, { silent: isSilent, printerName: thermalPrinter, format: 'thermal' });
+                    } catch (printErr) {
+                        console.warn('Thermal return receipt print skipped:', printErr);
+                    }
+                }
+
+                if (data.returnId && isInvoiceReturn) {
                     setActiveCreditNoteReturnId(data.returnId);
                     setCreditNoteModalOpen(true);
                 } else {
-                    showAlert('Return Successful', `Sales Return processed successfully! Refund Amount: Rs. ${refundAmount.toLocaleString()}`, 'success');
+                    showAlert('Return Processed', `Walk-in Return ${data.cnNumber || ''} completed! Refund: Rs. ${refundAmount.toLocaleString()}${autoPrintReturnThermal ? ' • Thermal receipt sent to printer.' : ''}`, 'success');
                 }
             } else {
                 const data = await res.json();
@@ -756,30 +986,30 @@ export default function SalesHistoryPage() {
     };
 
     const handlePrintInvoice = async (format = 'a4') => {
-        const isThermal = format === 'thermal';
+        const isA4 = format === 'a4';
         const a4Printer = (settings?.selected_a4_printer || '').trim();
         const thermalPrinter = (settings?.selected_printer || '').trim();
-        const isThermalTarget = isThermal || ((!a4Printer || a4Printer === 'same_as_thermal') &&
-            /pos|80|receipt|thermal|blackcopper|xp-|xprinter|rpp/i.test(thermalPrinter));
 
-        const targetPrinter = !isThermal && a4Printer && a4Printer !== 'same_as_thermal' ? a4Printer : thermalPrinter;
+        const targetPrinter = isA4
+            ? (a4Printer && a4Printer !== 'same_as_thermal' ? a4Printer : '')
+            : thermalPrinter;
         const isSilent = settings?.silent_print === 'true' && targetPrinter !== 'os_dialog';
 
         if (!selectedSale) return;
 
         let htmlContent = '';
-        if (isThermalTarget) {
-            htmlContent = generateThermalReceiptHtml(
+        if (isA4) {
+            htmlContent = generateWholesaleInvoiceA4Html(
                 selectedSale,
                 settings,
-                user?.full_name || user?.username || 'Cashier',
                 prevBalance,
                 newBalance
             );
         } else {
-            htmlContent = generateWholesaleInvoiceA4Html(
+            htmlContent = generateThermalReceiptHtml(
                 selectedSale,
                 settings,
+                user?.full_name || user?.username || 'Cashier',
                 prevBalance,
                 newBalance
             );
@@ -788,7 +1018,7 @@ export default function SalesHistoryPage() {
         await triggerPrintHtml(htmlContent, {
             silent: isSilent,
             printerName: targetPrinter !== 'os_dialog' ? targetPrinter : '',
-            format: isThermalTarget ? 'thermal' : 'a4'
+            format: isA4 ? 'a4' : 'thermal'
         });
     };
 
@@ -801,35 +1031,10 @@ export default function SalesHistoryPage() {
 
         setDownloadingPdf(true);
         try {
-            const html2canvasModule = await import('html2canvas-pro');
-            const html2canvas = html2canvasModule.default || html2canvasModule;
-            const { jsPDF } = await import('jspdf');
-
             const rawInv = selectedSale?.invoice_no || 'INVOICE';
-            const cleanInv = rawInv.replace(/[^a-zA-Z0-9_-]/g, '_');
-
-            const canvas = await html2canvas(element, {
-                scale: 2,
-                useCORS: true,
-                logging: false,
-                backgroundColor: '#ffffff'
-            });
-
-            const imgData = canvas.toDataURL('image/jpeg', 0.98);
-            const pdf = new jsPDF({
-                orientation: 'portrait',
-                unit: 'mm',
-                format: 'a4'
-            });
-
-            const pdfWidth = pdf.internal.pageSize.getWidth();
-            const pdfHeight = pdf.internal.pageSize.getHeight();
-            const margin = 8;
-            const printWidth = pdfWidth - (margin * 2);
-            const printHeight = (canvas.height * printWidth) / canvas.width;
-
-            pdf.addImage(imgData, 'JPEG', margin, margin, printWidth, Math.min(printHeight, pdfHeight - (margin * 2)));
-            pdf.save(`${cleanInv}_A4.pdf`);
+            const cleanInv = String(rawInv).replace(/[^a-zA-Z0-9_-]/g, '_');
+            await downloadAndOpenPdf(element, `${cleanInv}_A4.pdf`);
+            showAlert('A4 Bill Ready', 'A4 invoice opened in Chrome. You can view, print, or download it directly from Chrome.', 'success');
         } catch (err) {
             console.error('PDF export error:', err);
             showAlert('PDF Export Failed', err.message || 'Could not generate PDF', 'error');
@@ -953,8 +1158,9 @@ export default function SalesHistoryPage() {
                         Review wholesale invoices, customer dues, wasooli recoveries, and returns
                     </p>
                 </div>
-                <div className="flex items-center gap-2 2xl:gap-3 shrink-0">
+                <div className="flex items-center gap-2 2xl:gap-3 shrink-0 flex-wrap">
                     <button
+                        type="button"
                         onClick={loadData}
                         disabled={loading}
                         className="px-3 2xl:px-4 py-1.5 2xl:py-2 border border-gray-200 bg-white hover:bg-blue-50 hover:border-blue-300 text-gray-700 rounded-xl text-xs 2xl:text-sm font-semibold inline-flex items-center gap-1.5 2xl:gap-2 transition-all cursor-pointer shadow-2xs"
@@ -962,6 +1168,15 @@ export default function SalesHistoryPage() {
                     >
                         <IconRefresh className={`w-3.5 h-3.5 2xl:w-4 2xl:h-4 ${loading ? 'animate-spin text-[#0B3B7B]' : 'text-gray-500'}`} />
                         <span>Refresh</span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={handleOpenWalkinReturn}
+                        className="px-3 2xl:px-4 py-1.5 2xl:py-2 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs 2xl:text-sm font-bold inline-flex items-center gap-1.5 2xl:gap-2 transition-all cursor-pointer shadow-xs border border-purple-700 active:scale-95"
+                        title="Process Walk-in Sales Return without Invoice (Shortcut: F5)"
+                    >
+                        <IconReturn className="w-3.5 h-3.5 2xl:w-4 2xl:h-4 text-white" />
+                        <span>Return (F5)</span>
                     </button>
                     <Link
                         href="/pos"
@@ -974,7 +1189,7 @@ export default function SalesHistoryPage() {
             </div>
 
             {/* 5 KPIS CARDS (WHOLESALE NAVY & EMERALD PALETTE) */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 2xl:gap-3.5">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-[1fr_1.4fr_1fr_1fr_0.85fr] gap-2.5 2xl:gap-3.5">
                 {/* 1. TOTAL SALE */}
                 <div className="bg-white p-3 2xl:p-4 rounded-2xl border border-blue-200 hover:border-blue-400 shadow-xs transition-all flex flex-col justify-between">
                     <div className="flex items-center justify-between">
@@ -1003,14 +1218,12 @@ export default function SalesHistoryPage() {
                     </div>
                     <div className="mt-2">
                         <div className="text-base sm:text-lg 2xl:text-xl font-black text-emerald-700 tracking-tight">
-                            Rs. {totalCollected.toLocaleString()}
+                            {loading && !serverSummary ? '...' : `Rs. ${totalCollected.toLocaleString()}`}
                         </div>
-                        <div className="text-[9.5px] 2xl:text-[11px] text-gray-400 font-medium mt-0.5 truncate" title={`Cash Inflow Formula: Total Sale (Rs. ${totalSale.toLocaleString()}) + Recovered Dues (Rs. ${totalRecoveredDues.toLocaleString()}) - New Dues (Rs. ${totalPendingDues.toLocaleString()}) - Discounts (Rs. ${totalDiscount.toLocaleString()}) = Rs. ${totalCollected.toLocaleString()} Total Cash Inflow`}>
-                            {checkoutCashInDate > 0 && totalRecoveredDues > 0
-                                ? `Rs. ${checkoutCashInDate.toLocaleString()} sale + Rs. ${totalRecoveredDues.toLocaleString()} wasooli`
-                                : totalRecoveredDues > 0
-                                    ? `Rs. ${totalRecoveredDues.toLocaleString()} wasooli`
-                                    : `Rs. ${checkoutCashInDate.toLocaleString()} checkout cash`}
+                        <div className="text-[8.5px] sm:text-[9.5px] 2xl:text-[10.5px] text-gray-500 font-medium mt-0.5 leading-tight break-words">
+                            {loading && !serverSummary
+                                ? 'Loading...'
+                                : `Sale ${totalSale.toLocaleString()} - Dues ${newDuesAdded.toLocaleString()} + Rec ${totalRecoveredDues.toLocaleString()} - Ref ${totalCashRefunds.toLocaleString()} - Disc ${totalDiscount.toLocaleString()}`}
                         </div>
                     </div>
                 </div>
@@ -1242,6 +1455,16 @@ export default function SalesHistoryPage() {
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
                                 Dues Recovered ({activeRecoveredDues.length})
                             </button>
+                            <button
+                                onClick={() => setFeedType('RETURNS')}
+                                className={`px-2.5 2xl:px-3.5 py-0.5 2xl:py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${feedType === 'RETURNS'
+                                    ? 'bg-rose-700 text-white font-extrabold shadow-xs'
+                                    : 'text-gray-600 hover:text-rose-700 hover:bg-rose-50/50'
+                                    }`}
+                            >
+                                <span className="w-1.5 h-1.5 rounded-full bg-rose-400"></span>
+                                Returns ({serverReturns.length})
+                            </button>
                         </div>
                         <span className="text-gray-300">|</span>
                         <span className="text-gray-500 font-medium text-[11px] 2xl:text-xs">
@@ -1293,6 +1516,50 @@ export default function SalesHistoryPage() {
                         </div>
                     ) : (
                         displayFeedItems.map((item) => {
+                            if (item.isReturn) {
+                                const r = item.ret;
+                                const isCash = r.refund_method === 'cash';
+                                return (
+                                    <div key={item.id} className="p-3.5 space-y-2.5 bg-rose-50/70 rounded-2xl border border-rose-200 shadow-xs border-l-4 border-l-rose-600">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                <span className="font-mono font-bold text-rose-900 text-xs px-1.5 py-0.5 rounded bg-rose-100 border border-rose-200">
+                                                    {r.cnNumber}
+                                                </span>
+                                                <span className="text-[10px] font-extrabold text-rose-700 bg-white px-1.5 py-0.5 rounded border border-rose-200">
+                                                    {r.return_type === 'damaged' ? 'Damaged' : 'Saleable'}
+                                                </span>
+                                            </div>
+                                            <span className="text-[10px] text-gray-500 font-medium">
+                                                {parseDate(r.created_at)?.toLocaleDateString()} • {parseDate(r.created_at)?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                            </span>
+                                        </div>
+                                        <div>
+                                            <div className="font-extrabold text-gray-900 text-xs">{r.customer_name || 'Walk-in Customer'}</div>
+                                            <div className="text-[10.5px] text-gray-500">
+                                                {r.original_invoice_no ? `Ref: ${r.original_invoice_no}` : 'Walk-in Return (No Invoice)'} • by {r.cashier_name || 'admin'}
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center justify-between pt-1.5 border-t border-rose-200/70">
+                                            <div>
+                                                <div className="font-black text-rose-700 text-xs font-mono">-Rs. {Number(r.total_refund || 0).toLocaleString()}</div>
+                                                <div className="text-[9.5px] font-bold text-rose-600">{isCash ? 'Cash Refund' : 'Khata Credit'}</div>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setActiveCreditNoteReturnId(r.return_id);
+                                                    setCreditNoteModalOpen(true);
+                                                }}
+                                                className="px-2.5 py-1 text-[10px] font-bold rounded-lg bg-purple-700 hover:bg-purple-800 text-white cursor-pointer shadow-2xs"
+                                            >
+                                                Credit Note
+                                            </button>
+                                        </div>
+                                    </div>
+                                );
+                            }
+
                             if (item.isRecovery) {
                                 const p = item.recovery;
                                 const invTokens = extractInvoiceTokens(p.reference_no);
@@ -1415,31 +1682,45 @@ export default function SalesHistoryPage() {
                             const saleDiscount = (Number(s.discount) || 0) + (Number(s.special_discount) || 0);
 
                             return (
-                                <div key={item.id} className="p-3.5 space-y-2.5 bg-white rounded-2xl border border-gray-200 shadow-xs hover:border-blue-300 hover:shadow-sm transition-all">
+                                <div
+                                    key={item.id}
+                                    className={`p-3.5 space-y-2.5 rounded-2xl border shadow-xs hover:shadow-sm transition-all ${
+                                        m.isPaidLaterAfterRange
+                                            ? 'bg-red-100/90 border-red-300 border-l-4 border-l-red-600'
+                                            : 'bg-white border-gray-200 hover:border-blue-300'
+                                    }`}
+                                >
                                     {/* Top Row: Invoice # + Status + Date */}
                                     <div className="flex items-center justify-between gap-2">
                                         <div className="flex items-center gap-1.5 flex-wrap">
                                             <span className="font-mono font-bold text-[#0B3B7B] bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-md text-xs">
                                                 {s.invoice_no}
                                             </span>
-                                            {m.currentStatus === 'PAID' && (
+                                            {m.displayStatus === 'PAID' && (
                                                 <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
                                                     <IconCheck className="w-2.5 h-2.5 text-emerald-600" /> Paid
                                                 </span>
                                             )}
-                                            {m.currentStatus === 'PARTIAL' && (
+                                            {m.displayStatus === 'PARTIAL' && (
                                                 <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
                                                     <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span> Partial
                                                 </span>
                                             )}
-                                            {m.currentStatus === 'PENDING' && (
+                                            {m.displayStatus === 'PENDING' && (
                                                 <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[9px] font-bold bg-rose-50 text-rose-800 border border-rose-200">
                                                     <IconWarning className="w-2.5 h-2.5 text-rose-600" /> Pending
                                                 </span>
                                             )}
                                             {m.isSettledLater && (
-                                                <span className="text-[8.5px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded" title={`Settled later on ${m.settledDate || 'subsequent date'}`}>
-                                                    Paid later
+                                                <span
+                                                    className={`text-[8.5px] font-bold px-1.5 py-0.2 rounded border ${
+                                                        m.isPaidLaterAfterRange
+                                                            ? 'text-rose-900 bg-rose-100 border-rose-300'
+                                                            : 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                                                    }`}
+                                                    title={`Paid later on ${m.settledLaterLabel || m.settledDate || 'subsequent date'}`}
+                                                >
+                                                    Paid later{m.settledLaterLabel ? `: ${m.settledLaterLabel}` : ''}
                                                 </span>
                                             )}
                                         </div>
@@ -1479,7 +1760,7 @@ export default function SalesHistoryPage() {
                                             </div>
                                             {saleDiscount > 0 && (
                                                 <div className="text-[8px] text-gray-400 line-through">
-                                                    Rs. {(Number(s.total_amount) || (Number(s.net_amount) + saleDiscount)).toLocaleString()}
+                                                    Rs. {(Number(s.gross_amount) || Number(s.total_amount) || (Number(s.net_amount) + saleDiscount)).toLocaleString()}
                                                 </div>
                                             )}
                                         </div>
@@ -1496,14 +1777,14 @@ export default function SalesHistoryPage() {
                                         <div>
                                             <div className="text-gray-400 uppercase text-[8px] font-bold">Paid</div>
                                             <div className="font-bold text-emerald-700 text-xs leading-tight">
-                                                Rs. {Number(m.livePaid).toLocaleString()}
+                                                Rs. {Number(m.displayPaid).toLocaleString()}
                                             </div>
                                         </div>
                                         <div>
                                             <div className="text-gray-400 uppercase text-[8px] font-bold">Due</div>
-                                            {m.liveDue > 0 ? (
+                                            {m.displayDue > 0 ? (
                                                 <div className="font-black text-rose-600 text-xs leading-tight">
-                                                    Rs. {Number(m.liveDue).toLocaleString()}
+                                                    Rs. {Number(m.displayDue).toLocaleString()}
                                                 </div>
                                             ) : (
                                                 <div className="text-gray-400 font-medium">Rs. 0</div>
@@ -1555,23 +1836,24 @@ export default function SalesHistoryPage() {
                     )}
                 </div>
 
-                {/* 2. DESKTOP / TABLET DATA TABLE (RESPONSIVE 6 COLUMNS WITH NATURAL PROPORTIONS) */}
+                {/* 2. DESKTOP / TABLET DATA TABLE (RESPONSIVE 7 COLUMNS WITH NATURAL PROPORTIONS) */}
                 <div className="hidden md:block w-full p-2.5 sm:p-4 2xl:p-5 bg-slate-50/50 rounded-2xl border border-gray-200 overflow-x-auto">
-                    <table className="w-full text-left text-xs 2xl:text-sm border-separate border-spacing-y-2 2xl:border-spacing-y-2.5 min-w-[920px]">
+                    <table className="w-full text-left text-xs 2xl:text-sm border-separate border-spacing-y-2 2xl:border-spacing-y-2.5 min-w-[960px]">
                         <thead>
                             <tr className="text-gray-500 font-bold uppercase tracking-wider text-[10px] 2xl:text-xs">
-                                <th className="py-2.5 2xl:py-3.5 px-3.5 2xl:px-4 w-[16%] min-w-[130px] 2xl:min-w-[160px]">Invoice &amp; Date</th>
-                                <th className="py-2.5 2xl:py-3.5 px-3.5 2xl:px-4 w-[32%] min-w-[220px] 2xl:min-w-[320px]">Customer &amp; Shop</th>
-                                <th className="py-2.5 2xl:py-3.5 px-2 text-center w-[10%] min-w-[90px] 2xl:min-w-[110px]">Status</th>
-                                <th className="py-2.5 2xl:py-3.5 px-3 2xl:px-4 text-right w-[14%] min-w-[110px] 2xl:min-w-[130px]">Net Total</th>
-                                <th className="py-2.5 2xl:py-3.5 px-3 2xl:px-4 text-right w-[15%] min-w-[110px] 2xl:min-w-[130px]">Paid / Due</th>
-                                <th className="py-2.5 2xl:py-3.5 px-3 2xl:px-4 text-center w-[13%] min-w-[130px] 2xl:min-w-[160px]">Actions</th>
+                                <th className="py-2.5 2xl:py-3.5 px-3.5 2xl:px-4 w-[15%] min-w-[125px] 2xl:min-w-[155px]">Invoice &amp; Date</th>
+                                <th className="py-2.5 2xl:py-3.5 px-3.5 2xl:px-4 w-[27%] min-w-[200px] 2xl:min-w-[280px]">Customer &amp; Shop</th>
+                                <th className="py-2.5 2xl:py-3.5 px-2 text-center w-[10%] min-w-[90px] 2xl:min-w-[105px]">Status</th>
+                                <th className="py-2.5 2xl:py-3.5 px-3 2xl:px-4 text-right w-[11%] min-w-[95px] 2xl:min-w-[115px]">Bill Value</th>
+                                <th className="py-2.5 2xl:py-3.5 px-3 2xl:px-4 text-right w-[12%] min-w-[105px] 2xl:min-w-[125px]">Net Total</th>
+                                <th className="py-2.5 2xl:py-3.5 px-3 2xl:px-4 text-right w-[13%] min-w-[105px] 2xl:min-w-[125px]">Paid / Due</th>
+                                <th className="py-2.5 2xl:py-3.5 px-3 2xl:px-4 text-center w-[12%] min-w-[125px] 2xl:min-w-[155px]">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             {displayFeedItems.length === 0 ? (
                                 <tr>
-                                    <td colSpan="6" className="text-center py-12 text-gray-400 bg-white rounded-2xl border border-gray-200">
+                                    <td colSpan="7" className="text-center py-12 text-gray-400 bg-white rounded-2xl border border-gray-200">
                                         <div className="flex flex-col items-center justify-center gap-1.5">
                                             <IconReceipt className="w-8 h-8 text-[#0B3B7B]/40" />
                                             <span className="font-bold text-xs 2xl:text-sm text-gray-700">No transactions found</span>
@@ -1591,6 +1873,84 @@ export default function SalesHistoryPage() {
                                 </tr>
                             ) : (
                                 displayFeedItems.map((item) => {
+                                    if (item.isReturn) {
+                                        const r = item.ret;
+                                        const isCash = r.refund_method === 'cash';
+                                        return (
+                                            <tr key={item.id} className="group transition-all duration-150 shadow-xs hover:shadow-md">
+                                                {/* 1. CN # & Date */}
+                                                <td className="py-3 2xl:py-3.5 px-3.5 2xl:px-4 whitespace-nowrap rounded-l-2xl border-y border-l-4 border-y-rose-200/90 border-l-rose-600 bg-rose-50/70 group-hover:bg-rose-100/60 transition-colors">
+                                                    <div className="font-mono font-extrabold text-rose-900 text-xs 2xl:text-sm">
+                                                        {r.cnNumber}
+                                                    </div>
+                                                    <div className="text-[10px] 2xl:text-xs text-rose-700/80 font-medium mt-0.5">
+                                                        {parseDate(r.created_at)?.toLocaleDateString()} • {parseDate(r.created_at)?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                    </div>
+                                                </td>
+
+                                                {/* 2. Customer & Ref */}
+                                                <td className="py-3 2xl:py-3.5 px-3.5 2xl:px-4 border-y border-rose-200/90 bg-rose-50/70 group-hover:bg-rose-100/60 transition-colors">
+                                                    <div className="font-extrabold text-gray-900 text-xs 2xl:text-sm truncate">
+                                                        {r.customer_name || 'Walk-in Customer'}
+                                                    </div>
+                                                    <div className="text-[10px] 2xl:text-xs text-gray-600 font-medium flex items-center gap-1.5 flex-wrap mt-0.5">
+                                                        <span>{r.original_invoice_no ? `Ref: ${r.original_invoice_no}` : 'Walk-in Return (No Invoice)'}</span>
+                                                        <span className="text-gray-300">•</span>
+                                                        <span>by {r.cashier_name || 'admin'}</span>
+                                                    </div>
+                                                </td>
+
+                                                {/* 3. Status */}
+                                                <td className="py-3 2xl:py-3.5 px-2 text-center whitespace-nowrap border-y border-rose-200/90 bg-rose-50/70 group-hover:bg-rose-100/60 transition-colors">
+                                                    <span className="inline-flex items-center gap-1 px-2.5 2xl:px-3 py-0.5 2xl:py-1 rounded-full text-[9.5px] 2xl:text-xs font-extrabold bg-rose-100 text-rose-800 border border-rose-300 shadow-2xs">
+                                                        <IconReturn className="w-2.5 h-2.5 2xl:w-3 2xl:h-3 text-rose-700" />
+                                                        Return
+                                                    </span>
+                                                    <div className="text-[9px] font-bold text-rose-700 mt-0.5">
+                                                        {r.return_type === 'damaged' ? 'Damaged' : 'Saleable'}
+                                                    </div>
+                                                </td>
+
+                                                {/* 4. Bill Value */}
+                                                <td className="py-3 2xl:py-3.5 px-3 2xl:px-4 text-right whitespace-nowrap border-y border-rose-200/90 bg-rose-50/70 group-hover:bg-rose-100/60 transition-colors">
+                                                    <span className="text-rose-400 font-mono text-xs">—</span>
+                                                </td>
+
+                                                {/* 5. Net Refund */}
+                                                <td className="py-3 2xl:py-3.5 px-3 2xl:px-4 text-right whitespace-nowrap border-y border-rose-200/90 bg-rose-50/70 group-hover:bg-rose-100/60 transition-colors">
+                                                    <div className="font-black text-rose-700 text-xs sm:text-[13px] 2xl:text-sm font-mono leading-none">
+                                                        -Rs. {Number(r.total_refund || 0).toLocaleString()}
+                                                    </div>
+                                                    <div className="text-[9.5px] 2xl:text-[11px] text-rose-700 font-semibold mt-1">
+                                                        {isCash ? 'Cash Refund' : 'Khata Credit'}
+                                                    </div>
+                                                </td>
+
+                                                {/* 6. Paid / Due */}
+                                                <td className="py-3 2xl:py-3.5 px-3.5 2xl:px-4 text-right whitespace-nowrap text-xs 2xl:text-sm border-y border-rose-200/90 bg-rose-50/70 group-hover:bg-rose-100/60 transition-colors">
+                                                    <span className="inline-flex items-center gap-0.5 text-[9.5px] 2xl:text-xs font-extrabold text-rose-800 bg-rose-100 border border-rose-300 px-2 2xl:px-2.5 py-0.5 2xl:py-1 rounded-full">
+                                                        {isCash ? 'Paid Out' : 'Credited'}
+                                                    </span>
+                                                </td>
+
+                                                {/* 7. Actions */}
+                                                <td className="py-3 2xl:py-3.5 px-3 2xl:px-4 text-center whitespace-nowrap rounded-r-2xl border-y border-r border-rose-200/90 bg-rose-50/70 group-hover:bg-rose-100/60 transition-colors">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setActiveCreditNoteReturnId(r.return_id);
+                                                            setCreditNoteModalOpen(true);
+                                                        }}
+                                                        className="px-2.5 py-1 text-[10px] 2xl:text-xs font-bold rounded-lg bg-purple-700 hover:bg-purple-800 text-white shadow-2xs cursor-pointer transition-all"
+                                                        title="View Credit Note & Print"
+                                                    >
+                                                        Credit Note
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        );
+                                    }
+
                                     if (item.isRecovery) {
                                         const p = item.recovery;
                                         const invTokens = extractInvoiceTokens(p.reference_no);
@@ -1666,6 +2026,11 @@ export default function SalesHistoryPage() {
                                                         <IconPayments className="w-2.5 h-2.5 2xl:w-3 2xl:h-3 text-emerald-700" />
                                                         Wasooli
                                                     </span>
+                                                </td>
+
+                                                {/* Bill Value (N/A for recovery voucher) */}
+                                                <td className="py-3 2xl:py-3.5 px-3 2xl:px-4 text-right whitespace-nowrap border-y border-emerald-300/90 bg-emerald-50/80 group-hover:bg-emerald-100/80 transition-colors">
+                                                    <span className="text-emerald-600/60 font-mono text-xs">—</span>
                                                 </td>
 
                                                 {/* 4. Recovered Amount */}
@@ -1752,11 +2117,14 @@ export default function SalesHistoryPage() {
                                     const s = item.sale;
                                     const m = item.metrics;
                                     const saleDiscount = (Number(s.discount) || 0) + (Number(s.special_discount) || 0);
+                                    const rowCellBg = m.isPaidLaterAfterRange
+                                        ? 'border-red-300 bg-red-100/90 group-hover:bg-red-200/70'
+                                        : 'border-gray-200/90 group-hover:border-blue-200 bg-white group-hover:bg-blue-50/40';
 
                                     return (
                                         <tr key={s.id} className="group transition-all duration-150 [filter:drop-shadow(0_1px_3px_rgba(11,59,123,0.06))] hover:[filter:drop-shadow(0_4px_8px_rgba(11,59,123,0.12))]">
                                             {/* 1. Invoice # & Date */}
-                                            <td className="py-3 2xl:py-3.5 px-3.5 2xl:px-4 whitespace-nowrap rounded-l-2xl border-y border-l border-gray-200/90 group-hover:border-blue-200 bg-white group-hover:bg-blue-50/40 transition-colors">
+                                            <td className={`py-3 2xl:py-3.5 px-3.5 2xl:px-4 whitespace-nowrap rounded-l-2xl border-y ${m.isPaidLaterAfterRange ? 'border-l-4 border-l-red-600' : 'border-l'} ${rowCellBg} transition-colors`}>
                                                 <div className="flex items-center gap-1.5">
                                                     <span className="font-mono font-bold text-[#0B3B7B] text-xs 2xl:text-sm px-2 2xl:px-2.5 py-0.5 2xl:py-1 rounded-md bg-blue-50 border border-blue-200 inline-block shadow-2xs">
                                                         {s.invoice_no}
@@ -1771,7 +2139,7 @@ export default function SalesHistoryPage() {
                                             </td>
 
                                             {/* 2. Customer & Shop */}
-                                            <td className="py-3 2xl:py-3.5 px-3.5 2xl:px-4 border-y border-gray-200/90 group-hover:border-blue-200 bg-white group-hover:bg-blue-50/40 transition-colors">
+                                            <td className={`py-3 2xl:py-3.5 px-3.5 2xl:px-4 border-y ${rowCellBg} transition-colors`}>
                                                 <div className="font-extrabold text-gray-900 text-xs 2xl:text-sm break-words line-clamp-1 2xl:line-clamp-none" title={s.customer_name || 'Walk-in Customer'}>
                                                     {s.customer_name || 'Walk-in Customer'}
                                                 </div>
@@ -1787,42 +2155,59 @@ export default function SalesHistoryPage() {
                                             </td>
 
                                             {/* 3. Status Badge */}
-                                            <td className="py-3 2xl:py-3.5 px-2 text-center whitespace-nowrap border-y border-gray-200/90 group-hover:border-blue-200 bg-white group-hover:bg-blue-50/40 transition-colors">
+                                            <td className={`py-3 2xl:py-3.5 px-2 text-center whitespace-nowrap border-y ${rowCellBg} transition-colors`}>
                                                 <div className="flex flex-col items-center gap-1">
-                                                    {m.currentStatus === 'PAID' && (
+                                                    {m.displayStatus === 'PAID' && (
                                                         <span className="inline-flex items-center gap-1 px-2.5 2xl:px-3 py-0.5 2xl:py-1 rounded-full text-[9.5px] 2xl:text-xs font-extrabold bg-emerald-50 text-emerald-800 border border-emerald-200 shadow-2xs">
                                                             <IconCheck className="w-2.5 h-2.5 2xl:w-3 2xl:h-3 text-emerald-600" />
                                                             Paid
                                                         </span>
                                                     )}
-                                                    {m.currentStatus === 'PARTIAL' && (
+                                                    {m.displayStatus === 'PARTIAL' && (
                                                         <span className="inline-flex items-center gap-1 px-2.5 2xl:px-3 py-0.5 2xl:py-1 rounded-full text-[9.5px] 2xl:text-xs font-extrabold bg-amber-50 text-amber-800 border border-amber-200 shadow-2xs">
                                                             <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
                                                             Partial
                                                         </span>
                                                     )}
-                                                    {m.currentStatus === 'PENDING' && (
+                                                    {m.displayStatus === 'PENDING' && (
                                                         <span className="inline-flex items-center gap-1 px-2.5 2xl:px-3 py-0.5 2xl:py-1 rounded-full text-[9.5px] 2xl:text-xs font-extrabold bg-rose-50 text-rose-800 border border-rose-200 shadow-2xs">
                                                             <IconWarning className="w-2.5 h-2.5 2xl:w-3 2xl:h-3 text-rose-600" />
                                                             Pending
                                                         </span>
                                                     )}
                                                     {m.isSettledLater && (
-                                                        <span className="text-[8.5px] 2xl:text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded-full" title={`Settled later on ${m.settledDate || 'subsequent date'}`}>
-                                                            Paid later
+                                                        <span
+                                                            className={`text-[8.5px] 2xl:text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${
+                                                                m.isPaidLaterAfterRange
+                                                                    ? 'text-rose-900 bg-rose-100 border-rose-300'
+                                                                    : 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                                                            }`}
+                                                            title={`Paid later on ${m.settledLaterLabel || m.settledDate || 'subsequent date'}`}
+                                                        >
+                                                            Paid later{m.settledLaterLabel ? `: ${m.settledLaterLabel}` : ''}
                                                         </span>
                                                     )}
                                                 </div>
                                             </td>
 
-                                            {/* 4. Net Total & Discount */}
-                                            <td className="py-3 2xl:py-3.5 px-3.5 2xl:px-4 text-right whitespace-nowrap border-y border-gray-200/90 group-hover:border-blue-200 bg-white group-hover:bg-blue-50/40 transition-colors">
+                                            {/* 4. Bill Value (Gross Total) */}
+                                            <td className={`py-3 2xl:py-3.5 px-3 2xl:px-4 text-right whitespace-nowrap border-y ${rowCellBg} transition-colors`}>
+                                                <div className="font-bold text-gray-800 text-xs sm:text-[13px] 2xl:text-sm font-mono leading-none">
+                                                    Rs. {(Number(s.gross_amount) || Number(s.total_amount) || (Number(s.net_amount) + saleDiscount)).toLocaleString()}
+                                                </div>
+                                                <div className="text-[9.5px] 2xl:text-[11px] text-gray-400 font-medium mt-1">
+                                                    Gross Bill
+                                                </div>
+                                            </td>
+
+                                            {/* 5. Net Total & Discount */}
+                                            <td className={`py-3 2xl:py-3.5 px-3 2xl:px-4 text-right whitespace-nowrap border-y ${rowCellBg} transition-colors`}>
                                                 <div className="font-black text-gray-900 text-xs sm:text-[13px] 2xl:text-sm font-mono leading-none">
                                                     Rs. {Number(s.net_amount).toLocaleString()}
                                                 </div>
                                                 {saleDiscount > 0 ? (
                                                     <div className="text-[9.5px] 2xl:text-[11px] text-amber-700 font-bold mt-1">
-                                                        <span className="bg-amber-50 border border-amber-200 px-1.5 py-0.2 rounded inline-block">
+                                                        <span className="bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.2 rounded inline-block">
                                                             -Rs. {saleDiscount.toLocaleString()}
                                                         </span>
                                                     </div>
@@ -1832,13 +2217,13 @@ export default function SalesHistoryPage() {
                                             </td>
 
                                             {/* 6. Paid / Due */}
-                                            <td className="py-3 2xl:py-3.5 px-3.5 2xl:px-4 text-right whitespace-nowrap text-xs 2xl:text-sm border-y border-gray-200/90 group-hover:border-blue-200 bg-white group-hover:bg-blue-50/40 transition-colors">
+                                            <td className={`py-3 2xl:py-3.5 px-3.5 2xl:px-4 text-right whitespace-nowrap text-xs 2xl:text-sm border-y ${rowCellBg} transition-colors`}>
                                                 <div className="font-bold text-emerald-700 font-mono text-xs 2xl:text-sm">
-                                                    Paid: Rs. {Number(m.livePaid).toLocaleString()}
+                                                    Paid: Rs. {Number(m.displayPaid).toLocaleString()}
                                                 </div>
-                                                {m.liveDue > 0 ? (
+                                                {m.displayDue > 0 ? (
                                                     <div className="text-[11px] 2xl:text-xs font-black text-rose-600 font-mono mt-0.5">
-                                                        Due: Rs. {Number(m.liveDue).toLocaleString()}
+                                                        Due: Rs. {Number(m.displayDue).toLocaleString()}
                                                     </div>
                                                 ) : (
                                                     <div className="text-[10px] 2xl:text-xs text-gray-400 font-semibold mt-0.5">
@@ -1848,7 +2233,7 @@ export default function SalesHistoryPage() {
                                             </td>
 
                                             {/* 7. Quick Actions */}
-                                            <td className="py-3 2xl:py-3.5 px-3 2xl:px-4 text-center whitespace-nowrap rounded-r-2xl border-y border-r border-gray-200/90 group-hover:border-blue-200 bg-white group-hover:bg-blue-50/40 transition-colors">
+                                            <td className={`py-3 2xl:py-3.5 px-3 2xl:px-4 text-center whitespace-nowrap rounded-r-2xl border-y border-r ${rowCellBg} transition-colors`}>
                                                 <div className="inline-flex items-center justify-center gap-1">
                                                     <button
                                                         onClick={() => fetchSaleDetails(s.id, true)}
@@ -2084,15 +2469,20 @@ export default function SalesHistoryPage() {
                 elemId="printable-invoice-thermal"
             />
 
-            {/* SALES RETURN MODAL */}
-            {returnModalOpen && selectedSale && (
+            {/* SALES RETURN MODAL (Walk-in No-Invoice F5 + Invoice-linked Return) */}
+            {returnModalOpen && (returnMode === 'walkin' || selectedSale) && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 overflow-y-auto">
-                    <form onSubmit={handleSubmitReturn} className="bg-white rounded-3xl max-w-xl w-full p-6 space-y-4 shadow-2xl my-8 border border-gray-200">
+                    <form onSubmit={handleSubmitReturn} className="bg-white rounded-3xl max-w-2xl w-full p-5 sm:p-6 space-y-4 shadow-2xl my-8 border border-gray-200 max-h-[94vh] overflow-y-auto">
                         <div className="flex justify-between items-center border-b pb-3">
                             <div>
-                                <h3 className="font-extrabold text-gray-900 text-base">Process Customer Sales Return</h3>
-                                <div className="text-xs text-[#0B3B7B] font-bold">
-                                    Invoice: {selectedSale.invoice_no} • {selectedSale.customer_name || 'Walk-in'}
+                                <h3 className="font-extrabold text-gray-900 text-base flex items-center gap-2">
+                                    <IconReturn className="w-5 h-5 text-purple-700" />
+                                    <span>{returnMode === 'walkin' ? 'Walk-in Sales Return (No Invoice)' : 'Process Customer Sales Return'}</span>
+                                </h3>
+                                <div className="text-xs text-[#0B3B7B] font-bold mt-0.5">
+                                    {returnMode === 'walkin'
+                                        ? 'Direct Walk-in Return • Search any product (sugar, Aata, cartons, packets, pcs)'
+                                        : `Invoice: ${selectedSale.invoice_no} • ${selectedSale.customer_name || 'Walk-in'}`}
                                 </div>
                             </div>
                             <button
@@ -2105,8 +2495,67 @@ export default function SalesHistoryPage() {
                         </div>
 
                         <div className="space-y-3.5 text-xs">
+                            {/* Walk-in Product Search Box */}
+                            {returnMode === 'walkin' && (
+                                <div className="space-y-2">
+                                    <label className="block font-bold text-gray-700">
+                                        Search &amp; Select Returned Product
+                                    </label>
+                                    <input
+                                        type="text"
+                                        autoFocus
+                                        placeholder="Search by product name or SKU (e.g. sugar, Aata, bottle)..."
+                                        value={returnProductSearch}
+                                        onChange={(e) => setReturnProductSearch(e.target.value)}
+                                        className="w-full p-2.5 border border-gray-300 rounded-xl text-xs font-semibold bg-white focus:outline-none focus:border-purple-600"
+                                    />
+                                    {returnProductSearch.trim().length > 0 && (
+                                        <div className="max-h-44 overflow-y-auto border border-gray-200 rounded-xl divide-y divide-gray-100 bg-white shadow-sm">
+                                            {(() => {
+                                                const q = returnProductSearch.trim().toLowerCase();
+                                                const matches = returnCatalogProducts.filter(p =>
+                                                    (p.product_name || '').toLowerCase().includes(q)
+                                                    || (p.variant_name || '').toLowerCase().includes(q)
+                                                    || (p.sku || '').toLowerCase().includes(q)
+                                                ).slice(0, 15);
+                                                if (matches.length === 0) {
+                                                    return <div className="p-3 text-center text-gray-400">No matching products found.</div>;
+                                                }
+                                                return matches.map((prod) => {
+                                                    const defPack = (prod.packagings || []).find(pk => pk.is_default) || (prod.packagings || [])[0];
+                                                    const currSell = defPack ? Number(defPack.selling_price || 0) : Number(prod.selling_price || 0);
+                                                    return (
+                                                        <button
+                                                            key={prod.variant_id}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                handleAddWalkinReturnProduct(prod);
+                                                                setReturnProductSearch('');
+                                                            }}
+                                                            className="w-full text-left px-3 py-2 hover:bg-purple-50 flex items-center justify-between gap-2 cursor-pointer transition-colors"
+                                                        >
+                                                            <div>
+                                                                <div className="font-bold text-gray-900">
+                                                                    {prod.product_name} {prod.variant_name && prod.variant_name !== 'Standard' ? `(${prod.variant_name})` : ''}
+                                                                </div>
+                                                                <div className="text-[10px] text-gray-500 font-mono">
+                                                                    SKU: {prod.sku || '-'} • Current Rate: <strong className="text-emerald-700">Rs. {currSell.toLocaleString()}</strong> ({defPack?.packaging_name || prod.unit_symbol || 'PCS'})
+                                                                </div>
+                                                            </div>
+                                                            <span className="px-2 py-0.5 bg-purple-100 text-purple-800 rounded-md font-bold text-[10px] shrink-0">
+                                                                + Add
+                                                            </span>
+                                                        </button>
+                                                    );
+                                                });
+                                            })()}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
                             <div>
-                                <label className="block font-bold text-gray-700 mb-1.5">Return Condition & Restock Policy</label>
+                                <label className="block font-bold text-gray-700 mb-1.5">Return Condition &amp; Restock Policy</label>
                                 <div className="grid grid-cols-2 gap-3">
                                     <label className={`p-3 rounded-2xl border flex items-center gap-2 cursor-pointer font-bold transition-all ${returnType === 'saleable' ? 'bg-emerald-50 border-emerald-400 text-emerald-800' : 'bg-gray-50 text-gray-700'
                                         }`}>
@@ -2134,33 +2583,114 @@ export default function SalesHistoryPage() {
                             </div>
 
                             <div>
-                                <div className="font-bold text-gray-800 mb-2">Select Items & Quantities to Return:</div>
-                                <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                                    {returnItems.map((it, idx) => (
-                                        <div key={idx} className="bg-gray-50 p-3 rounded-2xl border border-gray-200 flex items-center justify-between gap-3">
-                                            <div>
-                                                <div className="font-extrabold text-gray-900">
-                                                    {it.product_name} {it.variant_name && it.variant_name !== 'Standard' ? `(${it.variant_name})` : ''}
-                                                </div>
-                                                <div className="text-[11px] text-gray-500 font-medium">
-                                                    Sold: {it.max_quantity} {it.packaging_name} @ Rs. {it.unit_price}
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-gray-500 font-medium">Return:</span>
-                                                <input
-                                                    type="number"
-                                                    min="0"
-                                                    max={it.max_quantity}
-                                                    value={it.return_quantity}
-                                                    onChange={(e) => handleUpdateReturnQty(idx, e.target.value)}
-                                                    className="w-16 p-1.5 border rounded-xl bg-white font-extrabold text-center text-rose-700 focus:border-rose-500 outline-none"
-                                                />
-                                            </div>
-                                        </div>
-                                    ))}
+                                <div className="font-bold text-gray-800 mb-2">
+                                    {returnMode === 'walkin' ? 'Returned Items, Packaging & Current Selling Price:' : 'Select Items & Quantities to Return:'}
                                 </div>
+                                {returnItems.length === 0 ? (
+                                    <div className="p-4 text-center bg-gray-50 border border-dashed border-gray-200 rounded-2xl text-gray-400">
+                                        Search and add products above to process a Walk-in Return.
+                                    </div>
+                                ) : (
+                                    <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                                        {returnItems.map((it, idx) => (
+                                            <div key={idx} className="bg-gray-50 p-3 rounded-2xl border border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                                                <div className="min-w-0">
+                                                    <div className="font-extrabold text-gray-900 truncate">
+                                                        {it.product_name} {it.variant_name && it.variant_name !== 'Standard' ? `(${it.variant_name})` : ''}
+                                                    </div>
+                                                    {returnMode === 'invoice' ? (
+                                                        <div className="text-[11px] text-gray-500 font-medium">
+                                                            Sold: {it.sold_quantity ?? it.max_quantity} {it.packaging_name}
+                                                            {Number(it.already_returned) > 0 && (
+                                                                <> • <span className="text-rose-600 font-bold">Returned: {it.already_returned}</span> • <span className="text-emerald-700 font-bold">Remaining: {it.max_quantity}</span></>
+                                                            )}
+                                                            {' '}@ Rs. {it.unit_price}
+                                                        </div>
+                                                    ) : (
+                                                        <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                                            {(it.packagings && it.packagings.length > 1) ? (
+                                                                <select
+                                                                    value={it.packaging_type_id}
+                                                                    onChange={(e) => handleUpdateWalkinReturnItem(idx, 'packaging_type_id', e.target.value)}
+                                                                    className="px-2 py-1 border border-gray-300 rounded-lg bg-white font-bold text-[11px] text-[#0B3B7B]"
+                                                                >
+                                                                    {it.packagings.map(pk => (
+                                                                        <option key={pk.packaging_type_id || pk.id} value={pk.packaging_type_id || pk.id}>
+                                                                            {pk.packaging_name} (x{pk.conversion_factor})
+                                                                        </option>
+                                                                    ))}
+                                                                </select>
+                                                            ) : (
+                                                                <span className="px-2 py-0.5 bg-white border border-gray-200 rounded-md text-[10.5px] font-bold text-gray-700">
+                                                                    {it.packaging_name}
+                                                                </span>
+                                                            )}
+                                                            <div className="flex items-center gap-1">
+                                                                <span className="text-[10.5px] text-gray-500">Rate Rs.</span>
+                                                                <input
+                                                                    type="number"
+                                                                    min="0"
+                                                                    step="any"
+                                                                    value={it.unit_price}
+                                                                    onChange={(e) => handleUpdateWalkinReturnItem(idx, 'unit_price', e.target.value)}
+                                                                    className="w-20 p-1 border border-gray-300 rounded-lg bg-white font-bold text-right text-gray-900 text-[11px]"
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="flex items-center gap-2 shrink-0 justify-end">
+                                                    <span className="text-gray-500 font-medium">Return:</span>
+                                                    <input
+                                                        type="number"
+                                                        min="0"
+                                                        step="any"
+                                                        max={returnMode === 'invoice' ? it.max_quantity : undefined}
+                                                        value={it.return_quantity}
+                                                        onChange={(e) => returnMode === 'invoice'
+                                                            ? handleUpdateReturnQty(idx, e.target.value)
+                                                            : handleUpdateWalkinReturnItem(idx, 'return_quantity', e.target.value)
+                                                        }
+                                                        className="w-16 p-1.5 border rounded-xl bg-white font-extrabold text-center text-rose-700 focus:border-rose-500 outline-none"
+                                                    />
+                                                    {returnMode === 'walkin' && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleRemoveWalkinReturnItem(idx)}
+                                                            className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg cursor-pointer"
+                                                            title="Remove item"
+                                                        >
+                                                            <IconClose className="w-3.5 h-3.5" />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
+
+                            {returnMode === 'walkin' && (
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1">
+                                    <input
+                                        type="text"
+                                        placeholder="Optional note (e.g. Walk-in customer returned 2 packets)"
+                                        value={returnRemarks}
+                                        onChange={(e) => setReturnRemarks(e.target.value)}
+                                        className="flex-1 p-2 border border-gray-200 rounded-xl text-xs bg-white focus:outline-none focus:border-purple-500"
+                                    />
+                                    <label className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 bg-gray-50 cursor-pointer font-bold text-gray-800 shrink-0">
+                                        <input
+                                            type="checkbox"
+                                            checked={autoPrintReturnThermal}
+                                            onChange={(e) => setAutoPrintReturnThermal(e.target.checked)}
+                                            className="accent-purple-700"
+                                        />
+                                        <IconPrinter className="w-3.5 h-3.5 text-purple-700" />
+                                        <span>Print Thermal Receipt</span>
+                                    </label>
+                                </div>
+                            )}
 
                             {/* REFUND SETTLEMENT METHOD (KHATA VS CASH DRAWER) */}
                             <div>

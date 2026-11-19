@@ -393,14 +393,18 @@ export default function CustomersPage() {
     const [activeLedgerTab, setActiveLedgerTab] = useState('statement'); // 'statement' | 'bills' | 'returns' | 'payment'
     const [ledgerLoading, setLedgerLoading] = useState(false);
 
-    // Sales Return Modal State
+    // Sales Return Modal State (Centralized: Direct Product Return OR Invoice-linked Return)
     const [returnModalOpen, setReturnModalOpen] = useState(false);
+    const [returnMode, setReturnMode] = useState('direct'); // 'direct' | 'invoice'
     const [returnSelectedSale, setReturnSelectedSale] = useState(null);
     const [returnType, setReturnType] = useState('saleable'); // 'saleable' | 'damaged'
     const [refundMethod, setRefundMethod] = useState('credit'); // 'credit' (Khata) | 'cash' (Drawer)
     const [returnItems, setReturnItems] = useState([]);
     const [refundAmount, setRefundAmount] = useState(0);
     const [returnSubmitting, setReturnSubmitting] = useState(false);
+    const [returnCatalogProducts, setReturnCatalogProducts] = useState([]);
+    const [returnProductSearch, setReturnProductSearch] = useState('');
+    const [returnRemarks, setReturnRemarks] = useState('');
 
     // Selected Bill for Bill Details View
     const [selectedSaleDetail, setSelectedSaleDetail] = useState(null);
@@ -818,11 +822,42 @@ export default function CustomersPage() {
         }
     };
 
-    // Sales Return & Credit Note Handlers
+    // Sales Return & Credit Note Handlers (Centralized: Only items customer actually bought, capped to remaining qty)
+    const ensureReturnCatalogLoaded = async (custId = selectedCustomer?.id) => {
+        if (!custId) {
+            setReturnCatalogProducts([]);
+            return;
+        }
+        try {
+            const res = await fetch(apiUrl(`/api/customers/${custId}/returnable-items`));
+            if (res.ok) {
+                const data = await res.json();
+                setReturnCatalogProducts(Array.isArray(data) ? data : []);
+            }
+        } catch (err) {
+            console.error('Failed to load customer returnable items:', err);
+        }
+    };
+
+    const handleOpenDirectReturn = async () => {
+        setReturnMode('direct');
+        setReturnSelectedSale(null);
+        setReturnItems([]);
+        setRefundAmount(0);
+        setRefundMethod('credit');
+        setReturnType('saleable');
+        setReturnProductSearch('');
+        setReturnRemarks('');
+        setReturnModalOpen(true);
+        await ensureReturnCatalogLoaded(selectedCustomer?.id);
+    };
+
     const handleOpenReturn = async (sale) => {
         if (!sale) return;
         try {
+            setReturnMode('invoice');
             setReturnSelectedSale(sale);
+            setReturnRemarks('');
             const res = await fetch(apiUrl(`/api/sales/${sale.id}`));
             if (res.ok) {
                 const fullSale = await res.json();
@@ -832,16 +867,19 @@ export default function CustomersPage() {
                     product_name: it.product_name,
                     variant_name: it.variant_name,
                     packaging_name: it.packaging_name,
-                    max_quantity: it.quantity,
+                    sold_quantity: it.quantity,
+                    already_returned: it.already_returned || 0,
+                    max_quantity: it.remaining_returnable !== undefined ? it.remaining_returnable : it.quantity,
                     return_quantity: 0,
                     unit_price: it.price,
-                    conversion_factor: 1
+                    conversion_factor: it.conversion_factor || 1
                 }));
                 setReturnItems(initialReturnItems);
                 setRefundAmount(0);
                 setRefundMethod('credit');
                 setReturnType('saleable');
                 setReturnModalOpen(true);
+                ensureReturnCatalogLoaded(selectedCustomer?.id || sale.customer_id);
             } else {
                 showAlert('Return Error', 'Failed to load sale bill items for return.', 'error');
             }
@@ -850,28 +888,86 @@ export default function CustomersPage() {
         }
     };
 
+    const recalculateReturnTotal = (itemsList) => {
+        const total = itemsList.reduce((sum, it) => sum + ((parseFloat(it.return_quantity) || 0) * (parseFloat(it.unit_price) || 0)), 0);
+        setRefundAmount(Math.round(total * 100) / 100);
+    };
+
+    const handleAddDirectReturnProduct = (boughtItem) => {
+        const maxQty = parseFloat(boughtItem.max_quantity) || 0;
+        if (maxQty <= 0) return;
+
+        const existingIdx = returnItems.findIndex(
+            it => it.variant_id === boughtItem.variant_id && it.packaging_type_id === boughtItem.packaging_type_id
+        );
+        if (existingIdx >= 0) {
+            const updated = [...returnItems];
+            const currentQty = parseFloat(updated[existingIdx].return_quantity) || 0;
+            updated[existingIdx].return_quantity = Math.min(maxQty, currentQty + 1);
+            setReturnItems(updated);
+            recalculateReturnTotal(updated);
+            return;
+        }
+
+        const newItem = {
+            variant_id: boughtItem.variant_id,
+            packaging_type_id: boughtItem.packaging_type_id,
+            product_name: boughtItem.product_name,
+            variant_name: boughtItem.variant_name,
+            packaging_name: boughtItem.packaging_name || 'PCS',
+            total_bought: boughtItem.total_bought,
+            already_returned: boughtItem.already_returned,
+            max_quantity: maxQty,
+            return_quantity: Math.min(1, maxQty),
+            unit_price: parseFloat(boughtItem.latest_unit_price) || 0,
+            conversion_factor: parseFloat(boughtItem.conversion_factor) || 1
+        };
+        const updated = [...returnItems, newItem];
+        setReturnItems(updated);
+        recalculateReturnTotal(updated);
+    };
+
+    const handleUpdateDirectReturnItem = (idx, field, value) => {
+        const updated = [...returnItems];
+        const item = { ...updated[idx] };
+        if (field === 'return_quantity') {
+            const raw = Math.max(0, parseFloat(value) || 0);
+            item.return_quantity = item.max_quantity !== undefined ? Math.min(item.max_quantity, raw) : raw;
+        } else if (field === 'unit_price') {
+            item.unit_price = Math.max(0, parseFloat(value) || 0);
+        }
+        updated[idx] = item;
+        setReturnItems(updated);
+        recalculateReturnTotal(updated);
+    };
+
+    const handleRemoveDirectReturnItem = (idx) => {
+        const updated = returnItems.filter((_, i) => i !== idx);
+        setReturnItems(updated);
+        recalculateReturnTotal(updated);
+    };
+
     const handleUpdateReturnQty = (idx, qty) => {
         const updated = [...returnItems];
-        const val = Math.min(updated[idx].max_quantity, Math.max(0, parseFloat(qty) || 0));
-        updated[idx].return_quantity = val;
+        const maxQ = updated[idx].max_quantity;
+        const raw = Math.max(0, parseFloat(qty) || 0);
+        updated[idx].return_quantity = maxQ !== undefined ? Math.min(maxQ, raw) : raw;
         setReturnItems(updated);
-
-        const total = updated.reduce((sum, it) => sum + (it.return_quantity * it.unit_price), 0);
-        setRefundAmount(total);
+        recalculateReturnTotal(updated);
     };
 
     const handleSubmitReturn = async (e) => {
         e.preventDefault();
-        const activeItems = returnItems.filter(it => it.return_quantity > 0).map(it => ({
+        const activeItems = returnItems.filter(it => (parseFloat(it.return_quantity) || 0) > 0).map(it => ({
             variant_id: it.variant_id,
             packaging_type_id: it.packaging_type_id,
-            quantity: it.return_quantity,
-            refund_price: it.unit_price,
-            conversion_factor: it.conversion_factor
+            quantity: parseFloat(it.return_quantity),
+            refund_price: parseFloat(it.unit_price) || 0,
+            conversion_factor: parseFloat(it.conversion_factor) || 1
         }));
 
         if (activeItems.length === 0 || refundAmount <= 0) {
-            return showAlert('Attention Required', 'Please select quantity for at least one item to return.', 'warning');
+            return showAlert('Attention Required', 'Please add at least one item and enter a return quantity & rate.', 'warning');
         }
 
         setReturnSubmitting(true);
@@ -882,17 +978,22 @@ export default function CustomersPage() {
             const localDate = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
             const localDateTime = `${localDate} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
 
+            const linkedSale = returnMode === 'invoice' ? returnSelectedSale : null;
+            const defaultNote = linkedSale
+                ? `Customer return for invoice ${linkedSale.invoice_no} (${refundMethod === 'cash' ? 'Cash Refund' : 'Khata Adjustment'})`
+                : `Direct customer return (${refundMethod === 'cash' ? 'Cash Refund' : 'Khata Adjustment'})`;
+
             const res = await fetch(apiUrl('/api/sales/returns'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 body: JSON.stringify({
-                    sale_id: returnSelectedSale.id,
-                    customer_id: selectedCustomer ? selectedCustomer.id : returnSelectedSale.customer_id,
+                    sale_id: linkedSale ? linkedSale.id : null,
+                    customer_id: selectedCustomer ? selectedCustomer.id : linkedSale?.customer_id,
                     return_type: returnType,
                     refund_method: refundMethod,
                     items: activeItems,
                     total_refund: refundAmount,
-                    remarks: `Customer return for invoice ${returnSelectedSale.invoice_no} (${refundMethod === 'cash' ? 'Cash Refund' : 'Khata Adjustment'})`,
+                    remarks: returnRemarks.trim() || defaultNote,
                     payment_date: localDate,
                     created_at: localDateTime
                 })
@@ -1778,21 +1879,7 @@ export default function CustomersPage() {
                                                                 <span>Payment</span>
                                                             </button>
 
-                                                            {/* 3. Return / Credit Note */}
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => {
-                                                                    handleOpenLedger(c);
-                                                                    setActiveLedgerTab('returns');
-                                                                }}
-                                                                className="px-2 py-1 bg-purple-50 hover:bg-purple-100 text-purple-800 rounded-lg font-bold text-xs border border-purple-200 transition-all flex items-center gap-1 cursor-pointer active:scale-95 shadow-2xs"
-                                                                title="View Customer Returns & Credit Notes"
-                                                            >
-                                                                <IconReturn className="w-3 h-3 text-purple-700" />
-                                                                <span>Return/CN</span>
-                                                            </button>
-
-                                                            {/* 4. Three-Dot Icon (Opens Small Action Modal) */}
+                                                            {/* 3. Three-Dot Icon (Opens Small Action Modal) */}
                                                             <button
                                                                 type="button"
                                                                 title="More options (Edit, Delete, WhatsApp)"
@@ -2524,21 +2611,10 @@ export default function CustomersPage() {
 
                                 <button
                                     type="button"
-                                    onClick={() => {
-                                        if (customerSales.length === 0) {
-                                            showAlert('No Invoices Found', 'This customer does not have any sales bills yet to return from.', 'warning');
-                                            return;
-                                        }
-                                        if (customerSales.length === 1) {
-                                            handleOpenReturn(customerSales[0]);
-                                        } else {
-                                            setActiveLedgerTab('bills');
-                                            showAlert('Select Invoice to Return', 'Please click the "Return" button on the specific bill below you wish to process a return or credit note for.', 'info');
-                                        }
-                                    }}
+                                    onClick={handleOpenDirectReturn}
                                     style={{ backgroundColor: '#7e22ce', color: '#ffffff', border: '1px solid #7e22ce' }}
                                     className="px-2.5 py-1.5 bg-purple-700 hover:bg-purple-800 text-white rounded-lg font-bold text-[11px] shadow-2xs hover:opacity-95 active:scale-95 transition-all flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0"
-                                    title="Process a customer return / issue Credit Note"
+                                    title="Process a centralized customer return / issue Credit Note (with or without invoice)"
                                 >
                                     <IconReturn className="w-3.5 h-3.5 text-white" />
                                     <span>+ Return / CN</span>
@@ -2949,22 +3025,14 @@ export default function CustomersPage() {
                                             </p>
                                         </div>
 
-                                        {customerSales.length > 0 && (
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    if (customerSales.length === 1) {
-                                                        handleOpenReturn(customerSales[0]);
-                                                    } else {
-                                                        setActiveLedgerTab('bills');
-                                                    }
-                                                }}
-                                                className="px-3 py-1.5 bg-purple-700 hover:bg-purple-800 text-white rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-xs transition-all w-full sm:w-auto"
-                                            >
-                                                <IconReturn className="w-3.5 h-3.5" />
-                                                <span>+ Issue New Sales Return</span>
-                                            </button>
-                                        )}
+                                        <button
+                                            type="button"
+                                            onClick={handleOpenDirectReturn}
+                                            className="px-3 py-1.5 bg-purple-700 hover:bg-purple-800 text-white rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-xs transition-all w-full sm:w-auto"
+                                        >
+                                            <IconReturn className="w-3.5 h-3.5" />
+                                            <span>+ Issue New Sales Return</span>
+                                        </button>
                                     </div>
 
                                     {customerReturns.length === 0 ? (
@@ -3926,10 +3994,10 @@ export default function CustomersPage() {
                 onClose={() => setModalAlert(prev => ({ ...prev, isOpen: false }))}
             />
 
-            {/* PROCESS SALES RETURN & CREDIT NOTE MODAL */}
-            {returnModalOpen && returnSelectedSale && (
+            {/* PROCESS SALES RETURN & CREDIT NOTE MODAL (CENTRALIZED) */}
+            {returnModalOpen && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[100] p-2.5 sm:p-4 overflow-y-auto">
-                    <form onSubmit={handleSubmitReturn} className="bg-white rounded-2xl sm:rounded-3xl max-w-xl w-full p-4 sm:p-6 space-y-3.5 sm:space-y-4 shadow-2xl my-4 sm:my-8 border border-gray-200 max-h-[96vh] overflow-y-auto">
+                    <form onSubmit={handleSubmitReturn} className="bg-white rounded-2xl sm:rounded-3xl max-w-2xl w-full p-4 sm:p-6 space-y-3.5 sm:space-y-4 shadow-2xl my-4 sm:my-8 border border-gray-200 max-h-[96vh] overflow-y-auto">
                         <div className="flex justify-between items-center border-b pb-3">
                             <div>
                                 <h3 className="font-extrabold text-gray-900 text-sm sm:text-base flex items-center gap-2">
@@ -3937,7 +4005,11 @@ export default function CustomersPage() {
                                     <span>Process Customer Sales Return</span>
                                 </h3>
                                 <div className="text-xs text-[#0B3B7B] font-bold mt-0.5">
-                                    Invoice: <span className="font-mono">{returnSelectedSale.invoice_no}</span> • {selectedCustomer?.name || 'Customer'}
+                                    {returnMode === 'invoice' && returnSelectedSale ? (
+                                        <>Invoice: <span className="font-mono">{returnSelectedSale.invoice_no}</span> • {selectedCustomer?.name || 'Customer'}</>
+                                    ) : (
+                                        <>Direct Return (No Invoice Needed) • {selectedCustomer?.name || 'Customer'}</>
+                                    )}
                                 </div>
                             </div>
                             <button
@@ -3950,6 +4022,134 @@ export default function CustomersPage() {
                         </div>
 
                         <div className="space-y-3.5 text-xs">
+                            {/* Mode Switcher: Direct Return (No Invoice) vs Linked Invoice */}
+                            <div className="grid grid-cols-2 gap-2 p-1 bg-gray-100 rounded-xl border border-gray-200">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setReturnMode('direct');
+                                        setReturnSelectedSale(null);
+                                        setReturnItems([]);
+                                        setRefundAmount(0);
+                                        ensureReturnCatalogLoaded();
+                                    }}
+                                    className={`py-1.5 px-3 rounded-lg font-bold text-xs transition-all cursor-pointer ${
+                                        returnMode === 'direct'
+                                            ? 'bg-purple-700 text-white shadow-xs'
+                                            : 'text-gray-600 hover:text-gray-900'
+                                    }`}
+                                >
+                                    Direct Return (No Invoice)
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setReturnMode('invoice');
+                                        setReturnItems([]);
+                                        setRefundAmount(0);
+                                        if (!returnSelectedSale && customerSales.length > 0) {
+                                            handleOpenReturn(customerSales[0]);
+                                        }
+                                    }}
+                                    className={`py-1.5 px-3 rounded-lg font-bold text-xs transition-all cursor-pointer ${
+                                        returnMode === 'invoice'
+                                            ? 'bg-[#0B3B7B] text-white shadow-xs'
+                                            : 'text-gray-600 hover:text-gray-900'
+                                    }`}
+                                >
+                                    From Specific Invoice
+                                </button>
+                            </div>
+
+                            {/* Optional Invoice Selector when in Invoice Mode */}
+                            {returnMode === 'invoice' && (
+                                <div>
+                                    <label className="block font-bold text-gray-700 mb-1">Select Customer Invoice</label>
+                                    {customerSales.length === 0 ? (
+                                        <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 font-semibold">
+                                            No invoices found for this customer. Use &quot;Direct Return (No Invoice)&quot; instead.
+                                        </div>
+                                    ) : (
+                                        <select
+                                            value={returnSelectedSale?.id || ''}
+                                            onChange={(e) => {
+                                                const saleObj = customerSales.find(s => String(s.id) === String(e.target.value));
+                                                if (saleObj) handleOpenReturn(saleObj);
+                                            }}
+                                            className="w-full p-2 border border-gray-300 rounded-xl font-bold text-xs bg-white text-gray-900 focus:outline-none focus:border-[#0B3B7B]"
+                                        >
+                                            {customerSales.map(s => (
+                                                <option key={s.id} value={s.id}>
+                                                    {s.invoice_no} — {formatOnlyDate(s.created_at)} — Net: Rs. {Number(s.net_amount || 0).toLocaleString()}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Purchased Items Picker when in Direct Return Mode */}
+                            {returnMode === 'direct' && (
+                                <div className="space-y-2">
+                                    <label className="block font-bold text-gray-700">
+                                        Items Purchased by {selectedCustomer?.name || 'Customer'} (Only Bought Items Can Be Returned)
+                                    </label>
+                                    <input
+                                        type="text"
+                                        placeholder="Filter purchased items by name or SKU..."
+                                        value={returnProductSearch}
+                                        onChange={(e) => setReturnProductSearch(e.target.value)}
+                                        className="w-full p-2 border border-gray-300 rounded-xl text-xs font-semibold bg-white focus:outline-none focus:border-purple-600"
+                                    />
+                                    <div className="max-h-40 overflow-y-auto border border-gray-200 rounded-xl divide-y divide-gray-100 bg-white shadow-sm">
+                                        {(() => {
+                                            const q = returnProductSearch.trim().toLowerCase();
+                                            const filtered = returnCatalogProducts.filter(p =>
+                                                !q
+                                                || (p.product_name || '').toLowerCase().includes(q)
+                                                || (p.variant_name || '').toLowerCase().includes(q)
+                                                || (p.sku || '').toLowerCase().includes(q)
+                                            );
+                                            if (filtered.length === 0) {
+                                                return (
+                                                    <div className="p-3 text-center text-gray-400">
+                                                        {returnCatalogProducts.length === 0
+                                                            ? 'No returnable items found (customer has not purchased any items or all items already returned).'
+                                                            : 'No matching purchased items found.'}
+                                                    </div>
+                                                );
+                                            }
+                                            return filtered.map((prod) => (
+                                                <button
+                                                    key={`${prod.variant_id}_${prod.packaging_type_id}`}
+                                                    type="button"
+                                                    onClick={() => handleAddDirectReturnProduct(prod)}
+                                                    className="w-full text-left px-3 py-2 hover:bg-purple-50 flex items-center justify-between gap-2 cursor-pointer transition-colors"
+                                                >
+                                                    <div>
+                                                        <div className="font-bold text-gray-900">
+                                                            {prod.product_name} {prod.variant_name && prod.variant_name !== 'Standard' ? `(${prod.variant_name})` : ''}
+                                                            <span className="ml-1.5 px-1.5 py-0.5 bg-blue-50 text-[#0B3B7B] border border-blue-200 rounded text-[10px] font-extrabold">
+                                                                {prod.packaging_name}
+                                                            </span>
+                                                        </div>
+                                                        <div className="text-[10px] text-gray-500 font-mono mt-0.5">
+                                                            Bought: <strong className="text-gray-800">{prod.total_bought}</strong>
+                                                            {Number(prod.already_returned) > 0 && <> • Returned: <strong className="text-rose-600">{prod.already_returned}</strong></>}
+                                                            {' '}• Max Returnable: <strong className="text-emerald-700">{prod.max_quantity}</strong>
+                                                            {' '}• Rate: Rs. {Number(prod.latest_unit_price || 0).toLocaleString()}
+                                                        </div>
+                                                    </div>
+                                                    <span className="px-2 py-0.5 bg-purple-100 text-purple-800 rounded-md font-bold text-[10px] shrink-0">
+                                                        + Add
+                                                    </span>
+                                                </button>
+                                            ));
+                                        })()}
+                                    </div>
+                                </div>
+                            )}
+
                             <div>
                                 <label className="block font-bold text-gray-700 mb-1.5">Return Condition &amp; Restock Policy</label>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
@@ -3983,32 +4183,94 @@ export default function CustomersPage() {
                             </div>
 
                             <div>
-                                <div className="font-bold text-gray-800 mb-2">Select Items &amp; Quantities to Return:</div>
-                                <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                                    {returnItems.map((it, idx) => (
-                                        <div key={idx} className="bg-gray-50 p-3 rounded-2xl border border-gray-200 flex items-center justify-between gap-3">
-                                            <div>
-                                                <div className="font-extrabold text-gray-900">
-                                                    {it.product_name} {it.variant_name && it.variant_name !== 'Standard' ? `(${it.variant_name})` : ''}
-                                                </div>
-                                                <div className="text-[11px] text-gray-500 font-medium">
-                                                    Sold: {it.max_quantity} {it.packaging_name} @ Rs. {Number(it.unit_price).toLocaleString()}
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-gray-500 font-medium">Return:</span>
-                                                <input
-                                                    type="number"
-                                                    min="0"
-                                                    max={it.max_quantity}
-                                                    value={it.return_quantity}
-                                                    onChange={(e) => handleUpdateReturnQty(idx, e.target.value)}
-                                                    className="w-16 p-1.5 border rounded-xl bg-white font-extrabold text-center text-rose-700 focus:border-rose-500 outline-none"
-                                                />
-                                            </div>
-                                        </div>
-                                    ))}
+                                <div className="font-bold text-gray-800 mb-2">
+                                    {returnMode === 'direct' ? 'Returned Items & Refund Rates:' : 'Select Items & Quantities to Return:'}
                                 </div>
+                                {returnItems.length === 0 ? (
+                                    <div className="p-4 text-center bg-gray-50 border border-dashed border-gray-200 rounded-2xl text-gray-400">
+                                        {returnMode === 'direct'
+                                            ? 'Search and add products above to process a return.'
+                                            : 'Select an invoice above to load its items.'}
+                                    </div>
+                                ) : (
+                                    <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                                        {returnItems.map((it, idx) => (
+                                            <div key={idx} className="bg-gray-50 p-3 rounded-2xl border border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                                                <div className="min-w-0">
+                                                    <div className="font-extrabold text-gray-900 truncate">
+                                                        {it.product_name} {it.variant_name && it.variant_name !== 'Standard' ? `(${it.variant_name})` : ''}
+                                                    </div>
+                                                    {returnMode === 'invoice' ? (
+                                                        <div className="text-[11px] text-gray-500 font-medium">
+                                                            Sold: {it.sold_quantity ?? it.max_quantity} {it.packaging_name}
+                                                            {Number(it.already_returned) > 0 && (
+                                                                <> • <span className="text-rose-600 font-bold">Returned: {it.already_returned}</span> • <span className="text-emerald-700 font-bold">Remaining: {it.max_quantity}</span></>
+                                                            )}
+                                                            {' '}@ Rs. {Number(it.unit_price).toLocaleString()}
+                                                        </div>
+                                                    ) : (
+                                                        <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                                            <span className="px-2 py-0.5 bg-white border border-gray-200 rounded-md text-[10.5px] font-bold text-gray-700">
+                                                                {it.packaging_name}
+                                                            </span>
+                                                            <span className="text-[10.5px] font-bold text-emerald-700">
+                                                                Max: {it.max_quantity}
+                                                            </span>
+                                                            <div className="flex items-center gap-1">
+                                                                <span className="text-[10.5px] text-gray-500">Rate Rs.</span>
+                                                                <input
+                                                                    type="number"
+                                                                    min="0"
+                                                                    step="any"
+                                                                    value={it.unit_price}
+                                                                    onChange={(e) => handleUpdateDirectReturnItem(idx, 'unit_price', e.target.value)}
+                                                                    className="w-20 p-1 border border-gray-300 rounded-lg bg-white font-bold text-right text-gray-900 text-[11px]"
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="flex items-center gap-2 shrink-0 justify-end">
+                                                    <span className="text-gray-500 font-medium">Return:</span>
+                                                    <input
+                                                        type="number"
+                                                        min="0"
+                                                        step="any"
+                                                        max={it.max_quantity}
+                                                        value={it.return_quantity}
+                                                        onChange={(e) => returnMode === 'invoice'
+                                                            ? handleUpdateReturnQty(idx, e.target.value)
+                                                            : handleUpdateDirectReturnItem(idx, 'return_quantity', e.target.value)
+                                                        }
+                                                        className="w-16 p-1.5 border rounded-xl bg-white font-extrabold text-center text-rose-700 focus:border-rose-500 outline-none"
+                                                        title={`Maximum returnable: ${it.max_quantity}`}
+                                                    />
+                                                    {returnMode === 'direct' && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleRemoveDirectReturnItem(idx)}
+                                                            className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg cursor-pointer"
+                                                            title="Remove item"
+                                                        >
+                                                            <IconClose className="w-3.5 h-3.5" />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div>
+                                <label className="block font-bold text-gray-700 mb-1">Return Notes / Reason (Optional)</label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g. Damaged pack, excess stock returned..."
+                                    value={returnRemarks}
+                                    onChange={(e) => setReturnRemarks(e.target.value)}
+                                    className="w-full p-2 border border-gray-200 rounded-xl text-xs bg-white focus:outline-none focus:border-purple-500"
+                                />
                             </div>
 
                             {/* REFUND SETTLEMENT METHOD (KHATA VS CASH DRAWER) */}
