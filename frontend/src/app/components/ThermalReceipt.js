@@ -37,7 +37,7 @@ export function ThermalReceiptModal({
     if (!isOpen || !invoice) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-2 sm:p-4 overflow-hidden animate-in fade-in duration-150">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-2 sm:p-4 overflow-hidden">
             <div className="bg-white rounded-2xl sm:rounded-3xl max-w-sm w-full shadow-2xl border border-gray-200 flex flex-col max-h-[85vh] sm:max-h-[88vh] overflow-hidden">
                 {/* Header (Pinned) */}
                 <div className="shrink-0 flex justify-between items-center px-4 py-3 border-b border-gray-100 bg-white">
@@ -203,25 +203,25 @@ export function ThermalReceiptSlip({
             }}
         >
             {/* 1. SHOP HEADER */}
-            <div style={{ textAlign: 'center', paddingBottom: '5px', borderBottom: '1px solid #000000' }}>
+            <div style={{ textAlign: 'center', paddingBottom: '5px', borderBottom: '1.5px solid #000000' }}>
                 {shopLogo && (
                     <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '3px' }}>
                         <img
                             src={shopLogo}
                             alt="Shop Logo"
-                            style={{ maxHeight: '40px', maxWidth: '130px', objectFit: 'contain' }}
+                            style={{ maxHeight: '42px', maxWidth: '130px', objectFit: 'contain' }}
                         />
                     </div>
                 )}
-                <div style={{ fontWeight: 'bold', fontSize: '13.5px', letterSpacing: '0.5px', textTransform: 'uppercase', color: '#000000', lineHeight: 1.2 }}>
+                <div style={{ fontWeight: '900', fontSize: '14px', letterSpacing: '0.5px', textTransform: 'uppercase', color: '#000000', lineHeight: 1.2 }}>
                     {shopName}
                 </div>
                 {shopAddress && (
-                    <div style={{ fontSize: '10px', fontWeight: 'normal', color: '#000000', lineHeight: 1.2, marginTop: '2px' }}>
+                    <div style={{ fontSize: '10px', fontWeight: 'bold', color: '#000000', lineHeight: 1.2, marginTop: '2px' }}>
                         {shopAddress}
                     </div>
                 )}
-                <div style={{ fontSize: '9.5px', fontWeight: 'normal', color: '#000000', marginTop: '2px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', flexWrap: 'wrap' }}>
+                <div style={{ fontSize: '9.5px', fontWeight: 'bold', color: '#000000', marginTop: '2px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', flexWrap: 'wrap' }}>
                     {shopPhone && <span>Tel: {shopPhone}</span>}
                     {shopPhone && shopNtn && <span>|</span>}
                     {shopNtn && <span>NTN: {shopNtn}</span>}
@@ -229,54 +229,53 @@ export function ThermalReceiptSlip({
             </div>
 
             {/* 2. INVOICE & CUSTOMER METADATA (TABULAR FORMAT, SOLID BORDER) */}
-            <div style={{ padding: '3px 0', borderBottom: '1px solid #000000' }}>
+            <div style={{ padding: '3px 0', borderBottom: '1.5px solid #000000' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: '10.5px' }}>
                     <tbody>
                         <tr>
                             <td style={{ width: '35%', fontWeight: 'bold', color: '#000000', textAlign: 'left', padding: '1.5px 0' }}>Invoice #:</td>
-                            <td style={{ width: '65%', textAlign: 'right', fontWeight: 'bold', fontFamily: 'monospace', fontSize: '11px', padding: '1.5px 0', color: '#000000' }}>
+                            <td style={{ width: '65%', textAlign: 'right', fontWeight: '900', fontFamily: 'monospace', fontSize: '11px', padding: '1.5px 0', color: '#000000' }}>
                                 {invoice.invoice_no || invoice.id}
                             </td>
                         </tr>
                         <tr>
-                            <td style={{ textAlign: 'left', fontWeight: '600', color: '#000000', padding: '1.5px 0' }}>Date &amp; Time:</td>
-                            <td style={{ textAlign: 'right', fontWeight: 'normal', color: '#000000', padding: '1.5px 0' }}>{formattedDate}</td>
+                            <td style={{ textAlign: 'left', fontWeight: 'bold', color: '#000000', padding: '1.5px 0' }}>Date &amp; Time:</td>
+                            <td style={{ textAlign: 'right', fontWeight: 'bold', color: '#000000', padding: '1.5px 0' }}>{formattedDate}</td>
                         </tr>
                         <tr>
-                            <td style={{ textAlign: 'left', fontWeight: '600', color: '#000000', padding: '1.5px 0' }}>Cashier:</td>
-                            <td style={{ textAlign: 'right', fontWeight: 'normal', color: '#000000', padding: '1.5px 0' }}>{cashier}</td>
+                            <td style={{ textAlign: 'left', fontWeight: 'bold', color: '#000000', padding: '1.5px 0' }}>Cashier:</td>
+                            <td style={{ textAlign: 'right', fontWeight: 'bold', color: '#000000', padding: '1.5px 0' }}>{cashier}</td>
                         </tr>
                         <tr style={{ borderTop: '1px solid #000000' }}>
-                            <td style={{ textAlign: 'left', fontWeight: '600', color: '#000000', padding: '2.5px 0 1.5px 0' }}>Billed To:</td>
-                            <td style={{ textAlign: 'right', fontWeight: 'bold', color: '#000000', padding: '2.5px 0 1.5px 0', wordBreak: 'break-word' }}>{customerName}</td>
+                            <td style={{ textAlign: 'left', fontWeight: 'bold', color: '#000000', padding: '2.5px 0 1.5px 0' }}>Billed To:</td>
+                            <td style={{ textAlign: 'right', fontWeight: '900', color: '#000000', padding: '2.5px 0 1.5px 0', wordBreak: 'break-word' }}>{customerName}</td>
                         </tr>
                         {customerPhone && (
                             <tr>
-                                <td style={{ textAlign: 'left', fontWeight: '600', color: '#000000', padding: '1.5px 0' }}>Mobile / Tel:</td>
-                                <td style={{ textAlign: 'right', fontWeight: 'normal', color: '#000000', padding: '1.5px 0' }}>{customerPhone}</td>
+                                <td style={{ textAlign: 'left', fontWeight: 'bold', color: '#000000', padding: '1.5px 0' }}>Mobile / Tel:</td>
+                                <td style={{ textAlign: 'right', fontWeight: 'bold', color: '#000000', padding: '1.5px 0' }}>{customerPhone}</td>
                             </tr>
                         )}
                         {customerAddress && (
                             <tr>
-                                <td style={{ textAlign: 'left', verticalAlign: 'top', fontWeight: '600', color: '#000000', padding: '1.5px 0' }}>Address:</td>
-                                <td style={{ textAlign: 'right', fontWeight: 'normal', color: '#000000', padding: '1.5px 0', wordBreak: 'break-word' }}>{customerAddress}</td>
+                                <td style={{ textAlign: 'left', verticalAlign: 'top', fontWeight: 'bold', color: '#000000', padding: '1.5px 0' }}>Address:</td>
+                                <td style={{ textAlign: 'right', fontWeight: 'bold', color: '#000000', padding: '1.5px 0', wordBreak: 'break-word' }}>{customerAddress}</td>
                             </tr>
                         )}
                     </tbody>
                 </table>
             </div>
 
-            {/* 3. ITEMS TABLE (TABULAR FORMAT, LIGHT 1PX BORDERS FOR ROWS & COLUMNS) */}
+            {/* 3. ITEMS TABLE (5 BALANCED COLUMNS, CLEAN NO VERTICAL BORDERS) */}
             <div style={{ padding: '3px 0' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: '10px', border: '1px solid #000000' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: '8.5px', borderTop: '1.5px solid #000000', borderBottom: '1.5px solid #000000' }}>
                     <thead>
-                        <tr style={{ textTransform: 'uppercase' }}>
-                            <th style={{ textAlign: 'center', width: '7%', padding: '3.5px 1px', fontWeight: 'bold', color: '#000000', border: '1px solid #000000' }}>#</th>
-                            <th style={{ textAlign: 'left', width: '41%', padding: '3.5px 3px', fontWeight: 'bold', color: '#000000', border: '1px solid #000000' }}>Item</th>
-                            <th style={{ textAlign: 'center', width: '14%', padding: '3.5px 1px', fontWeight: 'bold', color: '#000000', border: '1px solid #000000' }}>Qty</th>
-                            <th style={{ textAlign: 'right', width: '13%', padding: '3.5px 2px', fontWeight: 'bold', color: '#000000', border: '1px solid #000000' }}>Rate</th>
-                            <th style={{ textAlign: 'right', width: '10%', padding: '3.5px 2px', fontWeight: 'bold', color: '#000000', border: '1px solid #000000' }}>Disc</th>
-                            <th style={{ textAlign: 'right', width: '15%', padding: '3.5px 3px', fontWeight: 'bold', color: '#000000', border: '1px solid #000000' }}>Net</th>
+                        <tr style={{ textTransform: 'uppercase', backgroundColor: '#f3f4f6', borderBottom: '1.5px solid #000000' }}>
+                            <th style={{ textAlign: 'left', width: '37%', padding: '4px 1px 4px 0', fontWeight: '900', color: '#000000', border: 'none' }}>Item</th>
+                            <th style={{ textAlign: 'center', width: '14%', padding: '4px 1px', fontWeight: '900', color: '#000000', border: 'none' }}>Qty</th>
+                            <th style={{ textAlign: 'right', width: '16%', padding: '4px 2px', fontWeight: '900', color: '#000000', border: 'none' }}>Rate</th>
+                            <th style={{ textAlign: 'center', width: '13%', padding: '4px 1px', fontWeight: '900', color: '#000000', border: 'none' }}>Disc</th>
+                            <th style={{ textAlign: 'right', width: '20%', padding: '4px 2px 4px 1px', fontWeight: '900', color: '#000000', border: 'none' }}>Net</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -294,30 +293,27 @@ export function ThermalReceiptSlip({
                             const itDiscount = parseFloat(item.discount) || 0;
 
                             return (
-                                <tr key={idx} style={{ verticalAlign: 'top' }}>
-                                    <td style={{ padding: '4.5px 1px', textAlign: 'center', fontSize: '10px', fontWeight: '500', color: '#000000', border: '1px solid #000000' }}>
-                                        {idx + 1}
-                                    </td>
-                                    <td style={{ padding: '4.5px 3px', textAlign: 'left', border: '1px solid #000000' }}>
-                                        <div style={{ fontSize: '10px', fontWeight: 'bold', lineHeight: 1.2, wordBreak: 'break-word', color: '#000000' }}>
+                                <tr key={idx} style={{ verticalAlign: 'top', borderBottom: '1px solid #000000' }}>
+                                    <td style={{ padding: '3.5px 1px 3.5px 0', textAlign: 'left', border: 'none' }}>
+                                        <div style={{ fontSize: '10px', fontWeight: '900', lineHeight: 1.2, wordBreak: 'break-word', color: '#000000' }}>
                                             {item.product_name}
                                         </div>
                                         {hasSub && (
-                                            <div style={{ fontSize: '8.5px', fontWeight: 'normal', color: '#000000', lineHeight: 1.15, marginTop: '1.5px' }}>
+                                            <div style={{ fontSize: '8.5px', fontWeight: '700', color: '#000000', lineHeight: 1.15, marginTop: '1px' }}>
                                                 {variantText}{packageDetail}
                                             </div>
                                         )}
                                     </td>
-                                    <td style={{ padding: '4.5px 1px', textAlign: 'center', fontSize: '10px', fontWeight: 'bold', color: '#000000', whiteSpace: 'nowrap', border: '1px solid #000000' }}>
+                                    <td style={{ padding: '3.5px 1px', textAlign: 'center', fontSize: '8.5px', fontWeight: '800', color: '#000000', whiteSpace: 'nowrap', border: 'none' }}>
                                         {qtyCol}
                                     </td>
-                                    <td style={{ padding: '4.5px 2px', textAlign: 'right', fontSize: '10px', fontWeight: '500', color: '#000000', border: '1px solid #000000' }}>
+                                    <td style={{ padding: '3.5px 2px', textAlign: 'right', fontSize: '8.5px', fontWeight: '800', color: '#000000', border: 'none' }}>
                                         {Number(item.price).toFixed(0)}
                                     </td>
-                                    <td style={{ padding: '4.5px 2px', textAlign: 'right', fontSize: '10px', fontWeight: '500', color: '#000000', border: '1px solid #000000' }}>
-                                        {itDiscount > 0 ? `${itDiscount.toFixed(0)}` : '0'}
+                                    <td style={{ padding: '3.5px 1px', textAlign: 'center', fontSize: '8.5px', fontWeight: '800', color: '#000000', border: 'none' }}>
+                                        {itDiscount > 0 ? Number(itDiscount).toFixed(0) : '0'}
                                     </td>
-                                    <td style={{ padding: '4.5px 3px', textAlign: 'right', fontSize: '10.5px', fontWeight: 'bold', color: '#000000', border: '1px solid #000000' }}>
+                                    <td style={{ padding: '3.5px 2px 3.5px 1px', textAlign: 'right', fontSize: '9.5px', fontWeight: '900', color: '#000000', border: 'none' }}>
                                         {Number(item.total).toFixed(0)}
                                     </td>
                                 </tr>
@@ -329,44 +325,44 @@ export function ThermalReceiptSlip({
 
             {/* 4. CURRENT BILL FINANCIAL TOTALS (TABULAR FORMAT, LIGHT 1PX BORDERS) */}
             <div style={{ padding: '3px 0' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: '10.5px', border: '1px solid #000000' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: '10.5px', border: '1.5px solid #000000' }}>
                     <tbody>
                         <tr>
-                            <td style={{ width: '52%', textAlign: 'left', fontWeight: '500', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>Gross Amount:</td>
-                            <td style={{ width: '48%', textAlign: 'right', fontWeight: '600', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>Rs. {grossVal.toFixed(2)}</td>
+                            <td style={{ width: '52%', textAlign: 'left', fontWeight: 'bold', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>Gross Amount:</td>
+                            <td style={{ width: '48%', textAlign: 'right', fontWeight: '900', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>Rs. {grossVal.toFixed(2)}</td>
                         </tr>
                         {discVal > 0 && (
                             <tr>
-                                <td style={{ textAlign: 'left', fontWeight: '500', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>Less Item Discount:</td>
-                                <td style={{ textAlign: 'right', fontWeight: '600', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>- Rs. {discVal.toFixed(2)}</td>
+                                <td style={{ textAlign: 'left', fontWeight: 'bold', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>Less Item Discount:</td>
+                                <td style={{ textAlign: 'right', fontWeight: '900', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>- Rs. {discVal.toFixed(2)}</td>
                             </tr>
                         )}
                         {specialDiscVal > 0 && (
                             <tr>
-                                <td style={{ textAlign: 'left', fontWeight: '500', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>Less Special Discount:</td>
-                                <td style={{ textAlign: 'right', fontWeight: '600', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>- Rs. {specialDiscVal.toFixed(2)}</td>
+                                <td style={{ textAlign: 'left', fontWeight: 'bold', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>Less Special Discount:</td>
+                                <td style={{ textAlign: 'right', fontWeight: '900', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>- Rs. {specialDiscVal.toFixed(2)}</td>
                             </tr>
                         )}
                         {chargesVal > 0 && (
                             <tr>
-                                <td style={{ textAlign: 'left', fontWeight: '500', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>Add Charges:</td>
-                                <td style={{ textAlign: 'right', fontWeight: '600', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>+ Rs. {chargesVal.toFixed(2)}</td>
+                                <td style={{ textAlign: 'left', fontWeight: 'bold', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>Add Charges:</td>
+                                <td style={{ textAlign: 'right', fontWeight: '900', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>+ Rs. {chargesVal.toFixed(2)}</td>
                             </tr>
                         )}
-                        <tr>
-                            <td style={{ textAlign: 'left', fontWeight: 'bold', fontSize: '12.5px', color: '#000000', padding: '4px 4px', border: '1px solid #000000' }}>CURRENT BILL:</td>
-                            <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '12.5px', color: '#000000', padding: '4px 4px', border: '1px solid #000000' }}>Rs. {netVal.toFixed(2)}</td>
+                        <tr style={{ backgroundColor: '#f9fafb' }}>
+                            <td style={{ textAlign: 'left', fontWeight: '900', fontSize: '12px', color: '#000000', padding: '4px 4px', border: '1.5px solid #000000' }}>CURRENT BILL:</td>
+                            <td style={{ textAlign: 'right', fontWeight: '900', fontSize: '12px', color: '#000000', padding: '4px 4px', border: '1.5px solid #000000' }}>Rs. {netVal.toFixed(2)}</td>
                         </tr>
                         <tr>
-                            <td style={{ textAlign: 'left', fontWeight: '500', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>Paid on Bill:</td>
-                            <td style={{ textAlign: 'right', fontWeight: '600', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>Rs. {paidVal.toFixed(2)}</td>
+                            <td style={{ textAlign: 'left', fontWeight: 'bold', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>Paid on Bill:</td>
+                            <td style={{ textAlign: 'right', fontWeight: '900', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>Rs. {paidVal.toFixed(2)}</td>
                         </tr>
                         {!hasLedger && (
                             <tr>
-                                <td style={{ textAlign: 'left', fontWeight: 'bold', fontSize: '11px', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>
+                                <td style={{ textAlign: 'left', fontWeight: '900', fontSize: '11px', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>
                                     {dueVal > 0 ? 'Bill Balance Due:' : 'Change Return:'}
                                 </td>
-                                <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '11px', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>
+                                <td style={{ textAlign: 'right', fontWeight: '900', fontSize: '11px', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>
                                     Rs. {Math.abs(dueVal).toFixed(2)}
                                 </td>
                             </tr>
@@ -378,30 +374,30 @@ export function ThermalReceiptSlip({
             {/* 5. CUSTOMER LEDGER STATEMENT (TABULAR FORMAT, LIGHT 1PX BORDERS) */}
             {hasLedger && (
                 <div style={{ padding: '3px 0' }}>
-                    <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '10.5px', letterSpacing: '0.5px', color: '#000000', border: '1px solid #000000', borderBottom: 'none', padding: '3px', marginBottom: 0 }}>
+                    <div style={{ textAlign: 'center', fontWeight: '900', fontSize: '10.5px', letterSpacing: '0.5px', color: '#000000', border: '1.5px solid #000000', borderBottom: 'none', padding: '3px', marginBottom: 0, backgroundColor: '#f3f4f6' }}>
                         *** CUSTOMER LEDGER STATEMENT ***
                     </div>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: '10.5px', border: '1px solid #000000' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: '10.5px', border: '1.5px solid #000000' }}>
                         <tbody>
                             <tr>
                                 <td style={{ width: '52%', textAlign: 'left', fontWeight: 'bold', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>Previous Balance:</td>
-                                <td style={{ width: '48%', textAlign: 'right', fontWeight: 'bold', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>Rs. {pBal.toFixed(2)}</td>
+                                <td style={{ width: '48%', textAlign: 'right', fontWeight: '900', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>Rs. {pBal.toFixed(2)}</td>
                             </tr>
                             <tr>
-                                <td style={{ textAlign: 'left', fontWeight: '600', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>+ Current Bill:</td>
-                                <td style={{ textAlign: 'right', fontWeight: '600', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>+ Rs. {netVal.toFixed(2)}</td>
+                                <td style={{ textAlign: 'left', fontWeight: 'bold', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>+ Current Bill:</td>
+                                <td style={{ textAlign: 'right', fontWeight: '900', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>+ Rs. {netVal.toFixed(2)}</td>
                             </tr>
                             <tr>
-                                <td style={{ textAlign: 'left', fontWeight: '600', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>Total Payable:</td>
-                                <td style={{ textAlign: 'right', fontWeight: '600', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>Rs. {totalPayable.toFixed(2)}</td>
+                                <td style={{ textAlign: 'left', fontWeight: 'bold', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>Total Payable:</td>
+                                <td style={{ textAlign: 'right', fontWeight: '900', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>Rs. {totalPayable.toFixed(2)}</td>
                             </tr>
                             <tr>
-                                <td style={{ textAlign: 'left', fontWeight: '600', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>- Paid Today:</td>
-                                <td style={{ textAlign: 'right', fontWeight: '600', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>- Rs. {paidVal.toFixed(2)}</td>
+                                <td style={{ textAlign: 'left', fontWeight: 'bold', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>- Paid Today:</td>
+                                <td style={{ textAlign: 'right', fontWeight: '900', color: '#000000', padding: '3px 4px', border: '1px solid #000000' }}>- Rs. {paidVal.toFixed(2)}</td>
                             </tr>
-                            <tr>
-                                <td style={{ textAlign: 'left', fontWeight: 'bold', fontSize: '12.5px', color: '#000000', padding: '4px 4px', border: '1px solid #000000' }}>NEW BALANCE:</td>
-                                <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '12.5px', color: '#000000', padding: '4px 4px', border: '1px solid #000000' }}>Rs. {finalBal.toFixed(2)}</td>
+                            <tr style={{ backgroundColor: '#f9fafb' }}>
+                                <td style={{ textAlign: 'left', fontWeight: '900', fontSize: '12px', color: '#000000', padding: '4px 4px', border: '1.5px solid #000000' }}>NEW BALANCE:</td>
+                                <td style={{ textAlign: 'right', fontWeight: '900', fontSize: '12px', color: '#000000', padding: '4px 4px', border: '1.5px solid #000000' }}>Rs. {finalBal.toFixed(2)}</td>
                             </tr>
                         </tbody>
                     </table>
@@ -410,10 +406,10 @@ export function ThermalReceiptSlip({
 
             {/* 6. FOOTER */}
             <div style={{ paddingTop: '5px', textAlign: 'center', color: '#000000' }}>
-                <div style={{ fontWeight: 'bold', fontSize: '10.5px', letterSpacing: '0.5px', color: '#000000' }}>
+                <div style={{ fontWeight: '900', fontSize: '10.5px', letterSpacing: '0.5px', color: '#000000' }}>
                     *** THANK YOU FOR YOUR BUSINESS! ***
                 </div>
-                <div style={{ fontSize: '9px', marginTop: '2px', fontWeight: 'normal', color: '#000000' }}>
+                <div style={{ fontSize: '9px', marginTop: '2px', fontWeight: 'bold', color: '#000000' }}>
                     No return without original invoice
                 </div>
             </div>

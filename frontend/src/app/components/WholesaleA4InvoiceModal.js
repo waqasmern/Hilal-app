@@ -209,7 +209,7 @@ export default function WholesaleA4InvoiceModal({
     };
 
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-1.5 sm:p-4 md:p-6 overflow-hidden animate-in fade-in duration-150">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-1.5 sm:p-4 md:p-6 overflow-hidden">
             <div className="bg-white rounded-2xl sm:rounded-3xl max-w-4xl xl:max-w-5xl w-full max-h-[96vh] sm:max-h-[92vh] flex flex-col shadow-2xl border border-gray-200 overflow-hidden">
                 {/* 1. PINNED MODAL HEADER & ACTION BUTTONS */}
                 <div className="shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3 p-3 sm:px-6 sm:py-4 border-b border-gray-200 bg-white">

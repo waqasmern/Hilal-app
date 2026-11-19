@@ -378,6 +378,29 @@ export function generateThermalReceiptHtml(inv, settings = {}, cashierName = '',
     <meta charset="utf-8">
     <title>${shopName} - Invoice #${inv.invoice_no || inv.id}</title>
     <style>
+        @page {
+            size: 76mm auto;
+            margin: 0mm;
+        }
+        @media print {
+            @page {
+                size: 76mm auto;
+                margin: 0mm !important;
+            }
+            html, body {
+                width: 100% !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                background: #ffffff !important;
+            }
+            .receipt-wrapper {
+                width: 68mm !important;
+                max-width: 68mm !important;
+                margin: 0 0 0 1mm !important;
+                padding: 1mm 2mm !important;
+                box-sizing: border-box !important;
+            }
+        }
         html, body {
             margin: 0 !important;
             padding: 0 !important;
@@ -388,35 +411,23 @@ export function generateThermalReceiptHtml(inv, settings = {}, cashierName = '',
         }
         body {
             font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
-            font-size: 11px;
+            font-size: 10px;
             line-height: 1.3;
-            padding: 1mm 4mm 0mm 2mm !important;
-            width: 100% !important;
-            box-sizing: border-box !important;
             color: #000000 !important;
+        }
+        .receipt-wrapper {
+            width: 68mm;
+            max-width: 68mm;
+            margin: 0 0 0 1mm;
+            padding: 1mm 2mm;
+            box-sizing: border-box;
+            background: #ffffff;
         }
         * {
             box-sizing: border-box;
             color: #000000 !important;
         }
         p { margin: 0; }
-        @media print {
-            @page {
-                margin: 0 !important;
-            }
-            html, body {
-                margin: 0 !important;
-                padding: 0 !important;
-                height: auto !important;
-                min-height: 0 !important;
-                overflow: hidden !important;
-            }
-            body {
-                padding: 1mm 4mm 0mm 2mm !important;
-                box-sizing: border-box !important;
-                overflow: hidden !important;
-            }
-        }
         table {
             width: 100%;
             border-collapse: collapse;
@@ -435,8 +446,8 @@ export function generateThermalReceiptHtml(inv, settings = {}, cashierName = '',
             text-align: center;
         }
         .item-title {
-            font-size: 10px;
-            font-weight: bold;
+            font-size: 9.5px;
+            font-weight: 900;
             line-height: 1.2;
             word-break: break-word;
             white-space: normal;
@@ -445,10 +456,10 @@ export function generateThermalReceiptHtml(inv, settings = {}, cashierName = '',
             color: #000000;
         }
         .item-sub {
-            font-size: 8.5px;
+            font-size: 8px;
             line-height: 1.15;
             color: #000000;
-            font-weight: normal;
+            font-weight: 700;
             margin-top: 1px;
         }
         .logo-img {
@@ -461,19 +472,19 @@ export function generateThermalReceiptHtml(inv, settings = {}, cashierName = '',
     </style>
 </head>
 <body>
-    <div style="width: 100%; max-width: 100%; margin: 0; padding: 0;">
+    <div class="receipt-wrapper">
     <!-- 1. HEADER (LOGO & SHOP DETAILS) -->
-    <div style="text-align: center; padding-bottom: 4px; border-bottom: 1px solid #000000;">
+    <div style="text-align: center; padding-bottom: 5px; border-bottom: 1.5px solid #000000;">
         ${shopLogo ? `
             <div style="margin-bottom: 3px;">
                 <img src="${shopLogo}" alt="Shop Logo" class="logo-img" />
             </div>
         ` : ''}
-        <div style="font-size: 13.5px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; line-height: 1.2;">
+        <div style="font-size: 14px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px; line-height: 1.2;">
             ${shopName}
         </div>
-        ${shopAddress ? `<div style="font-size: 10px; font-weight: normal; line-height: 1.2; margin-top: 2px;">${shopAddress}</div>` : ''}
-        <div style="font-size: 9.5px; font-weight: normal; margin-top: 2px;">
+        ${shopAddress ? `<div style="font-size: 10px; font-weight: bold; line-height: 1.2; margin-top: 2px;">${shopAddress}</div>` : ''}
+        <div style="font-size: 9.5px; font-weight: bold; margin-top: 2px;">
             ${shopPhone ? `<span>Tel: ${shopPhone}</span>` : ''}
             ${shopPhone && shopNtn ? `<span style="margin: 0 4px;">|</span>` : ''}
             ${shopNtn ? `<span>NTN: ${shopNtn}</span>` : ''}
@@ -481,52 +492,51 @@ export function generateThermalReceiptHtml(inv, settings = {}, cashierName = '',
     </div>
 
     <!-- 2. METADATA TABLE (SOLID BORDERS, 2-COLUMN TABULAR FORMAT) -->
-    <div style="padding: 3px 0; border-bottom: 1px solid #000000;">
-        <table style="width: 100%; border-collapse: collapse; font-size: 10.5px;">
+    <div style="padding: 3px 0; border-bottom: 1.5px solid #000000;">
+        <table style="width: 100%; border-collapse: collapse; font-size: 10px;">
             <tr>
                 <td style="width: 35%; font-weight: bold; color: #000000; text-align: left; padding: 1.5px 0;">Invoice #:</td>
-                <td style="width: 65%; text-align: right; font-weight: bold; font-family: monospace; font-size: 11px; padding: 1.5px 0; color: #000000;">${inv.invoice_no || inv.id}</td>
+                <td style="width: 65%; text-align: right; font-weight: 900; font-family: monospace; font-size: 10.5px; padding: 1.5px 2px 1.5px 0; color: #000000;">${inv.invoice_no || inv.id}</td>
             </tr>
             <tr>
-                <td style="text-align: left; font-weight: 600; color: #000000; padding: 1.5px 0;">Date & Time:</td>
-                <td style="text-align: right; font-weight: normal; color: #000000; padding: 1.5px 0;">${formattedDate}</td>
+                <td style="text-align: left; font-weight: bold; color: #000000; padding: 1.5px 0;">Date & Time:</td>
+                <td style="text-align: right; font-weight: bold; color: #000000; padding: 1.5px 2px 1.5px 0;">${formattedDate}</td>
             </tr>
             <tr>
-                <td style="text-align: left; font-weight: 600; color: #000000; padding: 1.5px 0;">Cashier:</td>
-                <td style="text-align: right; font-weight: normal; color: #000000; padding: 1.5px 0;">${cashier}</td>
+                <td style="text-align: left; font-weight: bold; color: #000000; padding: 1.5px 0;">Cashier:</td>
+                <td style="text-align: right; font-weight: bold; color: #000000; padding: 1.5px 2px 1.5px 0;">${cashier}</td>
             </tr>
             <tr style="border-top: 1px solid #000000;">
-                <td style="font-weight: 600; color: #000000; text-align: left; padding: 2.5px 0 1.5px 0;">Billed To:</td>
-                <td style="text-align: right; font-weight: bold; color: #000000; padding: 2.5px 0 1.5px 0; word-break: break-word;">${customerName}</td>
+                <td style="font-weight: bold; color: #000000; text-align: left; padding: 2.5px 0 1.5px 0;">Billed To:</td>
+                <td style="text-align: right; font-weight: 900; color: #000000; padding: 2.5px 2px 1.5px 0; word-break: break-word;">${customerName}</td>
             </tr>
             ${customerPhone ? `
             <tr>
-                <td style="text-align: left; font-weight: 600; color: #000000; padding: 1.5px 0;">Mobile / Tel:</td>
-                <td style="text-align: right; font-weight: normal; color: #000000; padding: 1.5px 0;">${customerPhone}</td>
+                <td style="text-align: left; font-weight: bold; color: #000000; padding: 1.5px 0;">Mobile / Tel:</td>
+                <td style="text-align: right; font-weight: bold; color: #000000; padding: 1.5px 2px 1.5px 0;">${customerPhone}</td>
             </tr>` : ''}
             ${customerAddress ? `
             <tr>
-                <td style="text-align: left; vertical-align: top; font-weight: 600; color: #000000; padding: 1.5px 0;">Address:</td>
-                <td style="text-align: right; font-weight: normal; color: #000000; padding: 1.5px 0; word-break: break-word;">${customerAddress}</td>
+                <td style="text-align: left; vertical-align: top; font-weight: bold; color: #000000; padding: 1.5px 0;">Address:</td>
+                <td style="text-align: right; font-weight: bold; color: #000000; padding: 1.5px 2px 1.5px 0; word-break: break-word;">${customerAddress}</td>
             </tr>` : ''}
         </table>
     </div>
 
-    <!-- 3. ITEMS TABLE (TABULAR FORMAT, LIGHT 1PX BORDERS FOR ROWS & COLUMNS) -->
+    <!-- 3. ITEMS TABLE (5 BALANCED COLUMNS, CLEAN NO VERTICAL BORDERS) -->
     <div style="padding: 3px 0;">
-        <table style="width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 10px; border: 1px solid #000000;">
+        <table style="width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 8.5px; border-top: 1.5px solid #000000; border-bottom: 1.5px solid #000000;">
             <thead>
-                <tr style="text-transform: uppercase;">
-                    <th style="text-align: center; width: 7%; padding: 3.5px 1px; font-weight: bold; color: #000000; border: 1px solid #000000;">#</th>
-                    <th style="text-align: left; width: 41%; padding: 3.5px 3px; font-weight: bold; color: #000000; border: 1px solid #000000;">Item</th>
-                    <th style="text-align: center; width: 14%; padding: 3.5px 1px; font-weight: bold; color: #000000; border: 1px solid #000000;">Qty</th>
-                    <th style="text-align: right; width: 13%; padding: 3.5px 2px; font-weight: bold; color: #000000; border: 1px solid #000000;">Rate</th>
-                    <th style="text-align: right; width: 10%; padding: 3.5px 2px; font-weight: bold; color: #000000; border: 1px solid #000000;">Disc</th>
-                    <th style="text-align: right; width: 15%; padding: 3.5px 3px; font-weight: bold; color: #000000; border: 1px solid #000000;">Net</th>
+                <tr style="text-transform: uppercase; background-color: #f3f4f6; border-bottom: 1.5px solid #000000;">
+                    <th style="text-align: left; width: 37%; padding: 4px 1px 4px 0; font-weight: 900; color: #000000; border: none;">Item</th>
+                    <th style="text-align: center; width: 14%; padding: 4px 1px; font-weight: 900; color: #000000; border: none;">Qty</th>
+                    <th style="text-align: right; width: 16%; padding: 4px 2px; font-weight: 900; color: #000000; border: none;">Rate</th>
+                    <th style="text-align: center; width: 13%; padding: 4px 1px; font-weight: 900; color: #000000; border: none;">Disc</th>
+                    <th style="text-align: right; width: 20%; padding: 4px 2px 4px 1px; font-weight: 900; color: #000000; border: none;">Net</th>
                 </tr>
             </thead>
             <tbody>
-                ${items.map((it, idx) => {
+                ${items.map((it) => {
                     const factor = parseFloat(it.conversion_factor) || 1;
                     const isBulk = factor > 1;
                     const uSymbol = it.base_unit || it.unit_symbol || it.unit_name || 'pcs';
@@ -540,24 +550,21 @@ export function generateThermalReceiptHtml(inv, settings = {}, cashierName = '',
                     const itDiscount = parseFloat(it.discount) || 0;
 
                     return `
-                    <tr style="vertical-align: top;">
-                        <td style="padding: 4.5px 1px; text-align: center; font-size: 10px; font-weight: 500; color: #000000; border: 1px solid #000000;">
-                            ${idx + 1}
+                    <tr style="vertical-align: top; border-bottom: 1px solid #000000;">
+                        <td style="padding: 3.5px 1px 3.5px 0; text-align: left; border: none;">
+                            <div class="item-title" style="font-size: 9.5px; font-weight: 900; line-height: 1.2; word-break: break-word;">${it.product_name}</div>
+                            ${hasSub ? `<div class="item-sub" style="font-size: 8px; font-weight: 700; margin-top: 1px;">${variantText}${packageDetail}</div>` : ''}
                         </td>
-                        <td style="padding: 4.5px 3px; text-align: left; border: 1px solid #000000;">
-                            <div class="item-title">${it.product_name}</div>
-                            ${hasSub ? `<div class="item-sub">${variantText}${packageDetail}</div>` : ''}
-                        </td>
-                        <td style="padding: 4.5px 1px; text-align: center; font-size: 10px; font-weight: bold; white-space: nowrap; color: #000000; border: 1px solid #000000;">
+                        <td style="padding: 3.5px 1px; text-align: center; font-size: 8.5px; font-weight: 800; white-space: nowrap; color: #000000; border: none;">
                             ${qtyCol}
                         </td>
-                        <td style="padding: 4.5px 2px; text-align: right; font-size: 10px; font-weight: 500; color: #000000; border: 1px solid #000000;">
+                        <td style="padding: 3.5px 2px; text-align: right; font-size: 8.5px; font-weight: 800; color: #000000; border: none;">
                             ${Number(it.price).toFixed(0)}
                         </td>
-                        <td style="padding: 4.5px 2px; text-align: right; font-size: 10px; font-weight: 500; color: #000000; border: 1px solid #000000;">
-                            ${itDiscount > 0 ? `${itDiscount.toFixed(0)}` : '0'}
+                        <td style="padding: 3.5px 1px; text-align: center; font-size: 8.5px; font-weight: 800; color: #000000; border: none;">
+                            ${itDiscount > 0 ? Number(itDiscount).toFixed(0) : '0'}
                         </td>
-                        <td style="padding: 4.5px 3px; text-align: right; font-size: 10.5px; font-weight: bold; color: #000000; border: 1px solid #000000;">
+                        <td style="padding: 3.5px 2px 3.5px 1px; text-align: right; font-size: 9.5px; font-weight: 900; color: #000000; border: none;">
                             ${Number(it.total).toFixed(0)}
                         </td>
                     </tr>
@@ -569,38 +576,38 @@ export function generateThermalReceiptHtml(inv, settings = {}, cashierName = '',
 
     <!-- 4. CURRENT BILL FINANCIAL TOTALS (TABULAR FORMAT, LIGHT 1PX BORDERS) -->
     <div style="padding: 3px 0;">
-        <table style="width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 10.5px; border: 1px solid #000000;">
+        <table style="width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 10.5px; border: 1.5px solid #000000;">
             <tr>
-                <td style="width: 52%; text-align: left; font-weight: 500; color: #000000; padding: 3px 4px; border: 1px solid #000000;">Gross Amount:</td>
-                <td style="width: 48%; text-align: right; font-weight: 600; color: #000000; padding: 3px 4px; border: 1px solid #000000;">Rs. ${grossVal.toFixed(2)}</td>
+                <td style="width: 52%; text-align: left; font-weight: bold; color: #000000; padding: 3px 4px; border: 1px solid #000000;">Gross Amount:</td>
+                <td style="width: 48%; text-align: right; font-weight: 900; color: #000000; padding: 3px 4px; border: 1px solid #000000;">Rs. ${grossVal.toFixed(2)}</td>
             </tr>
             ${discVal > 0 ? `
             <tr>
-                <td style="text-align: left; font-weight: 500; color: #000000; padding: 3px 4px; border: 1px solid #000000;">Less Item Discount:</td>
-                <td style="text-align: right; font-weight: 600; color: #000000; padding: 3px 4px; border: 1px solid #000000;">- Rs. ${discVal.toFixed(2)}</td>
+                <td style="text-align: left; font-weight: bold; color: #000000; padding: 3px 4px; border: 1px solid #000000;">Less Item Discount:</td>
+                <td style="text-align: right; font-weight: 900; color: #000000; padding: 3px 4px; border: 1px solid #000000;">- Rs. ${discVal.toFixed(2)}</td>
             </tr>` : ''}
             ${specialDiscVal > 0 ? `
             <tr>
-                <td style="text-align: left; font-weight: 500; color: #000000; padding: 3px 4px; border: 1px solid #000000;">Less Special Discount:</td>
-                <td style="text-align: right; font-weight: 600; color: #000000; padding: 3px 4px; border: 1px solid #000000;">- Rs. ${specialDiscVal.toFixed(2)}</td>
+                <td style="text-align: left; font-weight: bold; color: #000000; padding: 3px 4px; border: 1px solid #000000;">Less Special Discount:</td>
+                <td style="text-align: right; font-weight: 900; color: #000000; padding: 3px 4px; border: 1px solid #000000;">- Rs. ${specialDiscVal.toFixed(2)}</td>
             </tr>` : ''}
             ${chargesVal > 0 ? `
             <tr>
-                <td style="text-align: left; font-weight: 500; color: #000000; padding: 3px 4px; border: 1px solid #000000;">Add Charges:</td>
-                <td style="text-align: right; font-weight: 600; color: #000000; padding: 3px 4px; border: 1px solid #000000;">+ Rs. ${chargesVal.toFixed(2)}</td>
+                <td style="text-align: left; font-weight: bold; color: #000000; padding: 3px 4px; border: 1px solid #000000;">Add Charges:</td>
+                <td style="text-align: right; font-weight: 900; color: #000000; padding: 3px 4px; border: 1px solid #000000;">+ Rs. ${chargesVal.toFixed(2)}</td>
             </tr>` : ''}
-            <tr>
-                <td style="text-align: left; font-weight: bold; font-size: 12.5px; color: #000000; padding: 4px 4px; border: 1px solid #000000;">CURRENT BILL:</td>
-                <td style="text-align: right; font-weight: bold; font-size: 12.5px; color: #000000; padding: 4px 4px; border: 1px solid #000000;">Rs. ${netVal.toFixed(2)}</td>
+            <tr style="background-color: #f9fafb;">
+                <td style="text-align: left; font-weight: 900; font-size: 12px; color: #000000; padding: 4px 4px; border: 1.5px solid #000000;">CURRENT BILL:</td>
+                <td style="text-align: right; font-weight: 900; font-size: 12px; color: #000000; padding: 4px 4px; border: 1.5px solid #000000;">Rs. ${netVal.toFixed(2)}</td>
             </tr>
             <tr>
-                <td style="text-align: left; font-weight: 500; color: #000000; padding: 3px 4px; border: 1px solid #000000;">Paid on Bill:</td>
-                <td style="text-align: right; font-weight: 600; color: #000000; padding: 3px 4px; border: 1px solid #000000;">Rs. ${paidVal.toFixed(2)}</td>
+                <td style="text-align: left; font-weight: bold; color: #000000; padding: 3px 4px; border: 1px solid #000000;">Paid on Bill:</td>
+                <td style="text-align: right; font-weight: 900; color: #000000; padding: 3px 4px; border: 1px solid #000000;">Rs. ${paidVal.toFixed(2)}</td>
             </tr>
             ${!hasLedger ? `
             <tr>
-                <td style="text-align: left; font-weight: bold; font-size: 11px; color: #000000; padding: 3px 4px; border: 1px solid #000000;">${dueVal > 0 ? 'Bill Balance Due:' : 'Change Return:'}</td>
-                <td style="text-align: right; font-weight: bold; font-size: 11px; color: #000000; padding: 3px 4px; border: 1px solid #000000;">Rs. ${Math.abs(dueVal).toFixed(2)}</td>
+                <td style="text-align: left; font-weight: 900; font-size: 11px; color: #000000; padding: 3px 4px; border: 1px solid #000000;">${dueVal > 0 ? 'Bill Balance Due:' : 'Change Return:'}</td>
+                <td style="text-align: right; font-weight: 900; font-size: 11px; color: #000000; padding: 3px 4px; border: 1px solid #000000;">Rs. ${Math.abs(dueVal).toFixed(2)}</td>
             </tr>` : ''}
         </table>
     </div>
@@ -608,29 +615,29 @@ export function generateThermalReceiptHtml(inv, settings = {}, cashierName = '',
     <!-- 5. CUSTOMER LEDGER STATEMENT (TABULAR FORMAT, LIGHT 1PX BORDERS) -->
     ${hasLedger ? `
     <div style="padding: 3px 0;">
-        <div style="text-align: center; font-weight: bold; font-size: 10.5px; letter-spacing: 0.5px; color: #000000; border: 1px solid #000000; border-bottom: none; padding: 3px; margin-bottom: 0;">
+        <div style="text-align: center; font-weight: 900; font-size: 10.5px; letter-spacing: 0.5px; color: #000000; border: 1.5px solid #000000; border-bottom: none; padding: 3px; margin-bottom: 0; background-color: #f3f4f6;">
             *** CUSTOMER LEDGER STATEMENT ***
         </div>
-        <table style="width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 10.5px; border: 1px solid #000000;">
+        <table style="width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 10.5px; border: 1.5px solid #000000;">
             <tr>
                 <td style="width: 52%; text-align: left; font-weight: bold; color: #000000; padding: 3px 4px; border: 1px solid #000000;">Previous Balance:</td>
-                <td style="width: 48%; text-align: right; font-weight: bold; color: #000000; padding: 3px 4px; border: 1px solid #000000;">Rs. ${pBal.toFixed(2)}</td>
+                <td style="width: 48%; text-align: right; font-weight: 900; color: #000000; padding: 3px 4px; border: 1px solid #000000;">Rs. ${pBal.toFixed(2)}</td>
             </tr>
             <tr>
-                <td style="text-align: left; font-weight: 600; color: #000000; padding: 3px 4px; border: 1px solid #000000;">+ Current Bill:</td>
-                <td style="text-align: right; font-weight: 600; color: #000000; padding: 3px 4px; border: 1px solid #000000;">+ Rs. ${netVal.toFixed(2)}</td>
+                <td style="text-align: left; font-weight: bold; color: #000000; padding: 3px 4px; border: 1px solid #000000;">+ Current Bill:</td>
+                <td style="text-align: right; font-weight: 900; color: #000000; padding: 3px 4px; border: 1px solid #000000;">+ Rs. ${netVal.toFixed(2)}</td>
             </tr>
             <tr>
-                <td style="text-align: left; font-weight: 600; color: #000000; padding: 3px 4px; border: 1px solid #000000;">Total Payable:</td>
-                <td style="text-align: right; font-weight: 600; color: #000000; padding: 3px 4px; border: 1px solid #000000;">Rs. ${totalPayable.toFixed(2)}</td>
+                <td style="text-align: left; font-weight: bold; color: #000000; padding: 3px 4px; border: 1px solid #000000;">Total Payable:</td>
+                <td style="text-align: right; font-weight: 900; color: #000000; padding: 3px 4px; border: 1px solid #000000;">Rs. ${totalPayable.toFixed(2)}</td>
             </tr>
             <tr>
-                <td style="text-align: left; font-weight: 600; color: #000000; padding: 3px 4px; border: 1px solid #000000;">- Paid Today:</td>
-                <td style="text-align: right; font-weight: 600; color: #000000; padding: 3px 4px; border: 1px solid #000000;">- Rs. ${paidVal.toFixed(2)}</td>
+                <td style="text-align: left; font-weight: bold; color: #000000; padding: 3px 4px; border: 1px solid #000000;">- Paid Today:</td>
+                <td style="text-align: right; font-weight: 900; color: #000000; padding: 3px 4px; border: 1px solid #000000;">- Rs. ${paidVal.toFixed(2)}</td>
             </tr>
-            <tr>
-                <td style="text-align: left; font-weight: bold; font-size: 12.5px; color: #000000; padding: 4px 4px; border: 1px solid #000000;">NEW BALANCE:</td>
-                <td style="text-align: right; font-weight: bold; font-size: 12.5px; color: #000000; padding: 4px 4px; border: 1px solid #000000;">Rs. ${finalBal.toFixed(2)}</td>
+            <tr style="background-color: #f9fafb;">
+                <td style="text-align: left; font-weight: 900; font-size: 12px; color: #000000; padding: 4px 4px; border: 1.5px solid #000000;">NEW BALANCE:</td>
+                <td style="text-align: right; font-weight: 900; font-size: 12px; color: #000000; padding: 4px 4px; border: 1.5px solid #000000;">Rs. ${finalBal.toFixed(2)}</td>
             </tr>
         </table>
     </div>
@@ -638,10 +645,10 @@ export function generateThermalReceiptHtml(inv, settings = {}, cashierName = '',
 
     <!-- 6. FOOTER -->
     <div style="padding-top: 5px; text-align: center;">
-        <div style="font-weight: bold; font-size: 10.5px; letter-spacing: 0.5px;">
+        <div style="font-weight: 900; font-size: 10.5px; letter-spacing: 0.5px; color: #000000;">
             *** THANK YOU FOR YOUR BUSINESS! ***
         </div>
-        <div style="font-size: 9px; font-weight: normal; margin-top: 2px;">
+        <div style="font-size: 9px; margin-top: 2px; font-weight: bold; color: #000000;">
             No return without original invoice
         </div>
     </div>
