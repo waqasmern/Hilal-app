@@ -140,7 +140,15 @@ export default function WholesaleA4InvoiceModal({
             ? Number(invoice.current_customer_balance)
             : (calculatedPrevBalance + remainingVal));
 
+    // Status
     const status = getSalePaymentStatus(invoice);
+
+    // Multi-page Pagination: 25 items per page
+    const ITEMS_PER_PAGE = 25;
+    const totalPages = Math.ceil(items.length / ITEMS_PER_PAGE) || 1;
+    const pages = Array.from({ length: totalPages }, (_, i) =>
+        items.slice(i * ITEMS_PER_PAGE, (i + 1) * ITEMS_PER_PAGE)
+    );
 
     // Intelligent Print Handler
     const handlePrint = async () => {
@@ -330,251 +338,313 @@ export default function WholesaleA4InvoiceModal({
 
                 {/* 2. SCROLLABLE A4 PRINTABLE BILL CONTAINER */}
                 <div className="flex-1 min-h-0 overflow-y-auto p-2 sm:p-5 md:p-6 bg-gray-100/70">
-                    <div
-                        id={elemId}
-                        className="bg-white p-4 sm:p-7 border border-gray-300 rounded-xl space-y-4 text-gray-900 text-sm font-sans shadow-xs max-w-4xl mx-auto overflow-x-hidden"
-                    >
-                        {/* Bill Header: Left Side (Shop Info & Logo) | Right Side (Invoice & Customer Details) */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-3.5 border-b-2 border-gray-300">
-                            {/* LEFT SIDE: Shop Logo, Shop Name, Address, Phone, Email */}
-                            <div className="space-y-2 text-sm">
-                                <div className="flex items-center gap-3">
-                                    {settings?.shop_logo ? (
-                                        <img
-                                            src={settings.shop_logo}
-                                            alt={settings.shop_name || 'Shop Logo'}
-                                            className="h-12 w-12 object-contain rounded-lg border border-gray-200 bg-white p-0.5 shadow-2xs shrink-0"
-                                        />
-                                    ) : (
-                                        <div className="w-12 h-12 rounded-xl gold-gradient text-white flex items-center justify-center font-black text-xl shadow-2xs shrink-0">
-                                            {(settings?.shop_name || 'H').charAt(0).toUpperCase()}
-                                        </div>
-                                    )}
-                                    <div>
-                                        <h2 className="text-lg sm:text-xl font-black text-gray-900 tracking-tight leading-tight uppercase">
-                                            {settings?.shop_name || 'Hilal Wholesaler Shop'}
-                                        </h2>
-                                        <div className="text-xs font-extrabold text-[#0B3B7B] uppercase tracking-wider">
-                                            {settings?.shop_tagline || settings?.shop_subtitle || 'Wholesale & Retail Distribution'}
-                                        </div>
-                                    </div>
-                                </div>
+                    <div id={elemId} className="space-y-6 max-w-4xl mx-auto">
+                        {pages.map((pageItems, pageIdx) => {
+                            const isFirstPage = pageIdx === 0;
+                            const isLastPage = pageIdx === totalPages - 1;
+                            const startIdx = pageIdx * ITEMS_PER_PAGE;
 
-                                <div className="text-gray-900 text-xs sm:text-sm font-bold leading-snug space-y-1 pl-0.5">
-                                    <div>
-                                        <span className="font-extrabold text-gray-900">Address: </span>
-                                        <span className="font-bold text-gray-900">{settings?.shop_address || 'Main Bazaar, Timergara, KP, Pakistan'}</span>
-                                    </div>
-                                    <div>
-                                        <span className="font-extrabold text-gray-900">Phone: </span>
-                                        <span className="font-mono font-bold text-gray-900">{settings?.shop_phone || '+92 300 1234567'}</span>
-                                    </div>
-                                    <div>
-                                        <span className="font-extrabold text-gray-900">Email: </span>
-                                        <span className="font-mono font-bold text-gray-900">{settings?.shop_email || 'hilalwholesaler@gmail.com'}</span>
-                                    </div>
-                                </div>
-                            </div>
+                            return (
+                                <div
+                                    key={pageIdx}
+                                    className="a4-sheet bg-white p-4 sm:p-7 border border-gray-300 rounded-xl space-y-4 text-gray-900 text-sm font-sans shadow-xs overflow-x-hidden min-h-[1050px] flex flex-col justify-between"
+                                >
+                                    <div className="space-y-4">
+                                        {/* Bill Header: Page 1 gets Full Shop Header & Billed To Customer info */}
+                                        {isFirstPage ? (
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-3.5 border-b-2 border-gray-300">
+                                                {/* LEFT SIDE: Shop Logo, Shop Name, Address, Phone, Email */}
+                                                <div className="space-y-2 text-sm">
+                                                    <div className="flex items-center gap-3">
+                                                        {settings?.shop_logo ? (
+                                                            <img
+                                                                src={settings.shop_logo}
+                                                                alt={settings.shop_name || 'Shop Logo'}
+                                                                className="h-12 w-12 object-contain rounded-lg border border-gray-200 bg-white p-0.5 shadow-2xs shrink-0"
+                                                            />
+                                                        ) : (
+                                                            <div className="w-12 h-12 rounded-xl gold-gradient text-white flex items-center justify-center font-black text-xl shadow-2xs shrink-0">
+                                                                {(settings?.shop_name || 'H').charAt(0).toUpperCase()}
+                                                            </div>
+                                                        )}
+                                                        <div>
+                                                            <h2 className="text-lg sm:text-xl font-black text-gray-900 tracking-tight leading-tight uppercase">
+                                                                {settings?.shop_name || 'Hilal Wholesaler Shop'}
+                                                            </h2>
+                                                            <div className="text-xs font-extrabold text-[#0B3B7B] uppercase tracking-wider">
+                                                                {settings?.shop_tagline || settings?.shop_subtitle || 'Wholesale & Retail Distribution'}
+                                                            </div>
+                                                        </div>
+                                                    </div>
 
-                            {/* RIGHT SIDE: Invoice Meta & Customer Details */}
-                            <div className="space-y-2.5 text-sm text-left md:text-right flex flex-col justify-between">
-                                {/* Invoice Meta Box */}
-                                <div className="bg-gray-50/90 border border-gray-300 rounded-xl p-3 space-y-1.5 shadow-2xs">
-                                    <div className="flex justify-between md:justify-end md:gap-4 items-center">
-                                        <span className="font-extrabold text-gray-800 text-xs sm:text-sm uppercase tracking-wider">INVOICE # :</span>
-                                        <span className="font-black font-mono text-base sm:text-lg text-[#B8860B]">{invoice.invoice_no || invoice.id}</span>
-                                    </div>
-                                    <div className="flex justify-between md:justify-end md:gap-4 items-center">
-                                        <span className="font-extrabold text-gray-800 text-xs sm:text-sm">Invoice Date:</span>
-                                        <span className="font-black text-gray-900 font-mono text-xs sm:text-sm">
-                                            {parseDate(invoice.created_at)?.toLocaleDateString() || new Date().toLocaleDateString()}
-                                        </span>
-                                    </div>
-                                    <div className="flex justify-between md:justify-end md:gap-4 items-center">
-                                        <span className="font-extrabold text-gray-800 text-xs sm:text-sm">Payment Status:</span>
-                                        <span className={`px-2.5 py-0.5 rounded-md text-xs font-black uppercase tracking-wider border shadow-2xs ${
-                                            status === 'PAID'
-                                                ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                                                : status === 'PARTIAL'
-                                                    ? 'bg-amber-100 text-amber-800 border-amber-300'
-                                                    : 'bg-rose-100 text-rose-800 border-rose-300'
-                                        }`}>
-                                            {status}
-                                        </span>
-                                    </div>
-                                </div>
+                                                    <div className="text-gray-900 text-xs sm:text-sm font-bold leading-snug space-y-1 pl-0.5">
+                                                        <div>
+                                                            <span className="font-extrabold text-gray-900">Address: </span>
+                                                            <span className="font-bold text-gray-900">{settings?.shop_address || 'Main Bazaar, Timergara, KP, Pakistan'}</span>
+                                                        </div>
+                                                        <div>
+                                                            <span className="font-extrabold text-gray-900">Phone: </span>
+                                                            <span className="font-mono font-bold text-gray-900">{settings?.shop_phone || '+92 300 1234567'}</span>
+                                                        </div>
+                                                        <div>
+                                                            <span className="font-extrabold text-gray-900">Email: </span>
+                                                            <span className="font-mono font-bold text-gray-900">{settings?.shop_email || 'hilalwholesaler@gmail.com'}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
 
-                                {/* Customer Details Box */}
-                                <div className="space-y-1 pt-1.5 border-t border-gray-300 text-xs sm:text-sm font-bold text-gray-900">
-                                    <div className="font-black text-sm text-gray-900 uppercase tracking-wider text-left md:text-right border-b border-gray-200 pb-0.5">
-                                        BILLED TO ({invoice.customer_name || invoice.walkin_name || 'Walk-in Customer'} {(invoice.business_name || invoice.customer_business) && `(${invoice.business_name || invoice.customer_business})`})
-                                    </div>
-                                    <div>
-                                        <span className="font-extrabold text-gray-900">Mobile / Phone: </span>
-                                        <span className="font-mono font-bold text-gray-900">{invoice.customer_phone || invoice.customer_mobile || invoice.walkin_phone || invoice.phone || '—'}</span>
-                                    </div>
-                                    <div>
-                                        <span className="font-extrabold text-gray-900">Address: </span>
-                                        <span className="font-bold text-gray-900">{invoice.customer_address || invoice.walkin_address || invoice.address || '—'}</span>
-                                    </div>
-                                    {invoice.remarks && (
-                                        <div>
-                                            <span className="font-extrabold text-gray-900">Remarks: </span>
-                                            <span className="font-bold italic text-gray-800">{invoice.remarks}</span>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
+                                                {/* RIGHT SIDE: Invoice Meta & Customer Details */}
+                                                <div className="space-y-2.5 text-sm text-left md:text-right flex flex-col justify-between">
+                                                    {/* Invoice Meta Box */}
+                                                    <div className="bg-gray-50/90 border border-gray-300 rounded-xl p-3 space-y-1.5 shadow-2xs">
+                                                        <div className="flex justify-between md:justify-end md:gap-4 items-center">
+                                                            <span className="font-extrabold text-gray-800 text-xs sm:text-sm uppercase tracking-wider">INVOICE # :</span>
+                                                            <span className="font-black font-mono text-base sm:text-lg text-[#B8860B]">{invoice.invoice_no || invoice.id}</span>
+                                                        </div>
+                                                        <div className="flex justify-between md:justify-end md:gap-4 items-center">
+                                                            <span className="font-extrabold text-gray-800 text-xs sm:text-sm">Invoice Date:</span>
+                                                            <span className="font-black text-gray-900 font-mono text-xs sm:text-sm">
+                                                                {parseDate(invoice.created_at)?.toLocaleDateString() || new Date().toLocaleDateString()}
+                                                            </span>
+                                                        </div>
+                                                        <div className="flex justify-between md:justify-end md:gap-4 items-center">
+                                                            <span className="font-extrabold text-gray-800 text-xs sm:text-sm">Payment Status:</span>
+                                                            <span className={`px-2.5 py-0.5 rounded-md text-xs font-black uppercase tracking-wider border shadow-2xs ${
+                                                                status === 'PAID'
+                                                                    ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                                                    : status === 'PARTIAL'
+                                                                        ? 'bg-amber-100 text-amber-800 border-amber-300'
+                                                                        : 'bg-rose-100 text-rose-800 border-rose-300'
+                                                            }`}>
+                                                                {status}
+                                                            </span>
+                                                        </div>
+                                                    </div>
 
-                        {/* Line Items Table with Unified Quantity Column & Responsive Horizontal Scroll */}
-                        <div className="overflow-x-auto w-full border border-gray-300 rounded-lg my-2">
-                            <table className="w-full text-left text-xs sm:text-sm border-collapse min-w-[580px] sm:min-w-[640px]">
-                                <thead>
-                                    <tr className="border-b border-gray-300 font-extrabold text-emerald-800 bg-gray-100/80">
-                                        <th className="py-2.5 px-2 text-center w-9">#</th>
-                                        <th className="py-2.5 px-2.5">Product Description</th>
-                                        <th className="py-2.5 px-2 text-right">Price</th>
-                                        <th className="py-2.5 px-2 text-center">Quantity</th>
-                                        <th className="py-2.5 px-2 text-right">Gross Amount</th>
-                                        <th className="py-2.5 px-2 text-center">Disc.%</th>
-                                        <th className="py-2.5 px-2 text-right">Disc.</th>
-                                        <th className="py-2.5 px-2.5 text-right">Net Amount</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-200">
-                                    {items.map((item, idx) => {
-                                        const factor = parseFloat(item.conversion_factor) || 1;
-                                        const isBulk = factor > 1;
-                                        const uSymbol = item.base_unit || item.unit_symbol || item.unit_name || 'pcs';
-                                        const packName = item.packaging_name || (isBulk ? 'Bulk' : uSymbol);
-                                        const qty = parseFloat(item.quantity) || 0;
-                                        const qtyDisplay = isBulk ? `${qty} ${packName} (${qty * factor} ${uSymbol})` : `${qty} ${uSymbol}`;
-                                        const linePrice = parseFloat(item.price) || 0;
-                                        const lineGross = linePrice * qty;
-                                        const lineDiscount = parseFloat(item.discount) || 0;
-                                        const discPct = lineGross > 0 && lineDiscount > 0 ? ((lineDiscount / lineGross) * 100).toFixed(0) + '%' : '0%';
-                                        const lineTotal = item.total !== undefined ? parseFloat(item.total) : (lineGross - lineDiscount);
+                                                    {/* Customer Details Box */}
+                                                    <div className="space-y-1 pt-1.5 border-t border-gray-300 text-xs sm:text-sm font-bold text-gray-900">
+                                                        <div className="font-black text-sm text-gray-900 uppercase tracking-wider text-left md:text-right border-b border-gray-200 pb-0.5">
+                                                            BILLED TO ({invoice.customer_name || invoice.walkin_name || 'Walk-in Customer'} {(invoice.business_name || invoice.customer_business) && `(${invoice.business_name || invoice.customer_business})`})
+                                                        </div>
+                                                        <div>
+                                                            <span className="font-extrabold text-gray-900">Mobile / Phone: </span>
+                                                            <span className="font-mono font-bold text-gray-900">{invoice.customer_phone || invoice.customer_mobile || invoice.walkin_phone || invoice.phone || '—'}</span>
+                                                        </div>
+                                                        <div>
+                                                            <span className="font-extrabold text-gray-900">Address: </span>
+                                                            <span className="font-bold text-gray-900">{invoice.customer_address || invoice.walkin_address || invoice.address || '—'}</span>
+                                                        </div>
+                                                        {invoice.remarks && (
+                                                            <div>
+                                                                <span className="font-extrabold text-gray-900">Remarks: </span>
+                                                                <span className="font-bold italic text-gray-800">{invoice.remarks}</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            /* Continuation Header (Pages 2+) */
+                                            <div className="flex items-center justify-between border-b-2 border-gray-900 pb-2.5">
+                                                <div className="flex items-center gap-2.5">
+                                                    {settings?.shop_logo ? (
+                                                        <img
+                                                            src={settings.shop_logo}
+                                                            alt="Logo"
+                                                            className="h-8 w-8 object-contain rounded-md border border-gray-200 bg-white p-0.5"
+                                                        />
+                                                    ) : null}
+                                                    <div>
+                                                        <span className="text-base font-black text-gray-900 uppercase">
+                                                            {settings?.shop_name || 'Hilal Wholesaler Shop'}
+                                                        </span>
+                                                        <span className="text-xs font-bold text-gray-500 ml-2">Wholesale Invoice</span>
+                                                    </div>
+                                                </div>
+                                                <div className="text-xs text-right font-bold text-gray-800">
+                                                    <span className="text-gray-500">Inv #: </span>
+                                                    <span className="font-mono font-black text-[#B8860B]">{invoice.invoice_no || invoice.id}</span>
+                                                    <span className="mx-2 text-gray-400">|</span>
+                                                    <span className="text-gray-500">Customer: </span>
+                                                    <span className="font-extrabold">{invoice.customer_name || invoice.walkin_name || 'Walk-in'}</span>
+                                                    <span className="mx-2 text-gray-400">|</span>
+                                                    <span className="bg-gray-200 text-gray-900 px-2 py-0.5 rounded font-black text-xs">
+                                                        Page {pageIdx + 1} of {totalPages}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        )}
 
-                                        return (
-                                            <tr key={idx} className="hover:bg-gray-50/50">
-                                                <td className="py-2 px-2 text-center font-bold text-gray-600 font-mono">{idx + 1}</td>
-                                                <td className="py-2 px-2.5 font-semibold">
-                                                    <span className="font-bold text-gray-900">{item.product_name}</span>
-                                                    {item.variant_name && item.variant_name !== 'Standard' && (
-                                                        <span className="text-gray-700 font-semibold ml-1">({item.variant_name})</span>
+                                        {/* Line Items Table with Unified Quantity Column & Responsive Horizontal Scroll */}
+                                        <div className="overflow-x-auto w-full border border-gray-300 rounded-lg my-2">
+                                            <table className="w-full text-left text-xs sm:text-sm border-collapse min-w-[580px] sm:min-w-[640px]">
+                                                <thead>
+                                                    <tr className="border-b border-gray-300 font-extrabold text-emerald-800 bg-gray-100/80">
+                                                        <th className="py-2.5 px-2 text-center w-9">#</th>
+                                                        <th className="py-2.5 px-2.5">Product Description</th>
+                                                        <th className="py-2.5 px-2 text-right">Price</th>
+                                                        <th className="py-2.5 px-2 text-center">Quantity</th>
+                                                        <th className="py-2.5 px-2 text-right">Gross Amount</th>
+                                                        <th className="py-2.5 px-2 text-center">Disc.%</th>
+                                                        <th className="py-2.5 px-2 text-right">Disc.</th>
+                                                        <th className="py-2.5 px-2.5 text-right">Net Amount</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-200">
+                                                    {pageItems.map((item, idx) => {
+                                                        const globalIdx = startIdx + idx + 1;
+                                                        const factor = parseFloat(item.conversion_factor) || 1;
+                                                        const isBulk = factor > 1;
+                                                        const uSymbol = item.base_unit || item.unit_symbol || item.unit_name || 'pcs';
+                                                        const packName = item.packaging_name || (isBulk ? 'Bulk' : uSymbol);
+                                                        const qty = parseFloat(item.quantity) || 0;
+                                                        const qtyDisplay = isBulk ? `${qty} ${packName} (${qty * factor} ${uSymbol})` : `${qty} ${uSymbol}`;
+                                                        const linePrice = parseFloat(item.price) || 0;
+                                                        const lineGross = linePrice * qty;
+                                                        const lineDiscount = parseFloat(item.discount) || 0;
+                                                        const discPct = lineGross > 0 && lineDiscount > 0 ? ((lineDiscount / lineGross) * 100).toFixed(0) + '%' : '0%';
+                                                        const lineTotal = item.total !== undefined ? parseFloat(item.total) : (lineGross - lineDiscount);
+
+                                                        return (
+                                                            <tr key={idx} className="hover:bg-gray-50/50">
+                                                                <td className="py-2 px-2 text-center font-bold text-gray-600 font-mono">{globalIdx}</td>
+                                                                <td className="py-2 px-2.5 font-semibold">
+                                                                    <span className="font-bold text-gray-900">{item.product_name}</span>
+                                                                    {item.variant_name && item.variant_name !== 'Standard' && (
+                                                                        <span className="text-gray-700 font-semibold ml-1">({item.variant_name})</span>
+                                                                    )}
+                                                                </td>
+                                                                <td className="py-2 px-2 text-right font-mono font-semibold">{Number(linePrice).toFixed(0)}</td>
+                                                                <td className="py-2 px-2 text-center font-bold text-gray-900">{qtyDisplay}</td>
+                                                                <td className="py-2 px-2 text-right font-mono font-semibold">{Number(lineGross).toFixed(2)}</td>
+                                                                <td className="py-2 px-2 text-center font-mono font-semibold">{discPct}</td>
+                                                                <td className="py-2 px-2 text-right font-mono font-semibold">{Number(lineDiscount).toFixed(0)}</td>
+                                                                <td className="py-2 px-2.5 text-right font-extrabold text-gray-900 font-mono">{Number(lineTotal).toFixed(2)}</td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                    {!isLastPage && (
+                                                        <tr className="bg-gray-50 border-t-2 border-gray-300">
+                                                            <td colSpan="8" className="py-2.5 px-3 text-right font-extrabold text-[#0B3B7B] text-xs">
+                                                                Items continue on Next Page (Page {pageIdx + 2} of {totalPages}) ➔
+                                                            </td>
+                                                        </tr>
                                                     )}
-                                                </td>
-                                                <td className="py-2 px-2 text-right font-mono font-semibold">{Number(linePrice).toFixed(0)}</td>
-                                                <td className="py-2 px-2 text-center font-bold text-gray-900">{qtyDisplay}</td>
-                                                <td className="py-2 px-2 text-right font-mono font-semibold">{Number(lineGross).toFixed(2)}</td>
-                                                <td className="py-2 px-2 text-center font-mono font-semibold">{discPct}</td>
-                                                <td className="py-2 px-2 text-right font-mono font-semibold">{Number(lineDiscount).toFixed(0)}</td>
-                                                <td className="py-2 px-2.5 text-right font-extrabold text-gray-900 font-mono">{Number(lineTotal).toFixed(2)}</td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        </div>
-
-                        {/* Balances & Financial Summary Section */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 pt-2">
-                            {/* Left Box: Running Balances */}
-                            <div className="space-y-1.5 text-sm">
-                                <div>
-                                    <span className="font-bold text-gray-800">Current Invoice: </span>
-                                    <span className="font-bold text-gray-900">Rs. {Number(netVal).toFixed(2)}</span>
-                                </div>
-                                <div>
-                                    <span className="font-bold text-gray-800">Paid Amount: </span>
-                                    <span className="font-bold text-emerald-700">Rs. {Number(paidVal).toFixed(2)}</span>
-                                </div>
-                                <div>
-                                    <span className="font-bold text-gray-800">Invoice Due: </span>
-                                    <span className={`font-bold ${Number(remainingVal) > 0 ? 'text-rose-700' : 'text-gray-900'}`}>Rs. {Number(remainingVal).toFixed(2)}</span>
-                                </div>
-                                <div>
-                                    <span className="font-extrabold text-gray-900">Previous Balance : </span>
-                                    <span className="font-extrabold text-gray-900 font-sans">Rs. {Number(calculatedPrevBalance).toFixed(2)}</span>
-                                </div>
-                                <div className="border-b-2 border-gray-900 pb-0.5 inline-block text-base">
-                                    <span className="font-black">New Balance: </span>
-                                    <span className="font-black">Rs. {Number(calculatedNewBalance).toFixed(0)}</span>
-                                </div>
-                            </div>
-
-                            {/* Right Box: Gross, Discounts & Net Value */}
-                            <div className="space-y-1.5 text-sm text-left md:text-right">
-                                <div>
-                                    <span className="font-bold text-gray-800">Gross Amount: </span>
-                                    <span className="font-bold text-gray-900">Rs. {Number(grossVal).toFixed(2)}</span>
-                                </div>
-                                <div>
-                                    <span className="font-bold text-gray-800">Less Disc.: </span>
-                                    <span className="font-bold text-gray-900">Rs. {Number(discVal).toFixed(2)}</span>
-                                </div>
-                                <div>
-                                    <span className="font-bold text-gray-800">Less Special Disc.: </span>
-                                    <span className="font-bold text-gray-900">Rs. {specialDiscVal % 1 === 0 ? Number(specialDiscVal).toFixed(0) : Number(specialDiscVal).toFixed(2)}</span>
-                                </div>
-                                <div>
-                                    <span className="font-bold text-gray-800">Add Charges : </span>
-                                    <span className="font-bold text-gray-900">Rs. {chargesVal % 1 === 0 ? Number(chargesVal).toFixed(0) : Number(chargesVal).toFixed(2)}</span>
-                                </div>
-                                <div className="pt-1.5 border-t border-gray-300">
-                                    <div className="font-black text-base sm:text-lg text-gray-900">
-                                        <span>Net Value: </span>
-                                        <span className="text-gray-900 font-black">Rs. {Number(netVal).toFixed(2)}</span>
+                                                </tbody>
+                                            </table>
+                                        </div>
                                     </div>
-                                </div>
-                            </div>
-                        </div>
 
-                        {/* Amount in Words Footer */}
-                        <div className="pt-3 border-t border-gray-300 text-sm font-bold text-gray-900">
-                            <span>Invoice Amount In Words: </span>
-                            <span className="font-black">{numberToWords(netVal)}</span>
-                        </div>
-
-                        {/* Bank Account Details for Online Payment / Transfer */}
-                        {bankAccounts.length > 0 && (
-                            <div className="pt-2.5 border-t border-gray-300">
-                                <div className="flex items-center justify-between mb-2">
-                                    <span className="font-extrabold text-xs uppercase tracking-wider text-gray-900 flex items-center gap-1.5">
-                                        <span className="w-2.5 h-2.5 rounded-full bg-[#B8860B]"></span>
-                                        Bank Details for Online Payment / Transfer
-                                    </span>
-                                    <span className="text-xs text-gray-700 font-bold">WhatsApp proof: {settings?.shop_phone || ''}</span>
-                                </div>
-                                <div className="grid gap-2.5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-                                    {bankAccounts.map((acc, idx) => (
-                                        <div key={idx} className="p-2.5 border border-gray-300 rounded-lg bg-gray-50/70 text-xs leading-snug space-y-0.5">
-                                            <div className="font-extrabold text-gray-900 flex items-center justify-between">
-                                                <span>{acc.bank_name}</span>
-                                                {acc.branch && <span className="text-[11px] text-gray-600 font-semibold truncate max-w-[120px]">{acc.branch}</span>}
-                                            </div>
-                                            {acc.account_title && (
-                                                <div className="text-gray-800">
-                                                    <span className="text-gray-600 font-semibold">Title: </span>
-                                                    <span className="font-bold">{acc.account_title}</span>
+                                    {/* Bottom Section: Totals, Balances, Bank & Words only on Final Page */}
+                                    {isLastPage ? (
+                                        <div className="space-y-4 pt-3 border-t border-gray-300 mt-auto">
+                                            {/* Balances & Financial Summary Section */}
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 pt-2">
+                                                {/* Left Box: Running Balances */}
+                                                <div className="space-y-1.5 text-sm">
+                                                    <div>
+                                                        <span className="font-bold text-gray-800">Current Invoice: </span>
+                                                        <span className="font-bold text-gray-900">Rs. {Number(netVal).toFixed(2)}</span>
+                                                    </div>
+                                                    <div>
+                                                        <span className="font-bold text-gray-800">Paid Amount: </span>
+                                                        <span className="font-bold text-emerald-700">Rs. {Number(paidVal).toFixed(2)}</span>
+                                                    </div>
+                                                    <div>
+                                                        <span className="font-bold text-gray-800">Invoice Due: </span>
+                                                        <span className={`font-bold ${Number(remainingVal) > 0 ? 'text-rose-700' : 'text-gray-900'}`}>Rs. {Number(remainingVal).toFixed(2)}</span>
+                                                    </div>
+                                                    <div>
+                                                        <span className="font-extrabold text-gray-900">Previous Balance : </span>
+                                                        <span className="font-extrabold text-gray-900 font-sans">Rs. {Number(calculatedPrevBalance).toFixed(2)}</span>
+                                                    </div>
+                                                    <div className="border-b-2 border-gray-900 pb-0.5 inline-block text-base">
+                                                        <span className="font-black">New Balance: </span>
+                                                        <span className="font-black">Rs. {Number(calculatedNewBalance).toFixed(0)}</span>
+                                                    </div>
                                                 </div>
-                                            )}
-                                            <div className="text-gray-900">
-                                                <span className="text-gray-600 font-semibold">A/C #: </span>
-                                                <span className="font-mono font-extrabold text-gray-900">{acc.account_number}</span>
+
+                                                {/* Right Box: Gross, Discounts & Net Value */}
+                                                <div className="space-y-1.5 text-sm text-left md:text-right">
+                                                    <div>
+                                                        <span className="font-bold text-gray-800">Gross Amount: </span>
+                                                        <span className="font-bold text-gray-900">Rs. {Number(grossVal).toFixed(2)}</span>
+                                                    </div>
+                                                    <div>
+                                                        <span className="font-bold text-gray-800">Less Disc.: </span>
+                                                        <span className="font-bold text-gray-900">Rs. {Number(discVal).toFixed(2)}</span>
+                                                    </div>
+                                                    <div>
+                                                        <span className="font-bold text-gray-800">Less Special Disc.: </span>
+                                                        <span className="font-bold text-gray-900">Rs. {specialDiscVal % 1 === 0 ? Number(specialDiscVal).toFixed(0) : Number(specialDiscVal).toFixed(2)}</span>
+                                                    </div>
+                                                    <div>
+                                                        <span className="font-bold text-gray-800">Add Charges : </span>
+                                                        <span className="font-bold text-gray-900">Rs. {chargesVal % 1 === 0 ? Number(chargesVal).toFixed(0) : Number(chargesVal).toFixed(2)}</span>
+                                                    </div>
+                                                    <div className="pt-1.5 border-t border-gray-300">
+                                                        <div className="font-black text-base sm:text-lg text-gray-900">
+                                                            <span>Net Value: </span>
+                                                            <span className="text-gray-900 font-black">Rs. {Number(netVal).toFixed(2)}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
                                             </div>
-                                            {acc.iban && (
-                                                <div className="text-gray-700 text-[11px]">
-                                                    <span className="text-gray-600 font-semibold">IBAN: </span>
-                                                    <span className="font-mono font-semibold">{acc.iban}</span>
+
+                                            {/* Amount in Words Footer */}
+                                            <div className="pt-3 border-t border-gray-300 text-sm font-bold text-gray-900">
+                                                <span>Invoice Amount In Words: </span>
+                                                <span className="font-black">{numberToWords(netVal)}</span>
+                                            </div>
+
+                                            {/* Bank Account Details for Online Payment / Transfer */}
+                                            {bankAccounts.length > 0 && (
+                                                <div className="pt-2.5 border-t border-gray-300">
+                                                    <div className="flex items-center justify-between mb-2">
+                                                        <span className="font-extrabold text-xs uppercase tracking-wider text-gray-900 flex items-center gap-1.5">
+                                                            <span className="w-2.5 h-2.5 rounded-full bg-[#B8860B]"></span>
+                                                            Bank Details for Online Payment / Transfer
+                                                        </span>
+                                                        <span className="text-xs text-gray-700 font-bold">WhatsApp proof: {settings?.shop_phone || ''}</span>
+                                                    </div>
+                                                    <div className="grid gap-2.5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+                                                        {bankAccounts.map((acc, idx) => (
+                                                            <div key={idx} className="p-2.5 border border-gray-300 rounded-lg bg-gray-50/70 text-xs leading-snug space-y-0.5">
+                                                                <div className="font-extrabold text-gray-900 flex items-center justify-between">
+                                                                    <span>{acc.bank_name}</span>
+                                                                    {acc.branch && <span className="text-[11px] text-gray-600 font-semibold truncate max-w-[120px]">{acc.branch}</span>}
+                                                                </div>
+                                                                {acc.account_title && (
+                                                                    <div className="text-gray-800">
+                                                                        <span className="text-gray-600 font-semibold">Title: </span>
+                                                                        <span className="font-bold">{acc.account_title}</span>
+                                                                    </div>
+                                                                )}
+                                                                <div className="text-gray-900">
+                                                                    <span className="text-gray-600 font-semibold">A/C #: </span>
+                                                                    <span className="font-mono font-extrabold text-gray-900">{acc.account_number}</span>
+                                                                </div>
+                                                                {acc.iban && (
+                                                                    <div className="text-gray-700 text-[11px]">
+                                                                        <span className="text-gray-600 font-semibold">IBAN: </span>
+                                                                        <span className="font-mono font-semibold">{acc.iban}</span>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        ))}
+                                                    </div>
                                                 </div>
                                             )}
                                         </div>
-                                    ))}
+                                    ) : (
+                                        <div className="flex items-center justify-between pt-3 border-t border-gray-200 text-xs text-gray-500 font-semibold mt-auto">
+                                            <span>Invoice: {invoice.invoice_no}</span>
+                                            <span>Page {pageIdx + 1} of {totalPages}</span>
+                                        </div>
+                                    )}
                                 </div>
-                            </div>
-                        )}
+                            );
+                        })}
                     </div>
                 </div>
             </div>

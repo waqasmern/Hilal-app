@@ -140,14 +140,6 @@ export async function downloadAndOpenPdf(element, fileName = 'wholesale_invoice_
 
         const cleanName = String(fileName || 'invoice_a4.pdf').replace(/[^a-zA-Z0-9._-]/g, '_');
 
-        const canvas = await html2canvas(element, {
-            scale: 2,
-            useCORS: true,
-            logging: false,
-            backgroundColor: '#ffffff'
-        });
-
-        const imgData = canvas.toDataURL('image/jpeg', 0.98);
         const pdf = new jsPDF({
             orientation: 'portrait',
             unit: 'mm',
@@ -158,9 +150,67 @@ export async function downloadAndOpenPdf(element, fileName = 'wholesale_invoice_
         const pdfHeight = pdf.internal.pageSize.getHeight();
         const margin = 8;
         const printWidth = pdfWidth - (margin * 2);
-        const printHeight = (canvas.height * printWidth) / canvas.width;
+        const maxPrintHeight = pdfHeight - (margin * 2);
 
-        pdf.addImage(imgData, 'JPEG', margin, margin, printWidth, Math.min(printHeight, pdfHeight - (margin * 2)));
+        // Check if element contains individual A4 sheets (.a4-sheet)
+        const sheetElements = element.querySelectorAll ? element.querySelectorAll('.a4-sheet') : [];
+
+        if (sheetElements && sheetElements.length > 0) {
+            for (let i = 0; i < sheetElements.length; i++) {
+                if (i > 0) {
+                    pdf.addPage('a4', 'portrait');
+                }
+                const sheet = sheetElements[i];
+                const canvas = await html2canvas(sheet, {
+                    scale: 2,
+                    useCORS: true,
+                    logging: false,
+                    backgroundColor: '#ffffff'
+                });
+                const imgData = canvas.toDataURL('image/jpeg', 0.98);
+                const printHeight = (canvas.height * printWidth) / canvas.width;
+                pdf.addImage(imgData, 'JPEG', margin, margin, printWidth, Math.min(printHeight, maxPrintHeight));
+            }
+        } else {
+            const canvas = await html2canvas(element, {
+                scale: 2,
+                useCORS: true,
+                logging: false,
+                backgroundColor: '#ffffff'
+            });
+
+            const imgData = canvas.toDataURL('image/jpeg', 0.98);
+            const totalCanvasHeightMm = (canvas.height * printWidth) / canvas.width;
+
+            if (totalCanvasHeightMm <= maxPrintHeight + 5) {
+                pdf.addImage(imgData, 'JPEG', margin, margin, printWidth, Math.min(totalCanvasHeightMm, maxPrintHeight));
+            } else {
+                // Multi-page canvas slice fallback for tall containers
+                let remainingHeightMm = totalCanvasHeightMm;
+                let currentSrcY = 0;
+                let pageNum = 0;
+                const canvasPageHeightPx = (maxPrintHeight * canvas.width) / printWidth;
+
+                while (remainingHeightMm > 0) {
+                    if (pageNum > 0) {
+                        pdf.addPage('a4', 'portrait');
+                    }
+                    const sliceHeightPx = Math.min(canvasPageHeightPx, canvas.height - currentSrcY);
+                    const sliceCanvas = document.createElement('canvas');
+                    sliceCanvas.width = canvas.width;
+                    sliceCanvas.height = sliceHeightPx;
+                    const ctx = sliceCanvas.getContext('2d');
+                    ctx.drawImage(canvas, 0, currentSrcY, canvas.width, sliceHeightPx, 0, 0, canvas.width, sliceHeightPx);
+                    const sliceData = sliceCanvas.toDataURL('image/jpeg', 0.98);
+                    const slicePrintHeightMm = (sliceHeightPx * printWidth) / canvas.width;
+                    pdf.addImage(sliceData, 'JPEG', margin, margin, printWidth, slicePrintHeightMm);
+
+                    currentSrcY += sliceHeightPx;
+                    remainingHeightMm -= slicePrintHeightMm;
+                    pageNum++;
+                }
+            }
+        }
 
         // 1. Generate Blob & Blob URL
         const pdfBlob = pdf.output('blob');
@@ -793,16 +843,269 @@ export function generateWholesaleInvoiceA4Html(inv, settings = {}, prevBal = 0, 
     `).join('');
 
     const bankCardsHtml = bankAccounts.map(acc => `
-        <div style="border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 9px; background: #f9fafb; font-size: 11.5px; line-height: 1.4;">
+        <div style="border: 1px solid #d1d5db; border-radius: 6px; padding: 6px 8px; background: #f9fafb; font-size: 11px; line-height: 1.35;">
             <div style="display: flex; justify-content: space-between; font-weight: 800; color: #111827;">
                 <span>${acc.bank_name}</span>
                 ${acc.branch ? `<span style="font-weight: 600; color: #4b5563;">${acc.branch}</span>` : ''}
             </div>
             ${acc.account_title ? `<div><span style="color: #4b5563; font-weight: 600;">Title: </span><span style="font-weight: 700; color: #111827;">${acc.account_title}</span></div>` : ''}
             <div><span style="color: #4b5563; font-weight: 600;">A/C #: </span><span style="font-family: monospace; font-weight: 800; color: #111827;">${acc.account_number}</span></div>
-            ${acc.iban ? `<div><span style="color: #4b5563; font-weight: 600;">IBAN: </span><span style="font-family: monospace; font-weight: 600; color: #374151; font-size: 10.5px;">${acc.iban}</span></div>` : ''}
+            ${acc.iban ? `<div><span style="color: #4b5563; font-weight: 600;">IBAN: </span><span style="font-family: monospace; font-weight: 600; color: #374151; font-size: 10px;">${acc.iban}</span></div>` : ''}
         </div>
     `).join('');
+
+    // Pagination: Break into a new page when items reach 25
+    const ITEMS_PER_PAGE = 25;
+    const totalPages = Math.ceil(items.length / ITEMS_PER_PAGE) || 1;
+
+    const renderItemRow = (it, displayIndex) => {
+        const factor = parseFloat(it.conversion_factor) || 1;
+        const isBulk = factor > 1;
+        const uSymbol = it.base_unit || it.unit_symbol || it.unit_name || 'pcs';
+        const packName = it.packaging_name || (isBulk ? 'Bulk' : uSymbol);
+        const qty = parseFloat(it.quantity) || 0;
+        const qtyDisplay = isBulk ? `${qty} ${packName} (${qty * factor} ${uSymbol})` : `${qty} ${uSymbol}`;
+        const linePrice = parseFloat(it.price) || 0;
+        const lineGross = linePrice * qty;
+        const lineDiscount = parseFloat(it.discount) || 0;
+        const discPct = lineGross > 0 && lineDiscount > 0 ? ((lineDiscount / lineGross) * 100).toFixed(0) + '%' : '0%';
+        const lineTotal = it.total !== undefined ? parseFloat(it.total) : (lineGross - lineDiscount);
+
+        return `
+            <tr style="border-bottom: 1px solid #e5e7eb;">
+                <td style="padding: 5.5px 6px; text-align: center; color: #4b5563; font-family: monospace; font-size: 11.5px; font-weight: 700;">${displayIndex}</td>
+                <td style="padding: 5.5px 8px; font-weight: 700; color: #111827; font-size: 11.5px;">
+                    ${it.product_name}
+                    ${it.variant_name && it.variant_name !== 'Standard' ? `<span style="color: #4b5563; font-weight: 600; margin-left: 4px;">(${it.variant_name})</span>` : ''}
+                </td>
+                <td style="padding: 5.5px 8px; text-align: right; font-family: monospace; font-weight: 600; color: #111827; font-size: 11.5px;">${Number(linePrice).toFixed(0)}</td>
+                <td style="padding: 5.5px 8px; text-align: center; font-weight: 800; color: #111827; font-size: 11.5px;">${qtyDisplay}</td>
+                <td style="padding: 5.5px 8px; text-align: right; font-family: monospace; font-weight: 600; color: #111827; font-size: 11.5px;">${Number(lineGross).toFixed(2)}</td>
+                <td style="padding: 5.5px 8px; text-align: center; font-family: monospace; font-weight: 600; color: #374151; font-size: 11.5px;">${discPct}</td>
+                <td style="padding: 5.5px 8px; text-align: right; font-family: monospace; font-weight: 600; color: #111827; font-size: 11.5px;">${Number(lineDiscount).toFixed(0)}</td>
+                <td style="padding: 5.5px 8px; text-align: right; font-weight: 800; font-family: monospace; color: #111827; font-size: 11.5px;">${Number(lineTotal).toFixed(2)}</td>
+            </tr>
+        `;
+    };
+
+    const pagesHtml = Array.from({ length: totalPages }).map((_, pageIdx) => {
+        const isFirstPage = pageIdx === 0;
+        const isLastPage = pageIdx === totalPages - 1;
+        const startIdx = pageIdx * ITEMS_PER_PAGE;
+        const pageItems = items.slice(startIdx, startIdx + ITEMS_PER_PAGE);
+
+        const pageRowsHtml = pageItems.map((it, i) => renderItemRow(it, startIdx + i + 1)).join('');
+
+        // Filler rows for single page or last page with few items so layout is balanced
+        const emptyRowsHtml = (isLastPage && pageItems.length < 5) ? Array.from({ length: 5 - pageItems.length }).map((_, i) => `
+            <tr style="border-bottom: 1px solid #f3f4f6; height: 26px;">
+                <td style="padding: 5px 6px; text-align: center; color: #d1d5db; font-family: monospace; font-size: 11px;">${startIdx + pageItems.length + i + 1}</td>
+                <td style="padding: 5px 8px;">&nbsp;</td>
+                <td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td>
+            </tr>
+        `).join('') : '';
+
+        return `
+        <div class="a4-page-container ${isLastPage ? 'is-last-page' : ''}">
+            <div class="invoice-main-content">
+                ${isFirstPage ? `
+                    <!-- FULL SHOP HEADER & INVOICE / CUSTOMER META (PAGE 1) -->
+                    <table style="width: 100%; margin-bottom: 12px; border-bottom: 1.5px solid #d1d5db; padding-bottom: 10px;">
+                        <tr>
+                            <!-- LEFT SIDE: LOGO & SHOP INFO -->
+                            <td style="width: 50%; vertical-align: top; padding-right: 12px;">
+                                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px;">
+                                    ${shopLogo ? `
+                                        <img src="${shopLogo}" alt="Logo" style="height: 44px; width: 44px; object-fit: contain; border-radius: 6px; border: 1px solid #e5e7eb; padding: 2px;" />
+                                    ` : `
+                                        <div style="height: 42px; width: 42px; border-radius: 8px; background: linear-gradient(135deg, #B8860B, #FFD700); color: #fff; font-weight: 900; font-size: 18px; display: flex; align-items: center; justify-content: center;">
+                                            ${shopName.charAt(0)}
+                                        </div>
+                                    `}
+                                    <div>
+                                        <div style="font-size: 17px; font-weight: 900; text-transform: uppercase; color: #111827; letter-spacing: 0.3px;">
+                                            ${shopName}
+                                        </div>
+                                        <div style="font-size: 10.5px; font-weight: 800; color: #B8860B; text-transform: uppercase; letter-spacing: 0.8px;">
+                                            WHOLESALE &amp; DISTRIBUTION
+                                        </div>
+                                    </div>
+                                </div>
+                                <div style="font-size: 11.5px; font-weight: 700; color: #111827; line-height: 1.4;">
+                                    <div><strong style="font-weight: 800;">Address: </strong>${shopAddress}</div>
+                                    <div><strong style="font-weight: 800;">Phone: </strong><span style="font-family: monospace;">${shopPhone}</span></div>
+                                    <div><strong style="font-weight: 800;">Email: </strong><span style="font-family: monospace;">${shopEmail}</span></div>
+                                </div>
+                            </td>
+
+                            <!-- RIGHT SIDE: INVOICE META & CUSTOMER DETAILS -->
+                            <td style="width: 50%; vertical-align: top; text-align: right; padding-left: 12px;">
+                                <div style="background: #f9fafb; border: 1px solid #d1d5db; border-radius: 8px; padding: 7px 10px; margin-bottom: 7px; text-align: right;">
+                                    <div style="margin-bottom: 3px;">
+                                        <span style="font-weight: 800; color: #374151; font-size: 12px;">INVOICE # : </span>
+                                        <span style="font-family: monospace; font-weight: 900; font-size: 15px; color: #B8860B;">${inv.invoice_no || inv.id}</span>
+                                    </div>
+                                    <div style="margin-bottom: 3px;">
+                                        <span style="font-weight: 800; color: #111827; font-size: 11.5px;">Invoice Date: </span>
+                                        <span style="font-family: monospace; font-weight: 900; font-size: 11.5px;">${formattedDate}</span>
+                                    </div>
+                                    <div>
+                                        <span style="font-weight: 800; color: #111827; font-size: 11.5px;">Payment Status: </span>
+                                        <span style="display: inline-block; padding: 1.5px 8px; border-radius: 4px; font-size: 10.5px; font-weight: 900; text-transform: uppercase; background: ${statusBg}; color: ${statusColor}; border: 1px solid ${statusBorder};">
+                                            ${status}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div style="border-top: 1px solid #d1d5db; padding-top: 5px; font-size: 11.5px; font-weight: 700; color: #111827; line-height: 1.35;">
+                                    <div style="font-weight: 900; font-size: 12px; color: #111827; text-transform: uppercase; margin-bottom: 2px;">
+                                        BILLED TO (${fullCustomerTitle})
+                                    </div>
+                                    <div><strong style="font-weight: 800;">Mobile / Phone: </strong><span style="font-family: monospace;">${customerPhone || '—'}</span></div>
+                                    <div><strong style="font-weight: 800;">Address: </strong><span>${customerAddress || '—'}</span></div>
+                                    ${remarks ? `<div><strong style="font-weight: 800;">Remarks: </strong><span style="font-style: italic;">${remarks}</span></div>` : ''}
+                                </div>
+                            </td>
+                        </tr>
+                    </table>
+                ` : `
+                    <!-- CONTINUATION HEADER (PAGE 2+) -->
+                    <div style="border-bottom: 2px solid #111827; padding-bottom: 8px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            ${shopLogo ? `<img src="${shopLogo}" style="height: 28px; width: 28px; object-fit: contain; border-radius: 4px; border: 1px solid #e5e7eb;" />` : ''}
+                            <div>
+                                <span style="font-weight: 900; font-size: 14px; text-transform: uppercase; color: #111827;">${shopName}</span>
+                                <span style="font-size: 11px; font-weight: 700; color: #4b5563; margin-left: 8px;">Wholesale Invoice</span>
+                            </div>
+                        </div>
+                        <div style="text-align: right; font-size: 11.5px; color: #111827;">
+                            <span style="font-weight: 700; color: #4b5563;">Inv #: </span><span style="font-family: monospace; font-weight: 900; color: #B8860B;">${inv.invoice_no || inv.id}</span>
+                            <span style="margin: 0 6px; color: #9ca3af;">|</span>
+                            <span style="font-weight: 700; color: #4b5563;">Customer: </span><span style="font-weight: 800;">${customerName}</span>
+                            <span style="margin: 0 6px; color: #9ca3af;">|</span>
+                            <span style="font-weight: 800; background: #e5e7eb; padding: 2px 7px; border-radius: 4px; font-size: 11px;">Page ${pageIdx + 1} of ${totalPages}</span>
+                        </div>
+                    </div>
+                `}
+
+                <!-- ITEMS TABLE (MAX 25 ITEMS PER PAGE) -->
+                <div class="table-wrapper">
+                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 11.5px;">
+                        <thead>
+                            <tr style="background: #f3f4f6; border-top: 1.5px solid #d1d5db; border-bottom: 1.5px solid #d1d5db; color: #047857; font-weight: 800;">
+                                <th style="padding: 7px 6px; text-align: center; width: 32px;">#</th>
+                                <th style="padding: 7px 8px; text-align: left;">Product Description</th>
+                                <th style="padding: 7px 8px; text-align: right; width: 68px;">Price</th>
+                                <th style="padding: 7px 8px; text-align: center; width: 125px;">Quantity</th>
+                                <th style="padding: 7px 8px; text-align: right; width: 90px;">Gross Amount</th>
+                                <th style="padding: 7px 8px; text-align: center; width: 55px;">Disc.%</th>
+                                <th style="padding: 7px 8px; text-align: right; width: 65px;">Disc.</th>
+                                <th style="padding: 7px 8px; text-align: right; width: 90px;">Net Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${pageRowsHtml}
+                            ${emptyRowsHtml}
+                            ${!isLastPage ? `
+                                <tr style="background: #f9fafb; border-top: 1.5px solid #d1d5db;">
+                                    <td colspan="8" style="padding: 7px 10px; text-align: right; font-weight: 800; color: #0B3B7B; font-size: 11.5px;">
+                                        Items continue on Next Page (Page ${pageIdx + 2} of ${totalPages}) ➔
+                                    </td>
+                                </tr>
+                            ` : ''}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- PAGE FOOTER / TOTALS ON LAST PAGE -->
+            ${isLastPage ? `
+                <div class="invoice-bottom-content">
+                    <!-- BALANCES & FINANCIAL SUMMARY -->
+                    <table style="width: 100%; margin-bottom: 8px; font-size: 12px;">
+                        <tr>
+                            <!-- LEFT BOX: RUNNING BALANCES -->
+                            <td style="width: 50%; vertical-align: top; padding-right: 14px; line-height: 1.55;">
+                                <div><span style="font-weight: 700; color: #1f2937;">Current Invoice: </span><span style="font-weight: 700; color: #111827;">Rs. ${Number(netVal).toFixed(2)}</span></div>
+                                <div><span style="font-weight: 700; color: #1f2937;">Paid Amount: </span><span style="font-weight: 700; color: #047857;">Rs. ${Number(paidVal).toFixed(2)}</span></div>
+                                <div><span style="font-weight: 700; color: #1f2937;">Invoice Due: </span><span style="font-weight: 700; color: ${remainingVal > 0 ? '#be123c' : '#111827'};">Rs. ${Number(remainingVal).toFixed(2)}</span></div>
+                                <div><span style="font-weight: 800; color: #111827;">Previous Balance : </span><span style="font-weight: 800; color: #111827;">Rs. ${Number(pBal).toFixed(2)}</span></div>
+                                <div style="border-bottom: 2px solid #111827; display: inline-block; padding-bottom: 2px; margin-top: 2px; font-size: 13.5px;">
+                                    <span style="font-weight: 900; color: #111827;">New Balance: </span>
+                                    <span style="font-weight: 900; color: #111827;">Rs. ${Number(fBal).toFixed(0)}</span>
+                                </div>
+                            </td>
+
+                            <!-- RIGHT BOX: TOTALS & NET VALUE -->
+                            <td style="width: 50%; vertical-align: top; text-align: right; padding-left: 14px; line-height: 1.55;">
+                                <div><span style="font-weight: 700; color: #1f2937;">Gross Amount: </span><span style="font-weight: 700; color: #111827;">Rs. ${Number(grossVal).toFixed(2)}</span></div>
+                                <div><span style="font-weight: 700; color: #1f2937;">Less Disc.: </span><span style="font-weight: 700; color: #111827;">Rs. ${Number(discVal).toFixed(2)}</span></div>
+                                <div><span style="font-weight: 700; color: #1f2937;">Less Special Disc.: </span><span style="font-weight: 700; color: #111827;">Rs. ${specialDiscVal % 1 === 0 ? Number(specialDiscVal).toFixed(0) : Number(specialDiscVal).toFixed(2)}</span></div>
+                                <div><span style="font-weight: 700; color: #1f2937;">Add Charges : </span><span style="font-weight: 700; color: #111827;">Rs. ${chargesVal % 1 === 0 ? Number(chargesVal).toFixed(0) : Number(chargesVal).toFixed(2)}</span></div>
+                                <div style="border-top: 1.5px solid #d1d5db; margin-top: 3px; padding-top: 4px;">
+                                    <span style="font-size: 15px; font-weight: 900; color: #111827;">Net Value: </span>
+                                    <span style="font-size: 15px; font-weight: 900; color: #111827;">Rs. ${Number(netVal).toFixed(2)}</span>
+                                </div>
+                            </td>
+                        </tr>
+                    </table>
+
+                    <!-- AMOUNT IN WORDS -->
+                    <div style="border-top: 1px solid #d1d5db; padding-top: 6px; margin-bottom: 8px; font-size: 12px;">
+                        <strong style="color: #1f2937; font-weight: 700;">Invoice Amount In Words: </strong>
+                        <span style="font-weight: 900; color: #111827;">${numberToWords(netVal)}</span>
+                    </div>
+
+                    <!-- BANK DETAILS -->
+                    ${bankAccounts.length > 0 ? `
+                        <div style="border-top: 1px solid #d1d5db; padding-top: 6px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                                <span style="font-weight: 900; font-size: 11px; text-transform: uppercase; color: #111827; letter-spacing: 0.5px;">
+                                    <span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #B8860B; margin-right: 4px;"></span>
+                                    BANK DETAILS FOR ONLINE PAYMENT / TRANSFER
+                                </span>
+                                <span style="font-size: 10.5px; font-weight: 600; color: #4b5563;">WhatsApp proof: ${shopPhone}</span>
+                            </div>
+                            <div style="display: grid; grid-template-columns: repeat(${Math.min(bankAccounts.length, 3)}, 1fr); gap: 6px;">
+                                ${bankCardsHtml}
+                            </div>
+                        </div>
+                    ` : ''}
+
+                    <!-- TERMS & SIGNATURES -->
+                    <div style="border-top: 1px solid #d1d5db; margin-top: 8px; padding-top: 6px;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-end; padding-top: 18px;">
+                            <div style="text-align: center; width: 30%;">
+                                <div style="border-top: 1.5px solid #111827; padding-top: 3px; font-weight: bold; font-size: 11px; color: #111827;">
+                                    Prepared By (Cashier)
+                                </div>
+                            </div>
+                            <div style="text-align: center; width: 30%;">
+                                <div style="border-top: 1.5px solid #111827; padding-top: 3px; font-weight: bold; font-size: 11px; color: #111827;">
+                                    Checked &amp; Approved By
+                                </div>
+                            </div>
+                            <div style="text-align: center; width: 30%;">
+                                <div style="border-top: 1.5px solid #111827; padding-top: 3px; font-weight: bold; font-size: 11px; color: #111827;">
+                                    Customer Signature &amp; Stamp
+                                </div>
+                            </div>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 10px; font-weight: 600; color: #4b5563; margin-top: 8px;">
+                            <span>Goods once sold can be exchanged in original packaging within 7 days.</span>
+                            <span style="font-weight: 800;">Page ${pageIdx + 1} of ${totalPages}</span>
+                        </div>
+                    </div>
+                </div>
+            ` : `
+                <div style="border-top: 1px solid #d1d5db; padding-top: 6px; display: flex; justify-content: space-between; align-items: center; font-size: 10.5px; color: #6b7280; font-weight: 600;">
+                    <span>${shopName} • Wholesale Invoice #${inv.invoice_no || inv.id}</span>
+                    <span style="font-weight: 800; color: #111827;">Page ${pageIdx + 1} of ${totalPages}</span>
+                </div>
+            `}
+        </div>
+        `;
+    }).join('');
 
     return `<!DOCTYPE html>
 <html>
@@ -824,11 +1127,10 @@ export function generateWholesaleInvoiceA4Html(inv, settings = {}, prevBal = 0, 
             padding: 0;
             background: #ffffff;
             color: #111827;
-            height: 100%;
         }
         body {
             font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
-            font-size: 13px;
+            font-size: 12.5px;
             line-height: 1.4;
             width: 100%;
         }
@@ -836,18 +1138,25 @@ export function generateWholesaleInvoiceA4Html(inv, settings = {}, prevBal = 0, 
             width: 100%;
             border-collapse: collapse;
         }
-        .container {
+        .a4-page-container {
             border: 1.5px solid #111827;
             border-radius: 8px;
-            padding: 14px 18px;
+            padding: 12px 16px;
             background: #ffffff;
             max-width: 100%;
-            margin: 0 auto;
+            margin: 0 auto 20px auto;
             min-height: 272mm;
             box-sizing: border-box;
             display: flex;
             flex-direction: column;
             justify-content: space-between;
+            page-break-after: always;
+            break-after: page;
+        }
+        .a4-page-container:last-child {
+            margin-bottom: 0;
+            page-break-after: auto;
+            break-after: auto;
         }
         .invoice-main-content {
             flex-grow: 1;
@@ -861,176 +1170,26 @@ export function generateWholesaleInvoiceA4Html(inv, settings = {}, prevBal = 0, 
             margin-top: auto;
         }
         @media print {
-            .container {
+            body {
+                background: none;
+            }
+            .a4-page-container {
                 min-height: 272mm !important;
                 height: 272mm !important;
+                margin: 0 !important;
+                border: 1.5px solid #111827 !important;
+                page-break-after: always !important;
+                break-after: page !important;
+            }
+            .a4-page-container:last-child {
+                page-break-after: auto !important;
+                break-after: auto !important;
             }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="invoice-main-content">
-            <!-- TOP HEADER: SHOP INFO & INVOICE / CUSTOMER META -->
-            <table style="width: 100%; margin-bottom: 14px; border-bottom: 1.5px solid #d1d5db; padding-bottom: 12px;">
-                <tr>
-                    <!-- LEFT SIDE: LOGO & SHOP INFO -->
-                    <td style="width: 50%; vertical-align: top; padding-right: 12px;">
-                        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
-                            ${shopLogo ? `
-                                <img src="${shopLogo}" alt="Logo" style="height: 48px; width: 48px; object-fit: contain; border-radius: 6px; border: 1px solid #e5e7eb; padding: 2px;" />
-                            ` : `
-                                <div style="height: 46px; width: 46px; border-radius: 8px; background: linear-gradient(135deg, #B8860B, #FFD700); color: #fff; font-weight: 900; font-size: 20px; display: flex; align-items: center; justify-content: center;">
-                                    ${shopName.charAt(0)}
-                                </div>
-                            `}
-                            <div>
-                                <div style="font-size: 18px; font-weight: 900; text-transform: uppercase; color: #111827; letter-spacing: 0.3px;">
-                                    ${shopName}
-                                </div>
-                                <div style="font-size: 11px; font-weight: 800; color: #B8860B; text-transform: uppercase; letter-spacing: 0.8px;">
-                                    DISTRIBUTION NETWORK
-                                </div>
-                            </div>
-                        </div>
-                        <div style="font-size: 12.5px; font-weight: 700; color: #111827; line-height: 1.45;">
-                            <div><strong style="font-weight: 800; color: #111827;">Address: </strong>${shopAddress}</div>
-                            <div><strong style="font-weight: 800; color: #111827;">Phone: </strong><span style="font-family: monospace; font-weight: 700;">${shopPhone}</span></div>
-                            <div><strong style="font-weight: 800; color: #111827;">Email: </strong><span style="font-family: monospace; font-weight: 700; color: #111827;">${shopEmail}</span></div>
-                        </div>
-                    </td>
-
-                    <!-- RIGHT SIDE: INVOICE META & CUSTOMER DETAILS -->
-                    <td style="width: 50%; vertical-align: top; text-align: right; padding-left: 12px;">
-                        <div style="background: #f9fafb; border: 1px solid #d1d5db; border-radius: 8px; padding: 9px 12px; margin-bottom: 9px; text-align: right;">
-                            <div style="margin-bottom: 4px;">
-                                <span style="font-weight: 800; color: #374151; font-size: 12.5px;">INVOICE # : </span>
-                                <span style="font-family: monospace; font-weight: 900; font-size: 16px; color: #B8860B;">${inv.invoice_no || inv.id}</span>
-                            </div>
-                            <div style="margin-bottom: 4px;">
-                                <span style="font-weight: 800; color: #111827; font-size: 12.5px;">Invoice Date: </span>
-                                <span style="font-family: monospace; font-weight: 900; font-size: 12.5px; color: #111827;">${formattedDate}</span>
-                            </div>
-                            <div>
-                                <span style="font-weight: 800; color: #111827; font-size: 12.5px;">Payment Status: </span>
-                                <span style="display: inline-block; padding: 2px 9px; border-radius: 4px; font-size: 11.5px; font-weight: 900; text-transform: uppercase; background: ${statusBg}; color: ${statusColor}; border: 1px solid ${statusBorder};">
-                                    ${status}
-                                </span>
-                            </div>
-                        </div>
-
-                        <div style="border-top: 1px solid #d1d5db; padding-top: 7px; font-size: 12.5px; font-weight: 700; color: #111827; line-height: 1.45;">
-                            <div style="font-weight: 900; font-size: 13px; color: #111827; text-transform: uppercase; margin-bottom: 3px;">
-                                BILLED TO (${fullCustomerTitle})
-                            </div>
-                            <div><strong style="font-weight: 800; color: #111827;">Mobile / Phone: </strong><span style="font-family: monospace; font-weight: 700;">${customerPhone || '—'}</span></div>
-                            <div><strong style="font-weight: 800; color: #111827;">Address: </strong><span style="font-weight: 700;">${customerAddress || '—'}</span></div>
-                            ${remarks ? `<div><strong style="font-weight: 800; color: #111827;">Remarks: </strong><span style="font-style: italic; font-weight: 700; color: #1f2937;">${remarks}</span></div>` : ''}
-                        </div>
-                    </td>
-                </tr>
-            </table>
-
-            <!-- ITEMS TABLE -->
-            <div class="table-wrapper">
-                <table style="width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 12.5px;">
-                    <thead>
-                        <tr style="background: #f3f4f6; border-top: 1.5px solid #d1d5db; border-bottom: 1.5px solid #d1d5db; color: #047857; font-weight: 800;">
-                            <th style="padding: 8px 6px; text-align: center; width: 32px;">#</th>
-                            <th style="padding: 8px 8px; text-align: left;">Product Description</th>
-                            <th style="padding: 8px 8px; text-align: right; width: 68px;">Price</th>
-                            <th style="padding: 8px 8px; text-align: center; width: 125px;">Quantity</th>
-                            <th style="padding: 8px 8px; text-align: right; width: 90px;">Gross Amount</th>
-                            <th style="padding: 8px 8px; text-align: center; width: 55px;">Disc.%</th>
-                            <th style="padding: 8px 8px; text-align: right; width: 65px;">Disc.</th>
-                            <th style="padding: 8px 8px; text-align: right; width: 90px;">Net Amount</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${rowsHtml}
-                        ${emptyRowsHtml}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <div class="invoice-bottom-content">
-            <!-- BALANCES & FINANCIAL SUMMARY -->
-            <table style="width: 100%; margin-bottom: 10px; font-size: 13px;">
-                <tr>
-                    <!-- LEFT BOX: RUNNING BALANCES -->
-                    <td style="width: 50%; vertical-align: top; padding-right: 14px; line-height: 1.6;">
-                        <div><span style="font-weight: 700; color: #1f2937;">Current Invoice: </span><span style="font-weight: 700; color: #111827;">Rs. ${Number(netVal).toFixed(2)}</span></div>
-                        <div><span style="font-weight: 700; color: #1f2937;">Paid Amount: </span><span style="font-weight: 700; color: #047857;">Rs. ${Number(paidVal).toFixed(2)}</span></div>
-                        <div><span style="font-weight: 700; color: #1f2937;">Invoice Due: </span><span style="font-weight: 700; color: ${remainingVal > 0 ? '#be123c' : '#111827'};">Rs. ${Number(remainingVal).toFixed(2)}</span></div>
-                        <div><span style="font-weight: 800; color: #111827;">Previous Balance : </span><span style="font-weight: 800; color: #111827;">Rs. ${Number(pBal).toFixed(2)}</span></div>
-                        <div style="border-bottom: 2px solid #111827; display: inline-block; padding-bottom: 2px; margin-top: 2px; font-size: 14px;">
-                            <span style="font-weight: 900; color: #111827;">New Balance: </span>
-                            <span style="font-weight: 900; color: #111827;">Rs. ${Number(fBal).toFixed(0)}</span>
-                        </div>
-                    </td>
-
-                    <!-- RIGHT BOX: TOTALS & NET VALUE -->
-                    <td style="width: 50%; vertical-align: top; text-align: right; padding-left: 14px; line-height: 1.6;">
-                        <div><span style="font-weight: 700; color: #1f2937;">Gross Amount: </span><span style="font-weight: 700; color: #111827;">Rs. ${Number(grossVal).toFixed(2)}</span></div>
-                        <div><span style="font-weight: 700; color: #1f2937;">Less Disc.: </span><span style="font-weight: 700; color: #111827;">Rs. ${Number(discVal).toFixed(2)}</span></div>
-                        <div><span style="font-weight: 700; color: #1f2937;">Less Special Disc.: </span><span style="font-weight: 700; color: #111827;">Rs. ${specialDiscVal % 1 === 0 ? Number(specialDiscVal).toFixed(0) : Number(specialDiscVal).toFixed(2)}</span></div>
-                        <div><span style="font-weight: 700; color: #1f2937;">Add Charges : </span><span style="font-weight: 700; color: #111827;">Rs. ${chargesVal % 1 === 0 ? Number(chargesVal).toFixed(0) : Number(chargesVal).toFixed(2)}</span></div>
-                        <div style="border-top: 1.5px solid #d1d5db; margin-top: 4px; padding-top: 5px;">
-                            <span style="font-size: 16px; font-weight: 900; color: #111827;">Net Value: </span>
-                            <span style="font-size: 16px; font-weight: 900; color: #111827;">Rs. ${Number(netVal).toFixed(2)}</span>
-                        </div>
-                    </td>
-                </tr>
-            </table>
-
-            <!-- AMOUNT IN WORDS -->
-            <div style="border-top: 1px solid #d1d5db; padding-top: 8px; margin-bottom: 10px; font-size: 13px;">
-                <strong style="color: #1f2937; font-weight: 700;">Invoice Amount In Words: </strong>
-                <span style="font-weight: 900; color: #111827;">${numberToWords(netVal)}</span>
-            </div>
-
-            <!-- BANK DETAILS -->
-            ${bankAccounts.length > 0 ? `
-                <div style="border-top: 1px solid #d1d5db; padding-top: 8px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                        <span style="font-weight: 900; font-size: 12px; text-transform: uppercase; color: #111827; letter-spacing: 0.5px;">
-                            <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #B8860B; margin-right: 4px;"></span>
-                            BANK DETAILS FOR ONLINE PAYMENT / TRANSFER
-                        </span>
-                        <span style="font-size: 11px; font-weight: 600; color: #4b5563;">WhatsApp proof: ${shopPhone}</span>
-                    </div>
-                    <div style="display: grid; grid-template-columns: repeat(${Math.min(bankAccounts.length, 3)}, 1fr); gap: 8px;">
-                        ${bankCardsHtml}
-                    </div>
-                </div>
-            ` : ''}
-
-            <!-- TERMS & SIGNATURES -->
-            <div style="border-top: 1px solid #d1d5db; margin-top: 12px; padding-top: 8px;">
-                <div style="display: flex; justify-content: space-between; align-items: flex-end; padding-top: 24px;">
-                    <div style="text-align: center; width: 30%;">
-                        <div style="border-top: 1.5px solid #111827; padding-top: 4px; font-weight: bold; font-size: 11.5px; color: #111827;">
-                            Prepared By (Cashier)
-                        </div>
-                    </div>
-                    <div style="text-align: center; width: 30%;">
-                        <div style="border-top: 1.5px solid #111827; padding-top: 4px; font-weight: bold; font-size: 11.5px; color: #111827;">
-                            Checked &amp; Approved By
-                        </div>
-                    </div>
-                    <div style="text-align: center; width: 30%;">
-                        <div style="border-top: 1.5px solid #111827; padding-top: 4px; font-weight: bold; font-size: 11.5px; color: #111827;">
-                            Customer Signature &amp; Stamp
-                        </div>
-                    </div>
-                </div>
-                <div style="text-align: center; font-size: 10.5px; font-weight: 600; color: #4b5563; margin-top: 10px;">
-                    Thank you for your business! • Goods once sold can be exchanged in original packaging within 7 days.
-                </div>
-            </div>
-        </div>
-    </div>
+    ${pagesHtml}
     <script>window.onload = function() { window.print(); window.close(); }</script>
 </body>
 </html>`;
