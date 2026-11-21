@@ -8,7 +8,7 @@ import {
     IconBill, IconPOS, IconPrinter, IconEye, IconSync,
     IconReceipt, IconEdit, IconTrash, IconDotsVertical,
     IconBox, IconBolt, IconLayers, IconPackage, IconTag,
-    IconBarcode, IconArrowRight, IconSparkles,
+    IconBarcode, IconArrowRight, IconSparkles, IconSpinner,
     IconChevronLeft, IconChevronRight, IconChevronDoubleLeft, IconChevronDoubleRight
 } from '../components/Icons';
 
@@ -64,6 +64,15 @@ export default function InventoryPage() {
     const [adjustmentModalOpen, setAdjustmentModalOpen] = useState(false);
     const [movementsModalOpen, setMovementsModalOpen] = useState(false);
     const [actionModalItem, setActionModalItem] = useState(null);
+
+    // Direct Add Stock (Without Supplier) State
+    const [addStockModalOpen, setAddStockModalOpen] = useState(false);
+    const [addStockItem, setAddStockItem] = useState(null);
+    const [addStockPackagingId, setAddStockPackagingId] = useState('');
+    const [addStockQuantity, setAddStockQuantity] = useState('10');
+    const [addStockPurchasePrice, setAddStockPurchasePrice] = useState('');
+    const [addStockNotes, setAddStockNotes] = useState('');
+    const [addStockSubmitting, setAddStockSubmitting] = useState(false);
 
     // Edit Item Form State
     const [editVariantId, setEditVariantId] = useState(null);
@@ -1278,6 +1287,92 @@ export default function InventoryPage() {
         setMovementsModalOpen(true);
     };
 
+    // Open Direct Add Stock Modal (Without Supplier)
+    const handleOpenAddStockModal = (item) => {
+        if (!item) return;
+        setAddStockItem(item);
+        const defaultPack = item.packagings?.find(p => p.is_default === 1) || item.packagings?.[0];
+        if (defaultPack) {
+            setAddStockPackagingId(String(defaultPack.packaging_type_id));
+            setAddStockPurchasePrice(defaultPack.purchase_price > 0 ? String(defaultPack.purchase_price) : '');
+        } else {
+            setAddStockPackagingId('');
+            setAddStockPurchasePrice('');
+        }
+        setAddStockQuantity('10');
+        setAddStockNotes('');
+        setAddStockModalOpen(true);
+    };
+
+    const handleAddStockPackagingChange = (pkgId) => {
+        setAddStockPackagingId(pkgId);
+        const pack = addStockItem?.packagings?.find(p => String(p.packaging_type_id) === String(pkgId));
+        if (pack && pack.purchase_price > 0) {
+            setAddStockPurchasePrice(String(pack.purchase_price));
+        }
+    };
+
+    const handleSaveAddStock = async (e) => {
+        e.preventDefault();
+        if (!addStockItem) return;
+
+        const qty = parseFloat(addStockQuantity);
+        if (isNaN(qty) || qty <= 0) {
+            return showAlert('Please enter a valid positive quantity', 'warning');
+        }
+
+        const selectedPack = addStockItem.packagings?.find(
+            p => String(p.packaging_type_id) === String(addStockPackagingId)
+        ) || addStockItem.packagings?.[0];
+
+        const conversionFactor = (selectedPack && selectedPack.conversion_factor > 0) ? selectedPack.conversion_factor : 1;
+        const packName = selectedPack?.packaging_name || addStockItem.unit_symbol || addStockItem.unit_name || 'Units';
+        const totalBaseUnits = qty * conversionFactor;
+
+        setAddStockSubmitting(true);
+        try {
+            const token = localStorage.getItem('token');
+            const headers = { 'Content-Type': 'application/json' };
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+
+            const res = await fetch(apiUrl('/api/inventory/add-stock'), {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({
+                    variant_id: addStockItem.variant_id,
+                    packaging_type_id: addStockPackagingId ? parseInt(addStockPackagingId) : (selectedPack?.packaging_type_id || null),
+                    quantity: qty,
+                    purchase_price: parseFloat(addStockPurchasePrice) || 0,
+                    notes: addStockNotes.trim() || 'Direct stock addition (No supplier)'
+                })
+            });
+
+            if (res.ok) {
+                setAddStockModalOpen(false);
+                setAddStockItem(null);
+                setAddStockQuantity('10');
+                setAddStockNotes('');
+                fetchStock();
+                fetchKpis();
+                if (selectedVariant && selectedVariant.variant_id === addStockItem.variant_id) {
+                    fetchMovements(addStockItem.variant_id);
+                }
+                showAlert(
+                    `Successfully added ${qty} ${packName} (+${totalBaseUnits} ${addStockItem.unit_symbol || addStockItem.unit_name || 'units'}) to warehouse inventory without supplier!`,
+                    'success',
+                    'Stock Added'
+                );
+            } else {
+                const data = await res.json();
+                showAlert(data.error || 'Failed to add stock', 'error');
+            }
+        } catch (err) {
+            showAlert(err.message, 'error');
+        } finally {
+            setAddStockSubmitting(false);
+        }
+    };
+
     // Open Inward Modal for a specific variant
     const handleOpenInwardForVariant = (item) => {
         setInwardVariantId(item.variant_id);
@@ -2384,6 +2479,37 @@ export default function InventoryPage() {
 
                         {/* Modal Action Buttons List */}
                         <div className="p-3 sm:p-3.5 space-y-2 overflow-y-auto flex-1">
+                            {/* 0. Add Stock (Without Supplier) Button */}
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const item = actionModalItem;
+                                    setActionModalItem(null);
+                                    handleOpenAddStockModal(item);
+                                }}
+                                className="w-full p-2.5 rounded-xl bg-blue-50/90 hover:bg-blue-100 text-[#0B3B7B] border border-blue-200/90 transition-all flex items-center justify-between gap-2.5 group cursor-pointer text-left shadow-2xs hover:shadow-xs"
+                            >
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                    <div className="w-8 h-8 rounded-lg bg-[#0B3B7B] text-white flex items-center justify-center shrink-0 shadow-2xs group-hover:scale-105 transition-transform">
+                                        <IconPlus className="w-4 h-4 text-white" />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <div className="font-extrabold text-xs text-[#0B3B7B] flex items-center gap-1.5">
+                                            <span>Add Stock</span>
+                                            <span className="px-1.5 py-0.5 rounded text-[9.5px] bg-blue-100 text-[#0B3B7B] font-black uppercase tracking-wider">
+                                                No Supplier
+                                            </span>
+                                        </div>
+                                        <div className="text-[10px] sm:text-[10.5px] text-gray-600 truncate">
+                                            Direct warehouse stock addition without supplier
+                                        </div>
+                                    </div>
+                                </div>
+                                <span className="text-xs font-extrabold text-[#0B3B7B] shrink-0 flex items-center gap-1">
+                                    Add Stock <IconArrowRight className="w-3.5 h-3.5" />
+                                </span>
+                            </button>
+
                             {/* 1. Inward Stock Button */}
                             <button
                                 type="button"
@@ -4789,6 +4915,207 @@ export default function InventoryPage() {
                     </form>
                 </div>
             )}
+
+            {/* ───────────────────────────────────────────────────────────── */}
+            {/* MODAL 6: DIRECT ADD STOCK (WITHOUT SUPPLIER)                  */}
+            {/* ───────────────────────────────────────────────────────────── */}
+            {addStockModalOpen && addStockItem && (() => {
+                const selectedPack = addStockItem.packagings?.find(
+                    p => String(p.packaging_type_id) === String(addStockPackagingId)
+                ) || addStockItem.packagings?.[0];
+                const factor = (selectedPack && selectedPack.conversion_factor > 0) ? selectedPack.conversion_factor : 1;
+                const qtyVal = parseFloat(addStockQuantity) || 0;
+                const addedPieces = qtyVal * factor;
+                const currentStockVal = parseFloat(addStockItem.current_stock) || 0;
+                const newStockVal = currentStockVal + addedPieces;
+                const baseUnitName = addStockItem.unit_symbol || addStockItem.unit_name || 'Units';
+                const packName = selectedPack?.packaging_name || baseUnitName;
+
+                return (
+                    <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[80] p-2 sm:p-4 overflow-y-auto">
+                        <form
+                            onSubmit={handleSaveAddStock}
+                            className="bg-white rounded-2xl sm:rounded-3xl max-w-lg w-full p-4 sm:p-6 space-y-4 shadow-2xl border border-gray-200 max-h-[96vh] flex flex-col animate-in fade-in zoom-in-95 duration-150"
+                        >
+                            {/* Modal Header */}
+                            <div className="flex justify-between items-start border-b border-gray-100 pb-3 shrink-0 gap-2">
+                                <div className="min-w-0">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-8 h-8 rounded-lg bg-[#0B3B7B] text-white flex items-center justify-center shrink-0 shadow-2xs">
+                                            <IconPlus className="w-4.5 h-4.5 text-white" />
+                                        </div>
+                                        <div>
+                                            <h3 className="font-black text-gray-900 text-base sm:text-lg tracking-tight leading-tight flex items-center gap-2">
+                                                <span>Add Stock</span>
+                                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-[#0B3B7B] uppercase tracking-wider">
+                                                    No Supplier Required
+                                                </span>
+                                            </h3>
+                                            <p className="text-[11px] sm:text-xs text-gray-500 font-medium">
+                                                Instantly restock inventory without creating a supplier bill
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setAddStockModalOpen(false)}
+                                    className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer shrink-0"
+                                    title="Close"
+                                >
+                                    <IconClose className="w-5 h-5" />
+                                </button>
+                            </div>
+
+                            {/* Product Info Card */}
+                            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1.5 text-xs">
+                                <div className="flex items-center justify-between gap-2">
+                                    <span className="font-extrabold text-gray-900 text-sm truncate">
+                                        {addStockItem.product_name}
+                                    </span>
+                                    <span className="font-mono font-bold text-gray-500 text-[11px] shrink-0">
+                                        {addStockItem.sku}
+                                    </span>
+                                </div>
+                                <div className="flex items-center justify-between gap-2 text-[11px]">
+                                    <span className="text-gray-600">
+                                        Current In-Hand Stock:
+                                    </span>
+                                    <span className="font-extrabold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                        {formatStockBreakdown(addStockItem).breakdownStr || `${currentStockVal} ${baseUnitName}`}
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* Form Fields */}
+                            <div className="space-y-3.5 overflow-y-auto flex-1 pr-1">
+                                {/* Packaging Type Selection */}
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                                        Packaging / Unit *
+                                    </label>
+                                    <select
+                                        value={addStockPackagingId}
+                                        onChange={(e) => handleAddStockPackagingChange(e.target.value)}
+                                        className="w-full px-3 py-2.5 rounded-xl border border-gray-300 focus:border-[#0B3B7B] focus:ring-2 focus:ring-[#0B3B7B]/20 outline-none text-xs sm:text-sm font-semibold bg-white cursor-pointer"
+                                    >
+                                        {addStockItem.packagings?.map((pkg) => (
+                                            <option key={pkg.packaging_type_id} value={pkg.packaging_type_id}>
+                                                {pkg.packaging_name} (1 {pkg.packaging_name} = {pkg.conversion_factor} {baseUnitName})
+                                                {pkg.purchase_price > 0 ? ` — Cost: Rs. ${Number(pkg.purchase_price).toLocaleString()}` : ''}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                {/* Quantity Input */}
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                                        Quantity to Add ({packName}) *
+                                    </label>
+                                    <div className="relative">
+                                        <input
+                                            type="number"
+                                            required
+                                            min="0.01"
+                                            step="any"
+                                            value={addStockQuantity}
+                                            onChange={(e) => setAddStockQuantity(e.target.value)}
+                                            placeholder="Enter quantity"
+                                            className="w-full px-3.5 py-2.5 rounded-xl border border-gray-300 focus:border-[#0B3B7B] focus:ring-2 focus:ring-[#0B3B7B]/20 outline-none text-sm font-bold text-gray-900"
+                                        />
+                                        <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-500 uppercase">
+                                            {packName}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {/* Dynamic Live Calculation Card */}
+                                <div className="p-3 rounded-xl bg-blue-50/70 border border-blue-200/80 text-xs space-y-1">
+                                    <div className="flex items-center justify-between text-blue-950 font-bold">
+                                        <span>Stock to be added:</span>
+                                        <span className="text-[#0B3B7B] font-extrabold text-sm font-mono">
+                                            +{qtyVal} {packName} {factor > 1 ? `(${addedPieces} ${baseUnitName})` : ''}
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center justify-between text-gray-600 text-[11px] pt-1 border-t border-blue-200/50">
+                                        <span>New in-hand stock after addition:</span>
+                                        <span className="font-bold text-gray-900 font-mono">
+                                            {newStockVal} {baseUnitName}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {/* Optional Purchase / Cost Price */}
+                                <div>
+                                    <div className="flex items-center justify-between mb-1">
+                                        <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">
+                                            Unit Cost / Purchase Price (Optional)
+                                        </label>
+                                        <span className="text-[10px] text-gray-400">Leave blank or 0 to keep existing</span>
+                                    </div>
+                                    <div className="relative">
+                                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-500">
+                                            Rs.
+                                        </span>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            step="any"
+                                            value={addStockPurchasePrice}
+                                            onChange={(e) => setAddStockPurchasePrice(e.target.value)}
+                                            placeholder={selectedPack?.purchase_price ? String(selectedPack.purchase_price) : "0"}
+                                            className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-gray-300 focus:border-[#0B3B7B] focus:ring-2 focus:ring-[#0B3B7B]/20 outline-none text-xs sm:text-sm font-semibold text-gray-900"
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Notes / Reason */}
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                                        Reason / Notes (Optional)
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={addStockNotes}
+                                        onChange={(e) => setAddStockNotes(e.target.value)}
+                                        placeholder="Direct warehouse restock (No supplier)"
+                                        className="w-full px-3.5 py-2 rounded-xl border border-gray-300 focus:border-[#0B3B7B] focus:ring-2 focus:ring-[#0B3B7B]/20 outline-none text-xs font-medium text-gray-900"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Modal Action Buttons */}
+                            <div className="flex flex-col-reverse sm:flex-row gap-2 sm:gap-3 pt-3 border-t border-gray-100 shrink-0">
+                                <button
+                                    type="button"
+                                    onClick={() => setAddStockModalOpen(false)}
+                                    className="w-full sm:flex-1 py-2.5 rounded-xl font-bold text-xs border border-gray-300 text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer text-center"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={addStockSubmitting || qtyVal <= 0}
+                                    className="w-full sm:flex-1 py-2.5 rounded-xl font-bold text-xs bg-[#0B3B7B] hover:bg-[#072B5C] active:scale-[0.99] text-white shadow-md shadow-[#0B3B7B]/20 transition-all cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
+                                >
+                                    {addStockSubmitting ? (
+                                        <>
+                                            <IconSpinner className="w-4 h-4 text-white animate-spin" />
+                                            <span>Adding Stock...</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <IconCheck className="w-4 h-4 text-white" />
+                                            <span>+ Add {qtyVal > 0 ? `${qtyVal} ${packName}` : 'Stock'}</span>
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                );
+            })()}
 
             {/* Custom Non-Blocking Alert / Confirm Modal */}
             <CustomModalAlert

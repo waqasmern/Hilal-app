@@ -228,7 +228,7 @@ export async function downloadAndOpenPdf(element, fileName = 'wholesale_invoice_
                 let pathToFileURL = null;
                 try {
                     pathToFileURL = window.require('url')?.pathToFileURL;
-                } catch (_) {}
+                } catch (_) { }
 
                 if (fs && path && os) {
                     const tempDir = os.tmpdir();
@@ -262,7 +262,7 @@ export async function downloadAndOpenPdf(element, fileName = 'wholesale_invoice_
                     } else if (electron?.shell) {
                         const fileUrl = pathToFileURL ? pathToFileURL(filePath).href : `file:///${filePath.replace(/\\/g, '/')}`;
                         electron.shell.openExternal(fileUrl).catch(() => {
-                            electron.shell.openPath(filePath).catch(() => {});
+                            electron.shell.openPath(filePath).catch(() => { });
                         });
                         opened = true;
                     }
@@ -276,7 +276,7 @@ export async function downloadAndOpenPdf(element, fileName = 'wholesale_invoice_
             // Web browser mode (e.g. running in Chrome): open PDF in a new tab
             try {
                 window.open(blobUrl, '_blank');
-            } catch (_) {}
+            } catch (_) { }
         }
 
         // 3. Save / Download file (optional)
@@ -386,7 +386,7 @@ export function generateThermalReceiptHtml(inv, settings = {}, cashierName = '',
     const logoHeight = parseInt(settings?.receipt_logo_height || settings?.logo_height) || 42;
 
     // Dynamic customer details from invoice
-    const customerName = (inv.customer_name || inv.walkin_name || 'Walk-in Customer').trim() + 
+    const customerName = (inv.customer_name || inv.walkin_name || 'Walk-in Customer').trim() +
         (inv.business_name ? ` (${inv.business_name.trim()})` : '');
     const customerPhone = (inv.customer_phone || inv.walkin_phone || inv.customer_mobile || inv.phone || '').trim();
     const customerAddress = (inv.customer_address || inv.walkin_address || inv.address || '').trim();
@@ -400,7 +400,7 @@ export function generateThermalReceiptHtml(inv, settings = {}, cashierName = '',
             dt = dt.trim() + 'Z';
         }
         const rawDate = dt ? new Date(dt) : new Date();
-        formattedDate = isNaN(rawDate.getTime()) 
+        formattedDate = isNaN(rawDate.getTime())
             ? new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
             : rawDate.toLocaleDateString() + ' ' + rawDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     } catch (_) {
@@ -409,8 +409,8 @@ export function generateThermalReceiptHtml(inv, settings = {}, cashierName = '',
 
     // Financial calculations
     const items = inv.items || [];
-    const grossVal = Number(inv.gross_amount !== undefined && inv.gross_amount !== null && parseFloat(inv.gross_amount) > 0 
-        ? inv.gross_amount 
+    const grossVal = Number(inv.gross_amount !== undefined && inv.gross_amount !== null && parseFloat(inv.gross_amount) > 0
+        ? inv.gross_amount
         : (items.reduce((sum, it) => sum + ((parseFloat(it.price) || 0) * (parseFloat(it.quantity) || 0)), 0) || inv.net_amount || 0));
     const discVal = Number(inv.discount || items.reduce((sum, it) => sum + (parseFloat(it.discount) || 0), 0) || 0);
     const specialDiscVal = Number(inv.special_discount || 0);
@@ -589,19 +589,19 @@ export function generateThermalReceiptHtml(inv, settings = {}, cashierName = '',
             </thead>
             <tbody>
                 ${items.map((it) => {
-                    const factor = parseFloat(it.conversion_factor) || 1;
-                    const isBulk = factor > 1;
-                    const uSymbol = it.base_unit || it.unit_symbol || it.unit_name || 'pcs';
-                    const packName = it.packaging_name || (isBulk ? 'Bulk' : uSymbol);
-                    const qty = parseFloat(it.quantity) || 0;
-                    const looseQty = isBulk ? (qty * factor) : qty;
-                    const qtyCol = isBulk ? `${qty} ${formatPackShort(packName)}` : `${looseQty} ${uSymbol}`;
-                    const variantText = it.variant_name && it.variant_name !== 'Standard' ? `(${it.variant_name}) ` : '';
-                    const packageDetail = isBulk ? `Pack: ${qty} ${packName} (${looseQty} ${uSymbol})` : '';
-                    const hasSub = variantText || packageDetail;
-                    const itDiscount = parseFloat(it.discount) || 0;
+        const factor = parseFloat(it.conversion_factor) || 1;
+        const isBulk = factor > 1;
+        const uSymbol = it.base_unit || it.unit_symbol || it.unit_name || 'pcs';
+        const packName = it.packaging_name || (isBulk ? 'Bulk' : uSymbol);
+        const qty = parseFloat(it.quantity) || 0;
+        const looseQty = isBulk ? (qty * factor) : qty;
+        const qtyCol = isBulk ? `${qty} ${formatPackShort(packName)}` : `${looseQty} ${uSymbol}`;
+        const variantText = it.variant_name && it.variant_name !== 'Standard' ? `(${it.variant_name}) ` : '';
+        const packageDetail = isBulk ? `Pack: ${qty} ${packName} (${looseQty} ${uSymbol})` : '';
+        const hasSub = variantText || packageDetail;
+        const itDiscount = parseFloat(it.discount) || 0;
 
-                    return `
+        return `
                     <tr style="vertical-align: top; border-bottom: 1px solid #000000;">
                         <td style="padding: 3.5px 1px 3.5px 0; text-align: left; border: none;">
                             <div class="item-title" style="font-size: 9.5px; font-weight: 900; line-height: 1.2; word-break: break-word;">${it.product_name}</div>
@@ -621,7 +621,7 @@ export function generateThermalReceiptHtml(inv, settings = {}, cashierName = '',
                         </td>
                     </tr>
                     `;
-                }).join('')}
+    }).join('')}
             </tbody>
         </table>
     </div>
@@ -791,7 +791,7 @@ export function generateWholesaleInvoiceA4Html(inv, settings = {}, prevBal = 0, 
             try {
                 const parsed = JSON.parse(settings.bank_accounts);
                 if (Array.isArray(parsed) && parsed.length > 0) bankAccounts = parsed;
-            } catch (_) {}
+            } catch (_) { }
         }
     }
 

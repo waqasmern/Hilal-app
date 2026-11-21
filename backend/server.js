@@ -1099,6 +1099,109 @@ app.post('/api/inventory/adjustments', authenticateToken, requireAdmin, (req, re
     });
 });
 
+// -------------------------------------------------------------
+// DIRECT ADD STOCK (WITHOUT SUPPLIER)
+// -------------------------------------------------------------
+app.post('/api/inventory/add-stock', authenticateToken, (req, res) => {
+    const { variant_id, packaging_type_id, quantity, purchase_price, notes } = req.body;
+    const vId = parseInt(variant_id);
+    const pQty = parseFloat(quantity);
+
+    if (!vId || isNaN(pQty) || pQty <= 0) {
+        return res.status(400).json({ error: 'Valid product variant and positive quantity required' });
+    }
+
+    const pkgId = packaging_type_id ? parseInt(packaging_type_id) : null;
+    const unitPrice = parseFloat(purchase_price) || 0;
+    const stockNote = notes && notes.trim() ? notes.trim() : 'Direct stock addition (No supplier)';
+
+    db.serialize(() => {
+        db.run("BEGIN TRANSACTION");
+
+        // 1. Fetch packaging conversion factor
+        const getPackSql = pkgId 
+            ? "SELECT conversion_factor, purchase_price FROM product_packagings WHERE variant_id = ? AND packaging_type_id = ?"
+            : "SELECT conversion_factor, purchase_price FROM product_packagings WHERE variant_id = ? ORDER BY is_default DESC, id ASC LIMIT 1";
+        const getPackParams = pkgId ? [vId, pkgId] : [vId];
+
+        db.get(getPackSql, getPackParams, (err, pack) => {
+            if (err) {
+                db.run("ROLLBACK");
+                return res.status(500).json({ error: err.message });
+            }
+
+            const factor = (pack && parseFloat(pack.conversion_factor) > 0) ? parseFloat(pack.conversion_factor) : 1;
+            const equivalentQty = pQty * factor;
+
+            // 2. Increment stock in product_variants
+            db.run("UPDATE product_variants SET current_stock = current_stock + ? WHERE id = ?", [equivalentQty, vId], function(upVarErr) {
+                if (upVarErr) {
+                    db.run("ROLLBACK");
+                    return res.status(500).json({ error: upVarErr.message });
+                }
+
+                // 3. Increment stock in inventory_stock
+                db.run("UPDATE inventory_stock SET quantity = quantity + ? WHERE variant_id = ?", [equivalentQty, vId], function(upInvErr) {
+                    if (upInvErr) {
+                        db.run("ROLLBACK");
+                        return res.status(500).json({ error: upInvErr.message });
+                    }
+
+                    // 4. Optional: Update purchase price if provided > 0
+                    if (unitPrice > 0 && pkgId) {
+                        db.run("UPDATE product_packagings SET purchase_price = ? WHERE variant_id = ? AND packaging_type_id = ?", [unitPrice, vId, pkgId]);
+                    }
+
+                    // 5. Insert movement audit record
+                    const movementUUID = generateUUID();
+                    const userId = req.user ? req.user.id : 1;
+                    const username = req.user ? req.user.username : 'admin';
+
+                    db.run(
+                        `INSERT INTO stock_movements (uuid, variant_id, packaging_type_id, movement_type, quantity, equivalent_qty, quantity_delta, notes, user_id, device_id)
+                         VALUES (?, ?, ?, 'RESTOCK', ?, ?, ?, ?, ?, 'DEVICE-CASHIER-01')`,
+                        [movementUUID, vId, pkgId, pQty, equivalentQty, equivalentQty, stockNote, userId],
+                        function(insErr) {
+                            if (insErr) {
+                                db.run("ROLLBACK");
+                                return res.status(500).json({ error: insErr.message });
+                            }
+
+                            const movementId = this.lastID;
+
+                            db.run("COMMIT", (commitErr) => {
+                                if (commitErr) return res.status(500).json({ error: commitErr.message });
+
+                                logAudit(userId, username, 'ADD_STOCK', 'product_variants', vId, `Direct Stock In: +${pQty} (Equivalent: +${equivalentQty}) - ${stockNote}`);
+
+                                syncEngine.enqueueSync('RESTOCK', 'stock_movements', movementId, {
+                                    uuid: movementUUID,
+                                    variant_id: vId,
+                                    packaging_type_id: pkgId || 1,
+                                    movement_type: 'RESTOCK',
+                                    quantity: pQty,
+                                    equivalent_qty: equivalentQty,
+                                    quantity_delta: equivalentQty,
+                                    reason: stockNote,
+                                    notes: stockNote,
+                                    created_at: getLocalNow()
+                                });
+
+                                res.json({
+                                    success: true,
+                                    movementId,
+                                    added_quantity: pQty,
+                                    equivalent_qty: equivalentQty
+                                });
+                            });
+                        }
+                    );
+                });
+            });
+        });
+    });
+});
+
 app.get('/api/inventory/low-stock', (req, res) => {
     const query = `
         SELECT 
